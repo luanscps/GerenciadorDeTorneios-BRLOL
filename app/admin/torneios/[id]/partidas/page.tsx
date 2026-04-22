@@ -5,13 +5,14 @@ import { PartidaResultForm } from "@/components/admin/PartidaResultForm";
 export default async function AdminPartidas({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
+  const { id } = await params;
   const supabase = await createClient();
   const { data: torneio } = await supabase
     .from("tournaments")
     .select("id,name")
-    .eq("id", params.id)
+    .eq("id", id)
     .single();
   if (!torneio) notFound();
 
@@ -20,7 +21,7 @@ export default async function AdminPartidas({
     .select(
       "id, status, winner_team_id, score_a, score_b, team_a:teams!matches_team_a_id_fkey(id,name), team_b:teams!matches_team_b_id_fkey(id,name)"
     )
-    .eq("tournament_id", params.id)
+    .eq("tournament_id", id)
     .order("created_at", { ascending: true });
 
   const pendentes = (partidas ?? []).filter((p: any) => p.status !== "finished");
@@ -38,7 +39,7 @@ export default async function AdminPartidas({
             <PartidaResultForm
               key={p.id}
               matchId={p.id}
-              tournamentId={params.id}
+              tournamentId={id}
               teamAId={p.team_a.id}
               teamAName={p.team_a.name}
               teamBId={p.team_b.id}
@@ -62,18 +63,12 @@ export default async function AdminPartidas({
                 <span className="text-gray-500">vs</span>{" "}
                 {p.team_b.name}
               </span>
-              <span className="text-[#C8A84B] text-sm font-bold">
-                {p.score_a} - {p.score_b}
-              </span>
-              <span className="text-green-400 text-xs">
-                {p.winner_team_id === p.team_a.id ? p.team_a.name : p.team_b.name}
+              <span className="text-[#C8A84B] text-xs">
+                {p.score_a} x {p.score_b}
               </span>
             </div>
           ))}
         </div>
-      )}
-      {(partidas ?? []).length === 0 && (
-        <p className="text-gray-500 text-sm">Nenhuma partida criada ainda.</p>
       )}
     </div>
   );
