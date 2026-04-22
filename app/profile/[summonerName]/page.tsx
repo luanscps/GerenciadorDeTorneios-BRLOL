@@ -52,10 +52,10 @@ export default async function ProfilePage({
                   kills={match.kills}
                   deaths={match.deaths}
                   assists={match.assists}
-                  kda={match.kda}
+                
                   win={match.win}
-                  minutes={match.minutes}
-                  DD_VERSION={DD_VERSION}
+                              gameDuration={match.minutes * 60}
+            
                 />
               ))
             ) : (
