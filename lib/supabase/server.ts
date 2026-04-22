@@ -1,8 +1,7 @@
-import { createServerClient } from '@supabase/ssr';
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 
-// Padrao oficial Supabase SSR - unico client para Server Components, Actions e Route Handlers
-// O middleware e responsavel por atualizar os cookies de sessao em todo request
+// Padrao oficial Supabase SSR - Next.js 15 App Router
 export async function createClient() {
   const cookieStore = await cookies();
 
@@ -14,7 +13,7 @@ export async function createClient() {
         getAll() {
           return cookieStore.getAll();
         },
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet: { name: string; value: string; options: CookieOptions }[]) {
           try {
             cookiesToSet.forEach(({ name, value, options }) =>
               cookieStore.set(name, value, options)
