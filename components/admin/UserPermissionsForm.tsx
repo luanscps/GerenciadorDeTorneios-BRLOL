@@ -31,7 +31,7 @@ export function UserPermissionsForm({ userId, isAdmin, isBanned, displayName }: 
       </div>
       <div className="flex gap-2 shrink-0">
         <button
-          onClick={() => startTransition(() => toggleAdmin(userId, !isAdmin))}
+                      onClick={() => startTransition(() => { void toggleAdmin(userId, !isAdmin); })}
           disabled={pending}
           className={
             "text-xs px-3 py-1 rounded disabled:opacity-50 " +
@@ -43,7 +43,7 @@ export function UserPermissionsForm({ userId, isAdmin, isBanned, displayName }: 
           {isAdmin ? "Remover Admin" : "Tornar Admin"}
         </button>
         <button
-          onClick={() => startTransition(() => toggleBan(userId, !isBanned))}
+                      onClick={() => startTransition(() => { void toggleBan(userId, !isBanned); })}
           disabled={pending}
           className={
             "text-xs px-3 py-1 rounded disabled:opacity-50 " +
