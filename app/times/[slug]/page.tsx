@@ -7,7 +7,7 @@ import TeamCard from '@/components/profile/TeamCard';
 const DD_VERSION = '14.10.1';
 
 async function getTime(slug: string) {
-      const supabase = await createClient();
+  const supabase = await createClient();
   // slug pode ser o tag do time (ex: "TSM") ou o id
   const { data, error } = await supabase
     .from('teams')
@@ -28,10 +28,10 @@ async function getTime(slug: string) {
 export default async function TimePublicPage({
   params,
 }: {
-    params: Promise<{ slug: string }>;
+  params: Promise<{ slug: string }>;
 }) {
-        const { slug } = await params;
-  const time = await getTime(params.slug);
+  const { slug } = await params;
+  const time = await getTime(slug);
   if (!time) return notFound();
 
   const torneio = (time.tournaments as any)?.[0];
@@ -56,28 +56,33 @@ export default async function TimePublicPage({
             </h1>
             {torneio && (
               <p className="text-gray-400 text-sm mt-1">
-                Torneio:{' '}
-                <Link
-                  href={`/torneios/${torneio.id}`}
-                  className="text-blue-400 hover:underline"
-                >
-                  {torneio.name}
-                </Link>
+                Torneio: <Link href={`/torneios/${torneio.id}`} className="text-blue-400 hover:underline">{torneio.name}</Link>
               </p>
             )}
           </div>
         </div>
 
-        <TeamCard
-          team={{
-            id: time.id,
-            name: time.name,
-            tag: time.tag,
-            logoUrl: time.logo_url,
-            players: (time.players as any[]) ?? [],
-          }}
-          DD_VERSION={DD_VERSION}
-        />
+        <section>
+          <h2 className="text-white font-semibold text-lg mb-3">Jogadores</h2>
+          <div className="space-y-2">
+            {(time.players as any[])?.length > 0 ? (
+              (time.players as any[]).map((p) => (
+                <Link
+                  key={p.id}
+                  href={`/jogadores/${p.puuid}`}
+                  className="flex items-center gap-3 bg-[#0A1628] border border-[#1E3A5F] rounded-xl p-3 hover:border-[#C8A84B]/50 transition-colors"
+                >
+                  <div>
+                    <p className="text-white text-sm font-medium">{p.summoner_name}<span className="text-gray-400 text-xs ml-1">#{p.tag_line}</span></p>
+                    <p className="text-gray-400 text-xs">{p.role || '—'} · {p.tier ? `${p.tier} ${p.rank}` : 'Unranked'}</p>
+                  </div>
+                </Link>
+              ))
+            ) : (
+              <p className="text-gray-400 text-sm">Nenhum jogador cadastrado.</p>
+            )}
+          </div>
+        </section>
       </div>
     </main>
   );
