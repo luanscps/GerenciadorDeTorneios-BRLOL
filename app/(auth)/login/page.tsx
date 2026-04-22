@@ -10,7 +10,7 @@ export default async function LoginPage({
 
   return (
     <div className="min-h-[80vh] flex items-center justify-center">
-      <div className="card-lol w-full max-w-w-md">
+      <div className="card-lol w-full max-w-md">
         <div className="text-center mb-8">
           <p className="text-4xl mb-2">⚔️</p>
           <h1 className="text-2xl font-bold text-white">Entrar</h1>
@@ -18,7 +18,7 @@ export default async function LoginPage({
 
         {error && (
           <div className="bg-red-900/40 border border-red-500 text-red-300 p-3 rounded mb-4 text-sm">
-            {error}
+            {decodeURIComponent(error)}
           </div>
         )}
 
@@ -41,15 +41,15 @@ export default async function LoginPage({
               required
             />
           </div>
-          <button type="submit" className="btn-primary w-full">
+          <button type="submit" className="btn-gold w-full py-3">
             Entrar
           </button>
         </form>
 
-        <p className="text-center text-gray-400 text-sm mt-6">
-          Nao tem uma conta?{" "}
-          <Link href="/register" className="text-lol-gold hover:underline">
-            Cadastre-se
+        <p className="text-center text-gray-400 mt-6 text-sm">
+          Nao tem conta?{" "}
+          <Link href="/register" className="text-[#C8A84B] hover:underline">
+            Criar conta
           </Link>
         </p>
       </div>
