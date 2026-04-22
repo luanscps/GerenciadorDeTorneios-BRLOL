@@ -2,7 +2,30 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import type { CookieOptions } from "@supabase/ssr";
 
+// Usar em Server Actions e Route Handlers (pode escrever cookies)
 export async function createClient() {
+  const cookieStore = await cookies();
+
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(cookiesToSet: { name: string; value: string; options?: CookieOptions }[]) {
+          cookiesToSet.forEach(({ name, value, options }) =>
+            cookieStore.set(name, value, options)
+          );
+        },
+      },
+    }
+  );
+}
+
+// Usar em Server Components (somente leitura - nao escreve cookies)
+export async function createReadOnlyClient() {
   const cookieStore = await cookies();
 
   return createServerClient(
@@ -19,7 +42,7 @@ export async function createClient() {
               cookieStore.set(name, value, options)
             );
           } catch {
-            // Server Component - cookies() em modo leitura, ignorar erro de escrita
+            // Ignorado em Server Components
           }
         },
       },
