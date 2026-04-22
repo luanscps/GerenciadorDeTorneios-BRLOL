@@ -31,6 +31,7 @@ export function PartidaResultForm({
 if (res && "error" in res) alert(res.error);
           })();
       });
+      }
 
   const inputClass =
     "w-full bg-[#0D1B2E] border border-[#1E3A5F] rounded px-2 py-1 text-white text-sm text-center focus:border-[#C8A84B] outline-none";
