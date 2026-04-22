@@ -21,9 +21,10 @@ async function getJogador(id: string) {
 export default async function AdminJogadorDetailPage({
   params,
 }: {
-  params: { id: string };
+    params: Promise<{ id: string }>;
 }) {
-  const j = await getJogador(params.id);
+        const { id } = await params;
+    const j = await getJogador(id);
   if (!j) return notFound();
 
   const total = j.wins + j.losses;
