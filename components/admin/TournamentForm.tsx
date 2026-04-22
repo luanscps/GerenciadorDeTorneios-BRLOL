@@ -35,6 +35,7 @@ const result =
       router.push("/admin/torneios");
           })();
       });
+      }
 
   const inputClass =
     "w-full bg-[#0A1428] border border-[#1E3A5F] rounded px-3 py-2 text-white text-sm focus:border-[#C8A84B] outline-none";
