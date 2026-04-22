@@ -5,13 +5,14 @@ import { InscricaoRow } from "@/components/admin/InscricaoRow";
 export default async function AdminInscricoes({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
+  const { id } = await params;
   const supabase = await createClient();
   const { data: torneio } = await supabase
     .from("tournaments")
     .select("id,name")
-    .eq("id", params.id)
+    .eq("id", id)
     .single();
   if (!torneio) notFound();
 
@@ -20,7 +21,7 @@ export default async function AdminInscricoes({
     .select(
       "status, teams(id, name, tag, team_members(profiles(display_name, username), role))"
     )
-    .eq("tournament_id", params.id)
+    .eq("tournament_id", id)
     .order("created_at", { ascending: true });
 
   const pendentes = (inscricoes ?? []).filter((i: any) => i.status === "pending");
@@ -32,7 +33,7 @@ export default async function AdminInscricoes({
       <InscricaoRow
         key={i.teams?.id}
         teamId={i.teams?.id}
-        tournamentId={params.id}
+        tournamentId={id}
         teamName={i.teams?.name}
         teamTag={i.teams?.tag}
         status={i.status}
@@ -64,9 +65,6 @@ export default async function AdminInscricoes({
           </h2>
           {outras.map(renderRow)}
         </div>
-      )}
-      {(inscricoes ?? []).length === 0 && (
-        <p className="text-gray-500 text-sm">Nenhuma inscricao recebida ainda.</p>
       )}
     </div>
   );
