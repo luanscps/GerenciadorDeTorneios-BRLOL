@@ -6,25 +6,26 @@ import { TournamentForm } from "@/components/admin/TournamentForm";
 export default async function AdminTorneioPorId({
   params,
 }: {
-  params: { id: string };
+    params: Promise<{ id: string }>;
 }) {
+    const { id } = await params;
   const supabase = await createClient();
   const { data: t } = await supabase
     .from("tournaments")
     .select("*")
-    .eq("id", params.id)
+            .eq("id", id)
     .single();
   if (!t) notFound();
 
   const { count: totalTeams } = await supabase
     .from("tournament_teams")
     .select("*", { count: "exact", head: true })
-    .eq("tournament_id", params.id);
+            .eq("tournament_id", id);
 
   const { count: pendingTeams } = await supabase
     .from("tournament_teams")
     .select("*", { count: "exact", head: true })
-    .eq("tournament_id", params.id)
+            .eq("tournament_id", id)
     .eq("status", "pending");
 
   const STATUS_LABEL: Record<string, string> = {
@@ -46,13 +47,13 @@ export default async function AdminTorneioPorId({
         </div>
         <div className="flex gap-3">
           <Link
-            href={"/admin/torneios/" + params.id + "/inscricoes"}
+                          href={"/admin/torneios/" + id + "/inscricoes"}
             className="bg-[#1E3A5F] hover:bg-[#C8A84B]/20 text-white hover:text-[#C8A84B] text-sm px-3 py-1.5 rounded border border-[#1E3A5F] hover:border-[#C8A84B]/30 transition-colors"
           >
             Inscricoes {pendingTeams ? "(" + pendingTeams + " pendentes)" : ""}
           </Link>
           <Link
-            href={"/admin/torneios/" + params.id + "/partidas"}
+                          href={"/admin/torneios/" + id + "/partidas"}
             className="bg-[#1E3A5F] hover:bg-[#C8A84B]/20 text-white hover:text-[#C8A84B] text-sm px-3 py-1.5 rounded border border-[#1E3A5F] hover:border-[#C8A84B]/30 transition-colors"
           >
             Partidas
@@ -79,7 +80,7 @@ export default async function AdminTorneioPorId({
         <h2 className="text-lg font-bold text-white mb-4">Editar Torneio</h2>
         <TournamentForm
           mode="edit"
-          tournamentId={params.id}
+                    tournamentId={id}
           defaultValues={{
             name: t.name,
             slug: t.slug,
