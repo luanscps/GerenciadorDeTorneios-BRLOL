@@ -13,7 +13,7 @@ interface Props {
   teamPosition: string;
 }
 
-export function MatchHistoryRow({
+export  default function MatchHistoryRow({
   championName,
   kills,
   deaths,
