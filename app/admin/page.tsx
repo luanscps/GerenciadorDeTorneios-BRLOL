@@ -1,12 +1,10 @@
-import { createClient } from "@/lib/supabase/server";
+import { createReadOnlyClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-
 export default async function AdminDashboard() {
-  const supabase = await createClient();
+  const supabase = await createReadOnlyClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) { redirect("/login"); }
-
   const { data: profile } = await supabase
     .from("profiles")
     .select("is_admin")
