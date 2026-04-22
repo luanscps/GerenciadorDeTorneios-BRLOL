@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { loginAction } from "./actions";
 
-export default function LoginPage({
+export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: { error?: string };
+  searchParams: Promise<{ error?: string }>;
 }) {
+  const { error } = await searchParams;
+
   return (
     <div className="min-h-[80vh] flex items-center justify-center">
       <div className="card-lol w-full max-w-w-md">
@@ -14,9 +16,9 @@ export default function LoginPage({
           <h1 className="text-2xl font-bold text-white">Entrar</h1>
         </div>
 
-        {searchParams.error && (
+        {error && (
           <div className="bg-red-900/40 border border-red-500 text-red-300 p-3 rounded mb-4 text-sm">
-            {searchParams.error}
+            {error}
           </div>
         )}
 
