@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import type { CookieOptions } from "@supabase/ssr";
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -12,7 +13,7 @@ export async function middleware(request: NextRequest) {
         getAll() {
           return request.cookies.getAll();
         },
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet: { name: string; value: string; options?: CookieOptions }[]) {
           // Passo 1: atualiza cookies no request
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
@@ -21,14 +22,14 @@ export async function middleware(request: NextRequest) {
           supabaseResponse = NextResponse.next({ request });
           // Passo 3: propaga os cookies para o response
           cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
+            supabaseResponse.cookies.set(name, value, options ?? {})
           );
         },
       },
     }
   );
 
-  // IMPORTANTE: nao use getSession() - usa getUser() para validar o token no servidor
+  // IMPORTANTE: usar getUser() e nao getSession() para validar no servidor
   const {
     data: { user },
   } = await supabase.auth.getUser();
