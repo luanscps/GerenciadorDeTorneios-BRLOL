@@ -5,7 +5,8 @@ export default async function DashboardPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
-  const [    { data: profile },
+  const [
+    { data: profile },
     { data: playerData },
     { data: myTeams },
     { data: openTournaments },
@@ -29,7 +30,7 @@ export default async function DashboardPage() {
       {/* Card de perfil */}
       <div className="card-lol flex items-center gap-6 flex-wrap">
         <div className="w-20 h-20 rounded-full bg-[#1E3A5F] flex items-center justify-center text-3xl shrink-0">
-          &#128100;
+          👤
         </div>
         <div className="flex-1 min-w-0">
           <h1 className="text-2xl font-bold text-white truncate">
@@ -53,39 +54,32 @@ export default async function DashboardPage() {
           href="/dashboard/jogador/registrar"
           className="btn-outline-gold text-sm text-center shrink-0"
         >
-          {playerData ? "&#128260; Atualizar perfil" : "&#128279; Vincular Riot"}
+          {playerData ? "🔄 Atualizar perfil" : "🔗 Vincular Riot"}
         </Link>
       </div>
 
       {/* Meus Times / Inscricoes */}
       <div className="card-lol">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold text-white">&#128737; Meus Times</h2>
-          <Link href="/torneios" className="btn-gold text-sm px-3 py-1.5">
+          <h2 className="text-lg font-bold text-white">🛡️ Meus Times</h2>
+          <Link href="/torneios" className="text-lol-gold hover:underline text-sm">
             + Explorar Torneios
           </Link>
         </div>
         {myTeams && myTeams.length > 0 ? (
-          <div className="space-y-2">
+          <div className="space-y-3">
             {myTeams.map((ins: any) => (
-              <div
-                key={ins.id}
-                className="flex items-center justify-between bg-[#0A1428] rounded p-3"
-              >
+              <div key={ins.id} className="bg-[#0A1628] rounded-lg p-3 flex items-center justify-between gap-4">
                 <div>
-                  <p className="text-white font-medium">
-                    {ins.teams?.tag ? `[${ins.teams.tag}] ` : ""}
-                    {ins.teams?.name}
+                  <p className="font-semibold text-white">
+                    {ins.teams?.tag ? `[${ins.teams.tag}] ` : ""} {ins.teams?.name}
                   </p>
-                  <p className="text-gray-400 text-xs">
+                  <p className="text-gray-400 text-sm">
                     {ins.tournaments?.name} &middot; {ins.role ?? "Jogador"}
                   </p>
                 </div>
                 {ins.tournaments?.slug && (
-                  <Link
-                    href={`/torneios/${ins.tournaments.slug}`}
-                    className="text-gray-500 hover:text-[#C8A84B] text-xs"
-                  >
+                  <Link href={`/torneios/${ins.tournaments.slug}`} className="text-lol-gold hover:underline text-sm shrink-0">
                     Ver torneio &rarr;
                   </Link>
                 )}
@@ -93,9 +87,7 @@ export default async function DashboardPage() {
             ))}
           </div>
         ) : (
-          <p className="text-gray-500 text-sm">
-            Voce ainda nao esta em nenhum time.
-          </p>
+          <p className="text-gray-400 text-sm">Voce ainda nao esta em nenhum time.</p>
         )}
       </div>
 
@@ -103,31 +95,25 @@ export default async function DashboardPage() {
       {openTournaments && openTournaments.length > 0 && (
         <div className="card-lol">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-white">&#127942; Inscricoes Abertas</h2>
-            <Link href="/torneios" className="text-gray-400 hover:text-white text-xs">
+            <h2 className="text-lg font-bold text-white">🏆 Inscricoes Abertas</h2>
+            <Link href="/torneios" className="text-lol-gold hover:underline text-sm">
               Ver todos &rarr;
             </Link>
           </div>
-          <div className="space-y-2">
+          <div className="space-y-3">
             {openTournaments.map((t: any) => (
-              <div
-                key={t.id}
-                className="flex items-center justify-between bg-[#0A1428] rounded p-3"
-              >
-                <div>
-                  <p className="text-white font-medium">{t.name}</p>
+              <div key={t.id} className="bg-[#0A1628] rounded-lg p-3 flex items-center justify-between gap-4">
+                <p className="font-semibold text-white">{t.name}</p>
+                <div className="flex items-center gap-4 shrink-0">
                   {t.starts_at && (
-                    <p className="text-gray-400 text-xs">
+                    <span className="text-gray-400 text-sm">
                       {new Date(t.starts_at).toLocaleDateString("pt-BR")}
-                    </p>
+                    </span>
                   )}
+                  <Link href={`/torneios/${t.slug}`} className="text-lol-gold hover:underline text-sm">
+                    Inscrever &rarr;
+                  </Link>
                 </div>
-                <Link
-                  href={`/torneios/${t.slug}`}
-                  className="btn-gold text-xs px-3 py-1.5"
-                >
-                  Inscrever &rarr;
-                </Link>
               </div>
             ))}
           </div>
