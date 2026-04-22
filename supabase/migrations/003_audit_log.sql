@@ -1,6 +1,14 @@
 -- Migration 003: audit_log table and trigger
+-- CORRIGIDO: usa public.profiles (is_admin boolean), nao public.users
 
-CREATE TABLE IF NOT EXISTS public.audit_log (
+-- Drop objects se existirem (idempotente)
+DROP TRIGGER IF EXISTS audit_matches_trigger ON public.matches;
+DROP FUNCTION IF EXISTS public.audit_matches_changes();
+DROP FUNCTION IF EXISTS public.log_admin_action(text, text, text, jsonb, jsonb);
+DROP TABLE IF EXISTS public.audit_log;
+
+-- Tabela principal de auditoria
+CREATE TABLE public.audit_log (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   created_at timestamptz DEFAULT now() NOT NULL,
   admin_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
@@ -13,15 +21,15 @@ CREATE TABLE IF NOT EXISTS public.audit_log (
   user_agent text
 );
 
--- RLS for audit_log: only super admins can read
+-- RLS: apenas admins (profiles.is_admin = true) podem ler
 ALTER TABLE public.audit_log ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Admins can view audit log"
   ON public.audit_log FOR SELECT
   USING (
     EXISTS (
-      SELECT 1 FROM public.users
-      WHERE id = auth.uid() AND role = 'admin'
+      SELECT 1 FROM public.profiles
+      WHERE id = auth.uid() AND is_admin = true
     )
   );
 
@@ -29,12 +37,12 @@ CREATE POLICY "System can insert audit log"
   ON public.audit_log FOR INSERT
   WITH CHECK (true);
 
--- Index for performance
-CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON public.audit_log(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_audit_log_admin_id ON public.audit_log(admin_id);
-CREATE INDEX IF NOT EXISTS idx_audit_log_table_name ON public.audit_log(table_name);
+-- Indices para performance
+CREATE INDEX idx_audit_log_created_at ON public.audit_log(created_at DESC);
+CREATE INDEX idx_audit_log_admin_id   ON public.audit_log(admin_id);
+CREATE INDEX idx_audit_log_table_name ON public.audit_log(table_name);
 
--- Function to log admin actions
+-- Funcao publica para registrar acoes administrativas manualmente
 CREATE OR REPLACE FUNCTION public.log_admin_action(
   p_action text,
   p_table_name text,
@@ -50,7 +58,7 @@ BEGIN
 END;
 $$;
 
--- Trigger function for automatic audit on matches table
+-- Funcao de trigger para auditoria automatica na tabela matches
 CREATE OR REPLACE FUNCTION public.audit_matches_changes()
 RETURNS TRIGGER
 LANGUAGE plpgsql SECURITY DEFINER
@@ -86,5 +94,5 @@ CREATE TRIGGER audit_matches_trigger
   AFTER INSERT OR UPDATE ON public.matches
   FOR EACH ROW EXECUTE FUNCTION public.audit_matches_changes();
 
--- Grant permissions
+-- Permissoes
 GRANT EXECUTE ON FUNCTION public.log_admin_action TO authenticated;
