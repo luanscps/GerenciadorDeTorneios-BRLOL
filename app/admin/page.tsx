@@ -1,7 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
 import Link from "next/link";
 export default async function AdminDashboard() {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) { redirect("/login"); }
+  const { data: profile } = await supabase.from("profiles").select("is_admin").eq("id", user.id).single();
+  if (!profile?.is_admin) { redirect("/dashboard"); }
   const [
     { count: totalPlayers },
     { count: totalTeams },
@@ -16,10 +21,10 @@ export default async function AdminDashboard() {
     supabase.from("tournaments").select("id,name,slug,status").order("created_at",{ ascending:false }).limit(5),
   ]);
   const stats = [
-    { label:"Invocadores",       value:totalPlayers  ?? 0, icon:"👤", color:"text-blue-400",   href:"/admin/jogadores" },
-    { label:"Times inscritos",   value:totalTeams    ?? 0, icon:"🛡️", color:"text-green-400",  href:"/admin/torneios" },
-    { label:"Em andamento",      value:activeT       ?? 0, icon:"⚔️", color:"text-[#C8A84B]",  href:"/admin/torneios" },
-    { label:"Reports pendentes", value:pendingReports ?? 0, icon:"⚠️", color:"text-red-400",    href:"/admin/partidas" },
+    { label:"Invocadores",     value:totalPlayers   ?? 0, icon:"\uD83D\uDC64", color:"text-blue-400",    href:"/admin/jogadores" },
+    { label:"Times inscritos", value:totalTeams      ?? 0, icon:"\uD83D\uDEE1\uFE0F", color:"text-green-400",   href:"/admin/torneios" },
+    { label:"Em andamento",    value:activeT         ?? 0, icon:"\u2694\uFE0F",  color:"text-[#C8A84B]",  href:"/admin/torneios" },
+    { label:"Reports pendentes", value:pendingReports ?? 0, icon:"\u26A0\uFE0F", color:"text-red-400",     href:"/admin/partidas" },
   ];
   const statusColor: Record<string,string> = {
     open:"text-green-400", checkin:"text-blue-400", ongoing:"text-yellow-400",
@@ -48,7 +53,7 @@ export default async function AdminDashboard() {
               <p className="text-white">{t.name}</p>
               <div className="flex items-center gap-4">
                 <span className={"text-xs font-medium capitalize " + (statusColor[t.status] ?? "text-gray-400")}>{t.status}</span>
-                <Link href={"/torneios/" + t.slug} className="text-gray-500 hover:text-[#C8A84B] text-xs">Ver →</Link>
+                <Link href={"/torneios/" + t.slug} className="text-gray-500 hover:text-[#C8A84B] text-xs">Ver +</Link>
               </div>
             </div>
           ))}
