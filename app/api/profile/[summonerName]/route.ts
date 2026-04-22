@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getRiotClient } from '@/lib/riot';
+import {
+  getAccountByRiotId,
+  getSummonerByPuuid,
+  getLeagueEntriesByPuuid,
+  getMatchIdsByPuuid,
+  getMatchById,
+} from '@/lib/riot';
 
 export async function GET(
   _req: NextRequest,
@@ -9,20 +15,18 @@ export async function GET(
     const raw = decodeURIComponent(params.summonerName);
     const [name, tag] = raw.includes('-') ? raw.split('-') : [raw, 'BR1'];
 
-    const riot = getRiotClient();
-
-    const account = await riot.getAccountByRiotId(name, tag);
+    const account = await getAccountByRiotId(name, tag);
     if (!account) {
       return NextResponse.json({ error: 'Jogador nao encontrado' }, { status: 404 });
     }
 
-    const summoner = await riot.getSummonerByPuuid(account.puuid);
-    const ranked = await riot.getRankedBySummonerId(summoner.id);
-    const matchIds = await riot.getMatchIdsByPuuid(account.puuid, { count: 10 });
+    const summoner = await getSummonerByPuuid(account.puuid);
+    const ranked = await getLeagueEntriesByPuuid(account.puuid);
+    const matchIds = await getMatchIdsByPuuid(account.puuid, 10);
 
     const matchHistory = await Promise.all(
       matchIds.map(async (matchId: string) => {
-        const match = await riot.getMatch(matchId);
+        const match = await getMatchById(matchId);
         const participant = match.info.participants.find(
           (p: any) => p.puuid === account.puuid
         );
@@ -64,8 +68,7 @@ export async function GET(
         : null,
       matchHistory: matchHistory.filter(Boolean),
     });
-  } catch (err) {
-    console.error('[API profile]', err);
-    return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
