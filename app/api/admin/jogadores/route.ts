@@ -53,7 +53,7 @@ export async function PATCH(req: NextRequest) {
     const { id, teamId, role } = body as { id: string; teamId?: string; role?: string };
     if (!id) return NextResponse.json({ error: 'ID obrigatorio' }, { status: 400 });
 
-    const supabase = createClient();
+    const supabase = await createClient();
     const updates: Record<string, unknown> = {};
     if (teamId !== undefined) updates.team_id = teamId;
     if (role !== undefined) updates.role = role;
