@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 
 const corsHeaders = {
@@ -13,183 +14,187 @@ Deno.serve(async (req) => {
   try {
     const { tournament_id } = await req.json()
     if (!tournament_id) {
-      return new Response(JSON.stringify({ error: 'tournament_id is required' }), {
+      return new Response(JSON.stringify({ error: 'tournament_id obrigatorio' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseKey)
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    )
 
-    // 1. Buscar dados do torneio e stages
+    // Buscar torneio
     const { data: tournament, error: tErr } = await supabase
       .from('tournaments')
-      .select('id, name, bracket_type')
+      .select('id, name, bracket_type, max_teams')
       .eq('id', tournament_id)
       .single()
-    if (tErr || !tournament) throw new Error('Tournament not found')
 
-    const { data: stage } = await supabase
+    if (tErr || !tournament) {
+      return new Response(JSON.stringify({ error: 'Torneio nao encontrado' }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    // Buscar stage principal
+    const { data: stages } = await supabase
       .from('tournament_stages')
-      .select('id, bracket_type, stage_order')
+      .select('id, bracket_type, best_of')
       .eq('tournament_id', tournament_id)
       .order('stage_order', { ascending: true })
-      .limit(1)
-      .single()
 
-    const bracketType = stage?.bracket_type ?? tournament.bracket_type ?? 'SINGLE_ELIMINATION'
-    const stageId = stage?.id ?? null
+    const stage = stages?.[0]
+    if (!stage) {
+      return new Response(
+        JSON.stringify({ error: 'Nenhuma fase encontrada. Crie uma fase primeiro.' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
 
-    // 2. Buscar times aprovados com seedagem
-    const { data: inscricoes, error: iErr } = await supabase
+    // Buscar times aprovados com seedagem
+    const { data: inscricoes } = await supabase
       .from('inscricoes')
-      .select('team_id, teams(id, name, tag)')
+      .select('team_id, teams(id, name)')
       .eq('tournament_id', tournament_id)
       .eq('status', 'APPROVED')
-    if (iErr) throw iErr
 
-    const { data: seedingsData } = await supabase
+    if (!inscricoes || inscricoes.length < 2) {
+      return new Response(
+        JSON.stringify({ error: 'Minimo 2 times aprovados necessarios' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Buscar seedagem
+    const { data: seedsData } = await supabase
       .from('seedings')
       .select('team_id, seed')
       .eq('tournament_id', tournament_id)
       .order('seed', { ascending: true })
 
-    // Ordenar times por seed se existir
-    const teamIds: string[] = []
-    if (seedingsData && seedingsData.length > 0) {
-      const seedMap = new Map(seedingsData.map((s: any) => [s.team_id, s.seed]))
-      const sorted = (inscricoes ?? []).sort((a: any, b: any) => {
-        const sa = seedMap.get(a.team_id) ?? 999
-        const sb = seedMap.get(b.team_id) ?? 999
-        return sa - sb
-      })
-      sorted.forEach((i: any) => teamIds.push(i.team_id))
+    let orderedTeams: string[]
+    if (seedsData && seedsData.length === inscricoes.length) {
+      orderedTeams = seedsData.map((s: any) => s.team_id)
     } else {
-      // Aleatorizar se sem seeds
-      const shuffled = [...(inscricoes ?? [])].sort(() => Math.random() - 0.5)
-      shuffled.forEach((i: any) => teamIds.push(i.team_id))
+      // Aleatorizar se nao houver seedagem
+      orderedTeams = inscricoes.map((i: any) => i.team_id)
+      orderedTeams = orderedTeams.sort(() => Math.random() - 0.5)
     }
 
-    const n = teamIds.length
-    if (n < 2) throw new Error('Need at least 2 approved teams')
+    const bracketType = stage.bracket_type || tournament.bracket_type
+    const matches: any[] = []
 
-    // 3. Deletar matches existentes deste torneio (regenerar)
-    await supabase.from('matches').delete().eq('tournament_id', tournament_id)
+    if (bracketType === 'SINGLE_ELIMINATION') {
+      // Preencher ate proxima potencia de 2 com BYEs
+      const totalSlots = Math.pow(2, Math.ceil(Math.log2(orderedTeams.length)))
+      const padded = [...orderedTeams, ...Array(totalSlots - orderedTeams.length).fill(null)]
 
-    const matchesToInsert: any[] = []
-
-    if (bracketType === 'ROUND_ROBIN') {
-      // Algoritmo round-robin circular
       let round = 1
-      const teams = [...teamIds]
-      if (teams.length % 2 !== 0) teams.push('BYE')
-      const numRounds = teams.length - 1
-      const half = teams.length / 2
-      for (let r = 0; r < numRounds; r++) {
-        for (let i = 0; i < half; i++) {
-          const home = teams[i]
-          const away = teams[teams.length - 1 - i]
-          if (home !== 'BYE' && away !== 'BYE') {
-            matchesToInsert.push({
+      let roundTeams: (string | null)[] = padded
+
+      while (roundTeams.length > 1) {
+        const nextRound: (string | null)[] = []
+        for (let i = 0; i < roundTeams.length; i += 2) {
+          const teamA = roundTeams[i]
+          const teamB = roundTeams[i + 1]
+          const matchOrder = Math.floor(i / 2) + 1
+
+          if (teamA && teamB) {
+            matches.push({
               tournament_id,
-              stage_id: stageId,
-              team_a_id: home,
-              team_b_id: away,
+              stage_id: stage.id,
               round,
-              match_order: i + 1,
-              status: 'SCHEDULED',
-              format: 'BO1',
-            })
-          }
-        }
-        // Rotacionar (mantendo teams[0] fixo)
-        const last = teams.pop()
-        teams.splice(1, 0, last!)
-        round++
-      }
-    } else if (bracketType === 'SWISS') {
-      // Swiss: apenas rodada 1
-      const shuffled = [...teamIds].sort(() => Math.random() - 0.5)
-      for (let i = 0; i < shuffled.length - 1; i += 2) {
-        matchesToInsert.push({
-          tournament_id,
-          stage_id: stageId,
-          team_a_id: shuffled[i],
-          team_b_id: shuffled[i + 1],
-          round: 1,
-          match_order: Math.floor(i / 2) + 1,
-          status: 'SCHEDULED',
-          format: 'BO1',
-        })
-      }
-    } else {
-      // SINGLE_ELIMINATION (default) com byes
-      const nextPow2 = Math.pow(2, Math.ceil(Math.log2(n)))
-      const byes = nextPow2 - n
-      const teams: (string | null)[] = [...teamIds]
-      for (let i = 0; i < byes; i++) teams.push(null)
-
-      let round = 1
-      let matchOrder = 1
-      let currentRoundTeams = teams
-
-      while (currentRoundTeams.length > 1) {
-        const nextRoundTeams: (string | null)[] = []
-        matchOrder = 1
-        for (let i = 0; i < currentRoundTeams.length; i += 2) {
-          const teamA = currentRoundTeams[i]
-          const teamB = currentRoundTeams[i + 1] ?? null
-          if (teamA && !teamB) {
-            // Bye - avanca automaticamente
-            nextRoundTeams.push(teamA)
-          } else {
-            matchesToInsert.push({
-              tournament_id,
-              stage_id: stageId,
+              match_order: matchOrder,
               team_a_id: teamA,
               team_b_id: teamB,
-              round,
-              match_order: matchOrder++,
               status: 'SCHEDULED',
-              format: 'BO1',
+              format: stage.best_of === 3 ? 'BO3' : stage.best_of === 5 ? 'BO5' : 'BO1',
             })
-            nextRoundTeams.push(null) // placeholder para proximo round
+            nextRound.push(null) // placeholder vencedor
+          } else if (teamA && !teamB) {
+            // BYE - avanca automaticamente
+            nextRound.push(teamA)
+          } else {
+            nextRound.push(null)
           }
         }
-        currentRoundTeams = nextRoundTeams
         round++
+        roundTeams = nextRound
+      }
+    } else if (bracketType === 'ROUND_ROBIN') {
+      // Algoritmo round-robin circular
+      const teams = [...orderedTeams]
+      if (teams.length % 2 !== 0) teams.push(null as any) // dummy BYE
+
+      const totalRounds = teams.length - 1
+      const half = teams.length / 2
+
+      for (let round = 1; round <= totalRounds; round++) {
+        let matchOrder = 1
+        for (let i = 0; i < half; i++) {
+          const teamA = teams[i]
+          const teamB = teams[teams.length - 1 - i]
+          if (teamA && teamB) {
+            matches.push({
+              tournament_id,
+              stage_id: stage.id,
+              round,
+              match_order: matchOrder++,
+              team_a_id: teamA,
+              team_b_id: teamB,
+              status: 'SCHEDULED',
+              format: stage.best_of === 3 ? 'BO3' : stage.best_of === 5 ? 'BO5' : 'BO1',
+            })
+          }
+        }
+        // Rotacionar - mantém teams[0] fixo
+        const last = teams.pop()!
+        teams.splice(1, 0, last)
+      }
+    } else if (bracketType === 'SWISS') {
+      // Swiss gera apenas rodada 1 aleatoria
+      const teams = [...orderedTeams]
+      let matchOrder = 1
+      for (let i = 0; i < teams.length - 1; i += 2) {
+        matches.push({
+          tournament_id,
+          stage_id: stage.id,
+          round: 1,
+          match_order: matchOrder++,
+          team_a_id: teams[i],
+          team_b_id: teams[i + 1],
+          status: 'SCHEDULED',
+          format: stage.best_of === 3 ? 'BO3' : 'BO1',
+        })
       }
     }
 
-    // 4. Inserir matches
-    const { error: mErr } = await supabase.from('matches').insert(matchesToInsert)
-    if (mErr) throw mErr
+    // Deletar partidas existentes desta stage antes de inserir
+    await supabase.from('matches').delete().eq('stage_id', stage.id)
 
-    // 5. Registrar no audit_log
-    const authHeader = req.headers.get('Authorization') ?? ''
-    const token = authHeader.replace('Bearer ', '')
-    let adminId: string | null = null
-    if (token) {
-      const { data: { user } } = await supabase.auth.getUser(token)
-      adminId = user?.id ?? null
+    // Inserir todas as partidas geradas
+    const { error: insertErr } = await supabase.from('matches').insert(matches)
+    if (insertErr) {
+      return new Response(JSON.stringify({ error: insertErr.message }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
     }
-    await supabase.from('audit_log').insert({
-      action: 'GENERATE_BRACKET',
-      target_table: 'matches',
-      target_id: tournament_id,
-      performed_by: adminId,
-      new_data: { bracket_type: bracketType, matches_created: matchesToInsert.length },
+
+    // Audit log
+    await supabase.rpc('log_admin_action', {
+      p_action: 'BRACKET_GENERATED',
+      p_table_name: 'matches',
+      p_record_id: tournament_id,
+      p_old_data: null,
+      p_new_data: { matches_created: matches.length, bracket_type: bracketType },
     })
 
     return new Response(
-      JSON.stringify({
-        success: true,
-        bracket_type: bracketType,
-        matches_created: matchesToInsert.length,
-        teams_count: n,
-      }),
+      JSON.stringify({ success: true, matches_created: matches.length, bracket_type: bracketType }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   } catch (err: any) {
