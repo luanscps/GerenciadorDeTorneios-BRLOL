@@ -18,9 +18,10 @@ async function getUsuario(id: string) {
 export default async function AdminUsuarioDetailPage({
   params,
 }: {
-  params: { id: string };
+    params: Promise<{ id: string }>;
 }) {
-  const user = await getUsuario(params.id);
+        const { id } = await params;
+    const user = await getUsuario(id);
   if (!user) return notFound();
 
   return (
