@@ -1,3 +1,6 @@
+-- Habilitar extensao unaccent necessaria para funcao generate_tournament_slug()
+create extension if not exists "unaccent";
+
 -- =============================================================
 -- 005_demo_seed.sql
 -- Dados de demonstração para GerenciadorDeTorneios-BRLOL
