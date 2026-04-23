@@ -116,5 +116,6 @@ export default async function AdminTorneioPorId({
           }}
         />
       </div>
+    </div>
   );
 }
