@@ -1,0 +1,18 @@
+# .vercelignore
+# Arquivos e pastas ignorados no build da Vercel
+
+# Documentacao (nao precisa estar no build)
+docs/
+
+# README e arquivos de documentacao markdown
+README.md
+*.md
+
+# Arquivos de configuracao do editor
+.vscode/
+.idea/
+
+# Git
+.git/
+.gitignore
+.gitattributes
