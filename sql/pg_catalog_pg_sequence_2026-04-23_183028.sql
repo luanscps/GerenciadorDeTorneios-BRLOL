@@ -1,0 +1,4 @@
+insert into "pg_catalog"."pg_sequence" ("seqcache", "seqcycle", "seqincrement", "seqmax", "seqmin", "seqrelid", "seqstart", "seqtypid") values ('1', false, '1', '9223372036854775807', '1', 16510, '1', 20);
+insert into "pg_catalog"."pg_sequence" ("seqcache", "seqcycle", "seqincrement", "seqmax", "seqmin", "seqrelid", "seqstart", "seqtypid") values ('1', true, '1', '2147483647', '1', 16645, '1', 23);
+insert into "pg_catalog"."pg_sequence" ("seqcache", "seqcycle", "seqincrement", "seqmax", "seqmin", "seqrelid", "seqstart", "seqtypid") values ('1', false, '1', '9223372036854775807', '1', 17388, '1', 20);
+insert into "pg_catalog"."pg_sequence" ("seqcache", "seqcycle", "seqincrement", "seqmax", "seqmin", "seqrelid", "seqstart", "seqtypid") values ('1', false, '1', '9223372036854775807', '1', 18354, '1', 20);

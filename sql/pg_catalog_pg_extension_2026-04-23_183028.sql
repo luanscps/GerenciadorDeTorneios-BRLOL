@@ -1,0 +1,9 @@
+insert into "pg_catalog"."pg_extension" ("extcondition", "extconfig", "extname", "extnamespace", "extowner", "extrelocatable", "extversion", "oid") values (NULL, NULL, 'plpgsql', 11, 10, false, '1.0', 13615);
+insert into "pg_catalog"."pg_extension" ("extcondition", "extconfig", "extname", "extnamespace", "extowner", "extrelocatable", "extversion", "oid") values (NULL, NULL, 'pg_stat_statements', 16392, 16388, true, '1.11', 16393);
+insert into "pg_catalog"."pg_extension" ("extcondition", "extconfig", "extname", "extnamespace", "extowner", "extrelocatable", "extversion", "oid") values (NULL, NULL, 'uuid-ossp', 16392, 16388, true, '1.1', 16436);
+insert into "pg_catalog"."pg_extension" ("extcondition", "extconfig", "extname", "extnamespace", "extowner", "extrelocatable", "extversion", "oid") values (NULL, NULL, 'pgcrypto', 16392, 16388, true, '1.3', 16447);
+insert into "pg_catalog"."pg_extension" ("extcondition", "extconfig", "extname", "extnamespace", "extowner", "extrelocatable", "extversion", "oid") values ('{""}', '{16612}', 'supabase_vault', 16607, 10, false, '0.3.1', 16608);
+insert into "pg_catalog"."pg_extension" ("extcondition", "extconfig", "extname", "extnamespace", "extowner", "extrelocatable", "extversion", "oid") values (NULL, NULL, 'pg_graphql', 16578, 10, false, '1.5.11', 16643);
+insert into "pg_catalog"."pg_extension" ("extcondition", "extconfig", "extname", "extnamespace", "extowner", "extrelocatable", "extversion", "oid") values (NULL, NULL, 'pg_trgm', 2200, 10, true, '1.6', 17551);
+insert into "pg_catalog"."pg_extension" ("extcondition", "extconfig", "extname", "extnamespace", "extowner", "extrelocatable", "extversion", "oid") values (NULL, NULL, 'unaccent', 16392, 10, true, '1.1', 18324);
+insert into "pg_catalog"."pg_extension" ("extcondition", "extconfig", "extname", "extnamespace", "extowner", "extrelocatable", "extversion", "oid") values (NULL, NULL, 'pg_net', 16392, 10, false, '0.20.0', 18349);
