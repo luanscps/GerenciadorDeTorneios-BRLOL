@@ -3,6 +3,7 @@
 -- Demo data para Fases 3 e 4: stages, matches, match_games,
 -- player_stats e notifications
 -- PREREQUISITO: 005_demo_seed.sql executado
+-- STATUS enum correto: SCHEDULED, IN_PROGRESS, FINISHED
 -- ============================================================
 
 DO $$
@@ -65,19 +66,19 @@ BEGIN
   INSERT INTO public.matches (id, tournament_id, stage_id, team_a_id, team_b_id, winner_id, status, format, scheduled_at)
   VALUES (v_match4, v_tournament_id, v_stage_semi, v_ddf_id, v_ldn_id, v_ddf_id, 'FINISHED', 'BO3', now() - interval '2 days');
 
-  -- Partida Final BO5 (pendente)
+  -- Partida Final BO5 (agendada)
   v_match5 := uuid_generate_v4();
   INSERT INTO public.matches (id, tournament_id, stage_id, team_a_id, team_b_id, status, format, scheduled_at)
-  VALUES (v_match5, v_tournament_id, v_stage_final, v_lsl_id, v_ddf_id, 'PENDING', 'BO5', now() + interval '1 day');
+  VALUES (v_match5, v_tournament_id, v_stage_final, v_lsl_id, v_ddf_id, 'SCHEDULED', 'BO5', now() + interval '1 day');
 
   -- Match Games com Picks & Bans
   INSERT INTO public.match_games (match_id, game_number, winner_id, duration_sec, picks_bans, played_at)
   VALUES
     (v_match1, 1, v_agd_id, 1823,
-     '{"picks":[{"team":"AGD","champion":"Jinx"},{"team":"AGD","champion":"Thresh"},{"team":"DDF","champion":"Caitlyn"},{"team":"DDF","champion":"Nautilus"}],"bans":[{"team":"AGD","champion":"Zed"},{"team":"DDF","champion":"Lee Sin"}]}'::jsonb,
+     '{"picks":[{"team":"AGD","champion":"Jinx"},{"team":"DDF","champion":"Caitlyn"}],"bans":[{"team":"AGD","champion":"Zed"},{"team":"DDF","champion":"Lee Sin"}]}'::jsonb,
      now() - interval '5 days'),
     (v_match2, 1, v_lsl_id, 2145,
-     '{"picks":[{"team":"LSL","champion":"Ahri"},{"team":"LSL","champion":"Blitzcrank"},{"team":"LDN","champion":"Lux"},{"team":"LDN","champion":"Leona"}],"bans":[{"team":"LSL","champion":"Yasuo"},{"team":"LDN","champion":"Katarina"}]}'::jsonb,
+     '{"picks":[{"team":"LSL","champion":"Ahri"},{"team":"LDN","champion":"Lux"}],"bans":[{"team":"LSL","champion":"Yasuo"},{"team":"LDN","champion":"Katarina"}]}'::jsonb,
      now() - interval '4 days'),
     (v_match3, 1, v_lsl_id, 1932,
      '{"picks":[{"team":"AGD","champion":"Ezreal"},{"team":"LSL","champion":"Zed"}],"bans":[{"team":"AGD","champion":"Ahri"},{"team":"LSL","champion":"Jinx"}]}'::jsonb,
@@ -111,17 +112,15 @@ BEGIN
 
   -- Notificacoes demo
   INSERT INTO public.notifications (user_id, type, title, body, read, metadata)
-  SELECT
-    p.id, 'match_result',
-    'Resultado: Aguias Douradas 1 x 0 Dragoes de Fogo',
-    'AGD venceu na Fase de Grupos em 30min. MVP: GoldenWings com Jinx (8/2/5).',
+  SELECT p.id, 'match_result',
+    'Resultado: AGD 1x0 DDF',
+    'Aguias Douradas venceu Dragoes de Fogo. MVP: GoldenWings (Jinx 8/2/5).',
     false,
     jsonb_build_object('match_id', v_match1, 'tournament_id', v_tournament_id)
   FROM public.profiles p LIMIT 5;
 
   INSERT INTO public.notifications (user_id, type, title, body, read, metadata)
-  SELECT
-    p.id, 'tournament_update',
+  SELECT p.id, 'tournament_update',
     'Grande Final Agendada!',
     'Leoes Selvagens vs Dragoes de Fogo - Grande Final BO5 amanha!',
     false,
@@ -129,8 +128,7 @@ BEGIN
   FROM public.profiles p LIMIT 5;
 
   INSERT INTO public.notifications (user_id, type, title, body, read, metadata)
-  SELECT
-    p.id, 'checkin_open',
+  SELECT p.id, 'checkin_open',
     'Check-in Aberto!',
     'O check-in para o torneio esta aberto. Confirme sua participacao em ate 30 minutos.',
     false,
