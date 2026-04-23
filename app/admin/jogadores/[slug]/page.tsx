@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 
 async function getJogador(id: string) {
-      const supabase = await createClient();
+  const supabase = await createClient();
   const { data, error } = await supabase
     .from('players')
     .select(`
@@ -21,10 +21,10 @@ async function getJogador(id: string) {
 export default async function AdminJogadorDetailPage({
   params,
 }: {
-    params: Promise<{ id: string }>;
+  params: Promise<{ slug: string }>;
 }) {
-        const { id } = await params;
-    const j = await getJogador(id);
+  const { slug } = await params;
+  const j = await getJogador(slug);
   if (!j) return notFound();
 
   const total = j.wins + j.losses;
@@ -55,10 +55,7 @@ export default async function AdminJogadorDetailPage({
           <div>
             <p className="text-gray-500 text-xs mb-1">Time</p>
             {j.teams ? (
-              <Link
-                href={`/admin/torneios`}
-                className="text-blue-400 hover:underline font-medium"
-              >
+              <Link href="/admin/torneios" className="text-blue-400 hover:underline font-medium">
                 {(j.teams as any).name} [{(j.teams as any).tag}]
               </Link>
             ) : (
