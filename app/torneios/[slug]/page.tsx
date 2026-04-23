@@ -64,7 +64,7 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
           {matches && matches.length > 0 && (
             <div className="card-lol">
               <h2 className="text-lg font-bold text-white mb-4">⚔️ Bracket</h2>
-              <BracketView matches={matches} />
+              <BracketView initialMatches={(matches ?? []) as any} tournamentId={tournament.id} />
             </div>
           )}
           {standings && standings.length > 0 && (
