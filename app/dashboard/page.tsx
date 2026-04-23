@@ -16,8 +16,8 @@ export default async function DashboardPage() {
     supabase
       .from("inscricoes")
       .select("*, teams(id, name, tag), tournaments(id, name, slug, status)")
-      .eq("profile_id", user.id)
-      .limit(5),
+      .eq("requested_by", user.id)  // ← coluna real
+      .limit(5)
     supabase
       .from("tournaments")
       .select("id, name, slug, status, max_teams, starts_at")
