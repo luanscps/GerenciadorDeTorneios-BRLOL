@@ -4,19 +4,21 @@ import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useState, useEffect } from "react";
 import type { User } from "@supabase/supabase-js";
+import { NotificationBell } from "@/components/layout/NotificationBell";
 
 const LINKS = [
   { href: "/torneios", label: "Torneios" },
-  { href: "/ranking",  label: "Ranking"  },
+  { href: "/jogadores", label: "Jogadores" },
+  { href: "/ranking", label: "Ranking" },
 ];
 
 export function Navbar() {
-  const [user, setUser]         = useState<User | null>(null);
-  const [isAdmin, setIsAdmin]   = useState(false);
-  const [loading, setLoading]   = useState(true);
-  const pathname                = usePathname();
-  const router                  = useRouter();
-  const supabase                = createClient();
+  const [user, setUser]       = useState<User | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const pathname              = usePathname();
+  const router                = useRouter();
+  const supabase              = createClient();
 
   useEffect(() => {
     // Carrega sessao inicial
@@ -40,7 +42,6 @@ export function Navbar() {
       const currentUser = session?.user ?? null;
       setUser(currentUser);
       setLoading(false);
-
       if (currentUser) {
         supabase
           .from("profiles")
@@ -65,25 +66,25 @@ export function Navbar() {
   }
 
   return (
-    <nav className="bg-[#0A1428] border-b border-[#1E3A5F] sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
+    <nav className="bg-[#050E1A] border-b border-[#1E3A5F] px-4 py-3">
+      <div className="max-w-7xl mx-auto flex items-center justify-between">
+        {/* Logo */}
         <Link href="/" className="flex items-center gap-2 font-bold text-white">
-          <span className="text-xl">⚔️</span>
-          <span className="text-[#C8A84B]">LoL</span>
-          <span className="hidden sm:block">Tournament</span>
+          <span>⚔️</span>
+          <span className="hidden sm:inline">LoL Tournament</span>
         </Link>
 
-        <div className="hidden md:flex items-center gap-6">
+        {/* Nav Links */}
+        <div className="flex items-center gap-1">
           {LINKS.map(({ href, label }) => (
             <Link
               key={href}
               href={href}
-              className={
-                "text-sm transition-colors " +
-                (pathname.startsWith(href)
-                  ? "text-[#C8A84B] font-medium"
-                  : "text-gray-400 hover:text-white")
-              }
+              className={`px-3 py-1.5 rounded text-sm transition-colors ${
+                pathname === href || pathname.startsWith(href + '/')
+                  ? 'text-[#C8A84B] bg-[#C8A84B]/10'
+                  : 'text-gray-400 hover:text-white'
+              }`}
             >
               {label}
             </Link>
@@ -91,39 +92,50 @@ export function Navbar() {
           {isAdmin && (
             <Link
               href="/admin"
-              className={
-                "text-sm transition-colors " +
-                (pathname.startsWith("/admin")
-                  ? "text-[#C8A84B] font-medium"
-                  : "text-gray-400 hover:text-white")
-              }
+              className={`px-3 py-1.5 rounded text-sm transition-colors ${
+                pathname.startsWith('/admin')
+                  ? 'text-[#C8A84B] bg-[#C8A84B]/10'
+                  : 'text-gray-400 hover:text-white'
+              }`}
             >
               ⚙️ Admin
             </Link>
           )}
         </div>
 
-        <div className="flex items-center gap-3">
+        {/* Auth + Notifications */}
+        <div className="flex items-center gap-2">
           {loading ? (
-            <span className="text-gray-500 text-xs">...</span>
+            <span className="text-gray-500 text-sm">...</span>
           ) : user ? (
             <>
-              <Link href="/dashboard" className="btn-outline-gold text-xs px-3 py-1.5">
+              {/* Notification Bell */}
+              <NotificationBell userId={user.id} />
+              <Link
+                href="/dashboard"
+                className="text-sm text-gray-400 hover:text-white px-3 py-1.5 rounded transition-colors"
+              >
                 Dashboard
               </Link>
               <button
                 onClick={handleLogout}
-                className="text-gray-400 hover:text-red-400 text-xs transition-colors"
+                className="text-sm text-gray-400 hover:text-red-400 px-3 py-1.5 rounded transition-colors"
               >
                 Sair
               </button>
             </>
           ) : (
             <>
-              <Link href="/login" className="text-gray-400 hover:text-white text-xs transition-colors">
+              <Link
+                href="/login"
+                className="text-sm text-gray-400 hover:text-white px-3 py-1.5 rounded transition-colors"
+              >
                 Entrar
               </Link>
-              <Link href="/register" className="btn-gold text-xs px-3 py-1.5">
+              <Link
+                href="/register"
+                className="text-sm bg-[#C8A84B] hover:bg-[#d4b55a] text-black font-semibold px-3 py-1.5 rounded transition-colors"
+              >
                 Cadastrar
               </Link>
             </>
