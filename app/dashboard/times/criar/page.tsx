@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -11,7 +11,7 @@ interface RiotAccount {
   profile_icon_id: number;
 }
 
-export default function CriarTimePage() {
+function CriarTimeForm() {
   const [nome, setNome]         = useState("");
   const [tag, setTag]           = useState("");
   const [loading, setLoading]   = useState(false);
@@ -177,7 +177,6 @@ export default function CriarTimePage() {
         </div>
       )}
 
-      {/* Conta vinculada */}
       <div className="card-lol flex items-center gap-3">
         <div className="w-10 h-10 rounded-full bg-[#0A1428] border border-[#1E3A5F] flex items-center justify-center text-lg">
           👤
@@ -249,5 +248,19 @@ export default function CriarTimePage() {
         </div>
       </form>
     </div>
+  );
+}
+
+export default function CriarTimePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="max-w-lg mx-auto card-lol py-16 text-center">
+          <p className="text-gray-400">Carregando...</p>
+        </div>
+      }
+    >
+      <CriarTimeForm />
+    </Suspense>
   );
 }
