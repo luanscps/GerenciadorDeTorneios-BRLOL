@@ -2,18 +2,18 @@ import { createClient } from '@/lib/supabase/server';
 import { TournamentCard } from '@/components/tournament/TournamentCard';
 
 const STATUS_LABELS: Record<string, string> = {
-  draft: 'Rascunho',
-  open: 'Inscricoes Abertas',
-  checkin: 'Check-in',
-  ongoing: 'Em Andamento',
-  finished: 'Encerrado',
+  draft:     'Rascunho',
+  open:      'Inscricoes Abertas',
+  checkin:   'Check-in',
+  ongoing:   'Em Andamento',
+  finished:  'Encerrado',
   cancelled: 'Cancelado',
 };
 
 const BRACKET_LABELS: Record<string, string> = {
   SINGLE_ELIMINATION: 'Eliminacao Simples',
-  ROUND_ROBIN: 'Round Robin',
-  SWISS: 'Swiss',
+  ROUND_ROBIN:        'Round Robin',
+  SWISS:              'Swiss',
 };
 
 export default async function TorneiosPage({
@@ -23,20 +23,26 @@ export default async function TorneiosPage({
 }) {
   const { status, bracket } = await searchParams;
   const supabase = await createClient();
-  let query = supabase.from('tournaments').select('*').order('starts_at', { ascending: false });
-  if (status) query = query.eq('status', status);
+
+  let query = supabase
+    .from('tournaments')
+    .select('*')
+    .order('start_date', { ascending: false }); // ← corrigido: era starts_at
+
+  if (status)  query = query.eq('status', status);
   if (bracket) query = query.eq('bracket_type', bracket);
+
   const { data: tournaments } = await query;
+
   const statuses = ['open', 'checkin', 'ongoing', 'finished'];
   const brackets = ['SINGLE_ELIMINATION', 'ROUND_ROBIN', 'SWISS'];
 
-  const btnBase = 'px-3 py-1 rounded text-sm border transition-colors';
-  const btnActive = 'border-[#C8A84B] text-[#C8A84B] bg-[#C8A84B]/10';
+  const btnBase     = 'px-3 py-1 rounded text-sm border transition-colors';
+  const btnActive   = 'border-[#C8A84B] text-[#C8A84B] bg-[#C8A84B]/10';
   const btnInactive = 'border-[#1E3A5F] text-gray-400 hover:border-[#C8A84B]/50';
 
   return (
     <div className="space-y-8">
-      {/* Filtros de Status */}
       <div className="flex flex-col gap-3">
         <div className="flex items-center flex-wrap gap-2">
           <span className="text-xs text-gray-500 mr-1">Status:</span>
@@ -49,7 +55,6 @@ export default async function TorneiosPage({
             </a>
           ))}
         </div>
-        {/* Filtros de Bracket */}
         <div className="flex items-center flex-wrap gap-2">
           <span className="text-xs text-gray-500 mr-1">Formato:</span>
           <a href={status ? `/torneios?status=${status}` : '/torneios'}
