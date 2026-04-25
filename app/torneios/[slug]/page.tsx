@@ -55,7 +55,7 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
         </div>
               {tournament.status === "open" && userData && (
           <div className="mt-4 pt-4 border-t border-[#1E3A5F]">
-            <Link href={"/dashboard/time/criar?tournament=" + tournament.id} className="btn-gold">+ Inscrever Meu Time</Link>
+            <Link href={"/dashboard/times/criar?tournament=" + tournament.id} className="btn-gold">+ Inscrever Meu Time</Link>
           </div>
         )}
       </div>
