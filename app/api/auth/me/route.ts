@@ -10,17 +10,14 @@ export async function GET() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        getAll() {
-          return cookieStore.getAll()
-        },
-        setAll(cookiesToSet) {
+        getAll: () => cookieStore.getAll(),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        setAll: (cookiesToSet: { name: string; value: string; options?: any }[]) => {
           try {
             cookiesToSet.forEach(({ name, value, options }) =>
               cookieStore.set(name, value, options)
             )
-          } catch {
-            // Ignorado em Server Components (read-only)
-          }
+          } catch { /* ignorado em Server Components */ }
         },
       },
     }
@@ -37,8 +34,8 @@ export async function GET() {
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     {
       cookies: {
-        getAll() { return [] },
-        setAll() {},
+        getAll: () => [],
+        setAll: () => {},
       },
     }
   )
