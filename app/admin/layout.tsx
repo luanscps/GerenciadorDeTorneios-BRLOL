@@ -23,7 +23,8 @@ export default async function AdminLayout({
     {
       cookies: {
         getAll: () => cookieStore.getAll(),
-        setAll(cookiesToSet) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        setAll: (cookiesToSet: { name: string; value: string; options?: any }[]) => {
           try {
             cookiesToSet.forEach(({ name, value, options }) =>
               cookieStore.set(name, value, options)
@@ -40,8 +41,7 @@ export default async function AdminLayout({
     redirect('/login?redirectTo=/admin')
   }
 
-  // 2. Verifica is_admin via service role
-  // Usa fetch interno para /api/auth/me que ja tem a logica centralizada
+  // 2. Verifica is_admin via fetch interno para /api/auth/me (usa service role)
   const host = headersList.get('host') ?? 'localhost:3000'
   const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http'
   const cookieHeader = cookieStore.getAll()
@@ -60,7 +60,7 @@ export default async function AdminLayout({
     }
   } catch (e) {
     console.error('[AdminLayout] Erro ao verificar admin:', e)
-    // Em caso de falha de rede, tenta query direta como fallback
+    // Fallback: query direta com service role
     try {
       const supabaseAdmin = createServerClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -90,28 +90,16 @@ export default async function AdminLayout({
             Admin Panel
           </span>
           <div className="flex items-center gap-4 text-sm">
-            <Link href="/admin" className="text-gray-400 hover:text-white transition-colors">
-              Dashboard
-            </Link>
-            <Link href="/admin/torneios" className="text-gray-400 hover:text-white transition-colors">
-              Torneios
-            </Link>
-            <Link href="/admin/usuarios" className="text-gray-400 hover:text-white transition-colors">
-              Usuários
-            </Link>
-            <Link href="/admin/jogadores" className="text-gray-400 hover:text-white transition-colors">
-              Jogadores
-            </Link>
+            <Link href="/admin" className="text-gray-400 hover:text-white transition-colors">Dashboard</Link>
+            <Link href="/admin/torneios" className="text-gray-400 hover:text-white transition-colors">Torneios</Link>
+            <Link href="/admin/usuarios" className="text-gray-400 hover:text-white transition-colors">Usuários</Link>
+            <Link href="/admin/jogadores" className="text-gray-400 hover:text-white transition-colors">Jogadores</Link>
           </div>
         </div>
         <div className="flex items-center gap-3">
           <span className="text-xs text-gray-500">{user!.email}</span>
-          <span className="text-xs bg-purple-900/40 text-purple-300 px-2 py-0.5 rounded font-medium">
-            Admin
-          </span>
-          <Link href="/dashboard" className="text-xs text-gray-400 hover:text-white transition-colors">
-            ← Sair do Admin
-          </Link>
+          <span className="text-xs bg-purple-900/40 text-purple-300 px-2 py-0.5 rounded font-medium">Admin</span>
+          <Link href="/dashboard" className="text-xs text-gray-400 hover:text-white transition-colors">← Sair do Admin</Link>
         </div>
       </nav>
       <main className="p-6">{children}</main>
