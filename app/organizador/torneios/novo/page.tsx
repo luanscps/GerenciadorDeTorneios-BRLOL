@@ -1,18 +1,19 @@
 'use client'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 const SITE_TERMS_VERSION = 'v1'
 
-// Regras do site (serão definidas definitivamente depois)
+// Regras da plataforma BRLOL (definitivas serão atualizadas pelo admin)
 const SITE_RULES = [
   'O organizador é o único responsável pelo andamento e regras do seu torneio.',
   'Conteúdo ofensivo, discriminatório ou ilegal nos torneios resultará em suspensão imediata.',
   'O sistema BRLOL é apenas a plataforma; disputas entre times devem ser resolvidas pelo organizador.',
   'Dados falsos de partida ou manipulação de resultados resultam em ban permanente.',
-  'O organizador não pode participar como jogador no próprio torneio (conflict of interest).',
+  'O organizador não pode participar como jogador no próprio torneio.',
   'Torneios não finalizados após 30 dias da data de término poderão ser cancelados pelo Admin.',
+  'Cada conta pode ter no máximo 2 torneios ativos simultaneamente.',
 ]
 
 export default function NovoTorneiPage() {
@@ -22,6 +23,9 @@ export default function NovoTorneiPage() {
   // Etapas: 1=regras do torneio | 2=termos do site | 3=dados gerais
   const [step, setStep] = useState(1)
 
+  // Controle de limite
+  const [limitCheck, setLimitCheck] = useState<'loading' | 'ok' | 'blocked'>('loading')
+
   // Termos
   const [termsAccepted, setTermsAccepted] = useState(false)
 
@@ -29,19 +33,36 @@ export default function NovoTorneiPage() {
   const [tournamentRules, setTournamentRules] = useState('')
 
   // Dados gerais
-  const [nome, setNome]           = useState('')
-  const [descricao, setDescricao] = useState('')
-  const [slug, setSlug]           = useState('')
-  const [maxTeams, setMaxTeams]   = useState(8)
-  const [minMembers, setMinMembers] = useState(6)
-  const [maxMembers, setMaxMembers] = useState(10)
+  const [nome, setNome]               = useState('')
+  const [descricao, setDescricao]     = useState('')
+  const [slug, setSlug]               = useState('')
+  const [maxTeams, setMaxTeams]       = useState(8)
+  const [minMembers, setMinMembers]   = useState(6)
+  const [maxMembers, setMaxMembers]   = useState(10)
   const [bracketType, setBracketType] = useState('SINGLE_ELIMINATION')
-  const [prizePool, setPrizePool] = useState('')
-  const [startsAt, setStartsAt]   = useState('')
-  const [endsAt, setEndsAt]       = useState('')
+  const [prizePool, setPrizePool]     = useState('')
+  const [startsAt, setStartsAt]       = useState('')
+  const [endsAt, setEndsAt]           = useState('')
 
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState('')
+
+  // Verifica limite de 2 torneios ao carregar
+  useEffect(() => {
+    async function checkLimit() {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) { router.push('/login'); return }
+
+      const { count } = await supabase
+        .from('tournaments')
+        .select('id', { count: 'exact', head: true })
+        .eq('organizer_id', user.id)
+        .neq('status', 'CANCELLED')
+
+      setLimitCheck((count ?? 0) >= 2 ? 'blocked' : 'ok')
+    }
+    checkLimit()
+  }, [supabase, router])
 
   function gerarSlug(nome: string) {
     return nome.toLowerCase()
@@ -57,6 +78,19 @@ export default function NovoTorneiPage() {
     try {
       const { data: { user }, error: authErr } = await supabase.auth.getUser()
       if (authErr || !user) { router.push('/login'); return }
+
+      // Revalida limite no submit (segurança extra)
+      const { count } = await supabase
+        .from('tournaments')
+        .select('id', { count: 'exact', head: true })
+        .eq('organizer_id', user.id)
+        .neq('status', 'CANCELLED')
+
+      if ((count ?? 0) >= 2) {
+        setError('Você já possui 2 torneios ativos. Cancele um antes de criar outro.')
+        setLoading(false)
+        return
+      }
 
       // 1. Registrar aceite dos termos do site (idempotente)
       await supabase.from('site_terms_acceptance').upsert({
@@ -97,12 +131,49 @@ export default function NovoTorneiPage() {
     }
   }
 
+  // ─── Estado: verificando limite ───
+  if (limitCheck === 'loading') {
+    return (
+      <div className="max-w-2xl mx-auto">
+        <div className="card-lol text-center py-16">
+          <div className="animate-spin text-3xl mb-4">⚙️</div>
+          <p className="text-gray-400">Verificando elegibilidade...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // ─── Estado: limite atingido ───
+  if (limitCheck === 'blocked') {
+    return (
+      <div className="max-w-2xl mx-auto">
+        <div className="card-lol text-center py-16 space-y-4">
+          <p className="text-5xl">🚫</p>
+          <h2 className="text-xl font-bold text-white">Limite de torneios atingido</h2>
+          <p className="text-gray-400 text-sm max-w-sm mx-auto">
+            Você já possui <strong className="text-[#C8A84B]">2 torneios ativos</strong>.
+            Cancele ou finalize um torneio existente antes de criar outro.
+          </p>
+          <div className="flex gap-3 justify-center pt-2">
+            <a href="/organizador" className="btn-gold px-6 py-2.5 text-sm">
+              Ver meus torneios
+            </a>
+            <a href="/torneios" className="btn-outline-gold px-6 py-2.5 text-sm">
+              Ver todos os torneios
+            </a>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ─── Wizard normal ───
   return (
     <div className="max-w-2xl mx-auto space-y-6">
 
       {/* Indicador de etapas */}
       <div className="flex items-center gap-2">
-        {[1,2,3].map(s => (
+        {[1, 2, 3].map(s => (
           <div key={s} className="flex items-center gap-2">
             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-colors ${
               step === s ? 'bg-[#C8A84B] text-black'
@@ -132,7 +203,7 @@ export default function NovoTorneiPage() {
           <textarea
             value={tournamentRules}
             onChange={e => setTournamentRules(e.target.value)}
-            placeholder="Ex:\n1. Times devem ter no mínimo 6 jogadores com conta Riot vinculada.\n2. O resultado deve ser reportado em até 30 min após a partida.\n3. Flaming ou toxicidade resultam em desclassificação..."
+            placeholder={`Ex:\n1. Times devem ter no mínimo 6 jogadores com conta Riot vinculada.\n2. O resultado deve ser reportado em até 30 min após a partida.\n3. Flaming ou toxicidade resultam em desclassificação...`}
             className="input-lol w-full min-h-[200px] resize-y text-sm"
             maxLength={3000}
           />
@@ -160,7 +231,7 @@ export default function NovoTorneiPage() {
       {step === 2 && (
         <div className="card-lol space-y-4">
           <div>
-            <h1 className="text-xl font-bold text-white">🛡️ Termos do Site BRLOL</h1>
+            <h1 className="text-xl font-bold text-white">🛡️ Termos da Plataforma BRLOL</h1>
             <p className="text-gray-400 text-sm mt-1">
               Ao criar um torneio, você concorda com as seguintes regras da plataforma.
             </p>
@@ -246,7 +317,7 @@ export default function NovoTorneiPage() {
             />
           </div>
 
-          {/* Grade + Times */}
+          {/* Formato + Times */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-gray-400 text-sm mb-1">Formato</label>
