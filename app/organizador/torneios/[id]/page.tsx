@@ -40,8 +40,9 @@ export default function EditarTorneiPage() {
       setMinMembers(data.min_members ?? 6)
       setMaxMembers(data.max_members ?? 10)
       setPrizePool(data.prize_pool ?? '')
-      setStartsAt(data.starts_at ? data.starts_at.slice(0,16) : '')
-      setEndsAt(data.ends_at ? data.ends_at.slice(0,16) : '')
+      // Leitura: starts_at/ends_at são GENERATED — OK para SELECT, proibido em UPDATE
+      setStartsAt(data.start_date ? data.start_date.slice(0, 16) : '')
+      setEndsAt(data.end_date ? data.end_date.slice(0, 16) : '')
       setLoading(false)
     }
     load()
@@ -50,6 +51,7 @@ export default function EditarTorneiPage() {
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
     setSaving(true); setError('')
+    // NOTA: starts_at e ends_at são GENERATED COLUMNS — usar start_date/end_date no UPDATE
     const { error: err } = await supabase.from('tournaments').update({
       name: nome.trim(),
       description: descricao.trim() || null,
@@ -60,8 +62,8 @@ export default function EditarTorneiPage() {
       min_members: minMembers,
       max_members: maxMembers,
       prize_pool: prizePool.trim() || null,
-      starts_at: startsAt || null,
-      ends_at: endsAt || null,
+      start_date: startsAt || null,
+      end_date: endsAt || null,
     }).eq('id', id)
     setSaving(false)
     if (err) setError(err.message)
