@@ -41,16 +41,32 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
       supabase.auth.getUser(),
     ]);
 
-  // Verifica se o usuário já tem time inscrito neste torneio
-  let userAlreadyRegistered = false;
+  // Conta apenas times com inscrição APROVADA para o contador público
+  const { count: approvedCount } = await supabase
+    .from("inscricoes")
+    .select("id", { count: "exact", head: true })
+    .eq("tournament_id", tournament.id)
+    .eq("status", "APPROVED");
+
+  // Verifica status da inscrição do usuário logado (qualquer status)
+  let userInscricao: { status: string } | null = null;
   if (userData) {
-    const { data: existingTeam } = await supabase
+    const { data: myTeam } = await supabase
       .from("teams")
       .select("id")
       .eq("tournament_id", tournament.id)
       .eq("owner_id", userData.id)
       .maybeSingle();
-    userAlreadyRegistered = !!existingTeam;
+
+    if (myTeam) {
+      const { data: insc } = await supabase
+        .from("inscricoes")
+        .select("status")
+        .eq("tournament_id", tournament.id)
+        .eq("team_id", myTeam.id)
+        .maybeSingle();
+      userInscricao = insc ?? null;
+    }
   }
 
   const statusColor: Record<string, string> = {
@@ -101,7 +117,8 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
         {/* Stats bar */}
         <div className="grid grid-cols-3 gap-4 mt-6 pt-6 border-t border-[#1E3A5F]">
           <div className="text-center">
-            <p className="text-2xl font-bold text-white">{teams?.length ?? 0}</p>
+            {/* Conta apenas inscrições APROVADAS */}
+            <p className="text-2xl font-bold text-white">{approvedCount ?? 0}</p>
             <p className="text-gray-400 text-xs">Times inscritos</p>
           </div>
           <div className="text-center">
@@ -116,13 +133,23 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
           </div>
         </div>
 
-        {/* Botão de inscrição */}
+        {/* Botão / status de inscrição */}
         {tournament.status === "open" && userData && (
           <div className="mt-4 pt-4 border-t border-[#1E3A5F]">
-            {userAlreadyRegistered ? (
+            {userInscricao?.status === "APPROVED" ? (
               <div className="flex items-center gap-2 text-green-400 text-sm">
                 <span>✅</span>
-                <span>Seu time já está inscrito neste torneio.</span>
+                <span>Seu time está inscrito e aprovado neste torneio.</span>
+              </div>
+            ) : userInscricao?.status === "PENDING" ? (
+              <div className="flex items-center gap-2 text-yellow-400 text-sm">
+                <span>⏳</span>
+                <span>Inscrição enviada — aguardando aprovação do organizador.</span>
+              </div>
+            ) : userInscricao?.status === "REJECTED" ? (
+              <div className="flex items-center gap-2 text-red-400 text-sm">
+                <span>❌</span>
+                <span>Sua inscrição foi recusada. Entre em contato com o organizador.</span>
               </div>
             ) : (
               <Link
