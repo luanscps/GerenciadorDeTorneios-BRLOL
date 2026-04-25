@@ -99,6 +99,8 @@ export default function NovoTorneiPage() {
       }, { onConflict: 'profile_id,terms_version' })
 
       // 2. Criar torneio
+      // NOTA: starts_at e ends_at são GENERATED COLUMNS que espelham start_date/end_date.
+      // Nunca inserir diretamente em starts_at/ends_at — usar start_date/end_date.
       const finalSlug = slug.trim() || gerarSlug(nome)
       const { data: torneio, error: tErr } = await supabase
         .from('tournaments')
@@ -112,8 +114,8 @@ export default function NovoTorneiPage() {
           min_members: minMembers,
           max_members: maxMembers,
           prize_pool: prizePool.trim() || null,
-          starts_at: startsAt || null,
-          ends_at: endsAt || null,
+          start_date: startsAt || null,
+          end_date: endsAt || null,
           rules: tournamentRules.trim(),
           organizer_id: user.id,
           created_by: user.id,
