@@ -11,8 +11,13 @@ const TIER_COLORS: Record<string, string> = {
 
 const DD_BASE = "https://ddragon.leagueoflegends.com/cdn/16.8.1";
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>
+}) {
   const supabase = await createClient();
+  const params = await searchParams;
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
@@ -62,6 +67,19 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-8">
+
+      {/* ── Banner de Acesso Negado ── */}
+      {params.error === "acesso_negado" && (
+        <div className="flex items-start gap-3 bg-red-950/60 border border-red-700/50 rounded-xl px-5 py-4">
+          <span className="text-red-400 text-xl shrink-0">🚫</span>
+          <div>
+            <p className="text-red-300 font-semibold text-sm">Acesso negado</p>
+            <p className="text-red-400/80 text-sm mt-0.5">
+              Você não tem permissão de administrador para acessar essa área.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* ── Card de Perfil ── */}
       <div className="card-lol flex items-center gap-6 flex-wrap">
