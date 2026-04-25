@@ -1,6 +1,0 @@
-insert into "pg_catalog"."pg_range" ("rngcanonical", "rngcollation", "rngmultitypid", "rngsubdiff", "rngsubopc", "rngsubtype", "rngtypid") values ('int4range_canonical', 0, 4451, 'int4range_subdiff', 1978, 23, 3904);
-insert into "pg_catalog"."pg_range" ("rngcanonical", "rngcollation", "rngmultitypid", "rngsubdiff", "rngsubopc", "rngsubtype", "rngtypid") values ('-', 0, 4532, 'numrange_subdiff', 3125, 1700, 3906);
-insert into "pg_catalog"."pg_range" ("rngcanonical", "rngcollation", "rngmultitypid", "rngsubdiff", "rngsubopc", "rngsubtype", "rngtypid") values ('-', 0, 4533, 'tsrange_subdiff', 3128, 1114, 3908);
-insert into "pg_catalog"."pg_range" ("rngcanonical", "rngcollation", "rngmultitypid", "rngsubdiff", "rngsubopc", "rngsubtype", "rngtypid") values ('-', 0, 4534, 'tstzrange_subdiff', 3127, 1184, 3910);
-insert into "pg_catalog"."pg_range" ("rngcanonical", "rngcollation", "rngmultitypid", "rngsubdiff", "rngsubopc", "rngsubtype", "rngtypid") values ('daterange_canonical', 0, 4535, 'daterange_subdiff', 3122, 1082, 3912);
-insert into "pg_catalog"."pg_range" ("rngcanonical", "rngcollation", "rngmultitypid", "rngsubdiff", "rngsubopc", "rngsubtype", "rngtypid") values ('int8range_canonical', 0, 4536, 'int8range_subdiff', 3124, 20, 3926);

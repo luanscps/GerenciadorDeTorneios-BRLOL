@@ -1,4 +1,0 @@
-insert into "pg_catalog"."pg_language" ("lanacl", "laninline", "lanispl", "lanname", "lanowner", "lanplcallfoid", "lanpltrusted", "lanvalidator", "oid") values (NULL, 0, false, 'internal', 10, 0, false, 2246, 12);
-insert into "pg_catalog"."pg_language" ("lanacl", "laninline", "lanispl", "lanname", "lanowner", "lanplcallfoid", "lanpltrusted", "lanvalidator", "oid") values (NULL, 0, false, 'c', 10, 0, false, 2247, 13);
-insert into "pg_catalog"."pg_language" ("lanacl", "laninline", "lanispl", "lanname", "lanowner", "lanplcallfoid", "lanpltrusted", "lanvalidator", "oid") values (NULL, 0, false, 'sql', 10, 0, true, 2248, 14);
-insert into "pg_catalog"."pg_language" ("lanacl", "laninline", "lanispl", "lanname", "lanowner", "lanplcallfoid", "lanpltrusted", "lanvalidator", "oid") values (NULL, 13617, true, 'plpgsql', 10, 13616, true, 13618, 13619);

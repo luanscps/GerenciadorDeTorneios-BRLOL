@@ -1,1 +1,0 @@
-insert into "public"."profiles" ("avatar_url", "created_at", "email", "full_name", "id", "is_admin", "is_banned", "updated_at") values ('', '2026-04-22 16:43:38.559828+00', 'luanscps@gmail.com', '', 'd2a74373-e8c6-4a4d-b3cf-7df8149fe31a', true, false, '2026-04-22 20:57:41.475931+00');

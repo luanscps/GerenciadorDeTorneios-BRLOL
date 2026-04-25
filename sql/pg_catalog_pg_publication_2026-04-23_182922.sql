@@ -1,2 +1,0 @@
-insert into "pg_catalog"."pg_publication" ("oid", "puballtables", "pubdelete", "pubinsert", "pubname", "pubowner", "pubtruncate", "pubupdate", "pubviaroot") values (16430, false, true, true, 'supabase_realtime', 16388, true, true, false);
-insert into "pg_catalog"."pg_publication" ("oid", "puballtables", "pubdelete", "pubinsert", "pubname", "pubowner", "pubtruncate", "pubupdate", "pubviaroot") values (18602, false, true, true, 'supabase_realtime_messages_publication', 10, true, true, false);

@@ -1,1 +1,0 @@
-insert into "pg_catalog"."pg_partitioned_table" ("partattrs", "partclass", "partcollation", "partdefid", "partexprs", "partnatts", "partrelid", "partstrat") values ('9', '3128', '0', 0, NULL, 1, 17529, 'r');

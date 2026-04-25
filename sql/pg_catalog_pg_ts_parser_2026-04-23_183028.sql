@@ -1,1 +1,0 @@
-insert into "pg_catalog"."pg_ts_parser" ("oid", "prsend", "prsheadline", "prslextype", "prsname", "prsnamespace", "prsstart", "prstoken") values (3722, 'prsd_end', 'prsd_headline', 'prsd_lextype', 'default', 11, 'prsd_start', 'prsd_nexttoken');

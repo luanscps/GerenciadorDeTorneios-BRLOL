@@ -1,1 +1,0 @@
-insert into "auth"."mfa_amr_claims" ("authentication_method", "created_at", "id", "session_id", "updated_at") values ('password', '2026-04-23 00:35:27.348067+00', '58df1611-a6fb-4b8b-8b6b-1fe6e7d6b8f8', '33d9ed3d-2f36-4151-99c5-97d9e84db3b8', '2026-04-23 00:35:27.348067+00');

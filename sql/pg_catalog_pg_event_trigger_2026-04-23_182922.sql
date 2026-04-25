@@ -1,8 +1,0 @@
-insert into "pg_catalog"."pg_event_trigger" ("evtenabled", "evtevent", "evtfoid", "evtname", "evtowner", "evttags", "oid") values ('O', 'ddl_command_end', 16572, 'issue_pg_graphql_access', 10, '{"CREATE FUNCTION"}', 16573);
-insert into "pg_catalog"."pg_event_trigger" ("evtenabled", "evtevent", "evtfoid", "evtname", "evtowner", "evttags", "oid") values ('O', 'sql_drop', 16574, 'issue_graphql_placeholder', 10, '{"DROP EXTENSION"}', 16575);
-insert into "pg_catalog"."pg_event_trigger" ("evtenabled", "evtevent", "evtfoid", "evtname", "evtowner", "evttags", "oid") values ('O', 'ddl_command_end', 16563, 'pgrst_ddl_watch', 10, NULL, 16576);
-insert into "pg_catalog"."pg_event_trigger" ("evtenabled", "evtevent", "evtfoid", "evtname", "evtowner", "evttags", "oid") values ('O', 'sql_drop', 16564, 'pgrst_drop_watch', 10, NULL, 16577);
-insert into "pg_catalog"."pg_event_trigger" ("evtenabled", "evtevent", "evtfoid", "evtname", "evtowner", "evttags", "oid") values ('O', 'ddl_command_end', 16646, 'graphql_watch_ddl', 10, NULL, 16648);
-insert into "pg_catalog"."pg_event_trigger" ("evtenabled", "evtevent", "evtfoid", "evtname", "evtowner", "evttags", "oid") values ('O', 'sql_drop', 16646, 'graphql_watch_drop', 10, NULL, 16649);
-insert into "pg_catalog"."pg_event_trigger" ("evtenabled", "evtevent", "evtfoid", "evtname", "evtowner", "evttags", "oid") values ('O', 'ddl_command_end', 16551, 'issue_pg_cron_access', 10, '{"CREATE EXTENSION"}', 16654);
-insert into "pg_catalog"."pg_event_trigger" ("evtenabled", "evtevent", "evtfoid", "evtname", "evtowner", "evttags", "oid") values ('O', 'ddl_command_end', 16553, 'issue_pg_net_access', 10, '{"CREATE EXTENSION"}', 16657);
