@@ -7,6 +7,27 @@ body {
   color: #C8A9A0;
 }
 
+/* ── Animações globais ──────────────────────────────────────────────── */
+@keyframes profile-frame-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.55; }
+}
+@keyframes profile-frame-rotate {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+@keyframes profile-frame-dash {
+  0%   { stroke-dashoffset: 0; }
+  100% { stroke-dashoffset: -565; }
+}
+
+.profile-frame-ring {
+  animation: profile-frame-pulse 2.4s ease-in-out infinite;
+}
+.profile-frame-dash {
+  animation: profile-frame-dash 8s linear infinite;
+}
+
 @layer components {
   .card-lol {
     @apply bg-[#112240] border border-[#1E3A5F] rounded-lg p-4;
