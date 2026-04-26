@@ -29,10 +29,10 @@ async function requireOrgOrAdmin(supabase: any, tornId: string, userId: string) 
   if (profile?.is_admin) return true;
   const { data: torneio } = await supabase
     .from("tournaments")
-    .select("organizer_id")
+    .select("created_by")
     .eq("id", tornId)
     .single();
-  if (torneio?.organizer_id !== userId) throw new Error("Sem permissão");
+  if (torneio?.created_by !== userId) throw new Error("Sem permissão");
   return true;
 }
 
@@ -116,7 +116,7 @@ export async function updateResultadoPartida(
         winner_id: winner_team_id,
         score_a,
         score_b,
-        match_id_riot: match_id_riot ?? null,
+        riot_match_id: match_id_riot ?? null,
         status: "finished",
         finished_at: new Date().toISOString(),
       })
