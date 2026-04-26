@@ -29,6 +29,19 @@ const TIER_COLORS: Record<string, string> = {
   UNRANKED: 'text-gray-600',
 };
 
+const TIER_EMBLEMS: Record<string, string> = {
+  CHALLENGER:   'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/ranked-emblems/emblem-challenger.png',
+  GRANDMASTER:  'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/ranked-emblems/emblem-grandmaster.png',
+  MASTER:       'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/ranked-emblems/emblem-master.png',
+  DIAMOND:      'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/ranked-emblems/emblem-diamond.png',
+  EMERALD:      'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/ranked-emblems/emblem-emerald.png',
+  PLATINUM:     'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/ranked-emblems/emblem-platinum.png',
+  GOLD:         'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/ranked-emblems/emblem-gold.png',
+  SILVER:       'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/ranked-emblems/emblem-silver.png',
+  BRONZE:       'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/ranked-emblems/emblem-bronze.png',
+  IRON:         'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/ranked-emblems/emblem-iron.png',
+};
+
 const ROLE_LABELS: Record<string, string> = {
   top: 'Top',
   jungle: 'Jungle',
@@ -54,22 +67,22 @@ export default async function JogadoresPage({
 
   if (role) query = query.eq('role', role);
   if (tier) query = query.eq('tier', tier.toUpperCase());
-  if (q) query = query.ilike('summoner_name', `%${q}%`);
+  if (q)    query = query.ilike('summoner_name', `%${q}%`);
 
   const { data: players } = await query.limit(100);
 
   const roles = ['top', 'jungle', 'mid', 'adc', 'support'];
-  const tiers = ['CHALLENGER', 'GRANDMASTER', 'MASTER', 'DIAMOND', 'EMERALD', 'PLATINUM', 'GOLD', 'SILVER', 'BRONZE', 'IRON'];
+  const tiers = ['CHALLENGER','GRANDMASTER','MASTER','DIAMOND','EMERALD','PLATINUM','GOLD','SILVER','BRONZE','IRON'];
 
-  const btnBase = 'px-3 py-1 rounded text-xs border transition-colors';
-  const btnActive = 'border-[#C8A84B] text-[#C8A84B] bg-[#C8A84B]/10';
+  const btnBase     = 'px-3 py-1 rounded text-xs border transition-colors';
+  const btnActive   = 'border-[#C8A84B] text-[#C8A84B] bg-[#C8A84B]/10';
   const btnInactive = 'border-[#1E3A5F] text-gray-400 hover:border-[#C8A84B]/50';
 
   function buildQuery(patch: Record<string, string | undefined>) {
     const params = new URLSearchParams();
     if (role) params.set('role', role);
     if (tier) params.set('tier', tier);
-    if (q) params.set('q', q);
+    if (q)    params.set('q', q);
     Object.entries(patch).forEach(([k, v]) => {
       if (v === undefined) params.delete(k);
       else params.set(k, v);
@@ -78,9 +91,26 @@ export default async function JogadoresPage({
     return '/jogadores' + (str ? '?' + str : '');
   }
 
+  // Monta URL de perfil: usa summoner_name + tag_line se disponível, senão puuid
+  function profileHref(player: {
+    summoner_name?: string | null;
+    tag_line?: string | null;
+    puuid?: string | null;
+  }): string | null {
+    if (player.summoner_name && player.tag_line) {
+      return `/jogadores/${encodeURIComponent(player.summoner_name)}/${encodeURIComponent(player.tag_line)}`;
+    }
+    if (player.puuid) {
+      return `/jogadores/${player.puuid}`;
+    }
+    return null;
+  }
+
   return (
     <main className="min-h-screen bg-[#050E1A] py-10 px-4">
       <div className="max-w-5xl mx-auto space-y-8">
+
+        {/* Header */}
         <div>
           <h1 className="text-3xl font-bold text-white">Jogadores</h1>
           <p className="text-gray-400 text-sm mt-1">
@@ -88,9 +118,9 @@ export default async function JogadoresPage({
           </p>
         </div>
 
-        {/* Filters */}
+        {/* Filtros */}
         <div className="space-y-3">
-          {/* Search */}
+          {/* Busca */}
           <form method="GET" action="/jogadores">
             {role && <input type="hidden" name="role" value={role} />}
             {tier && <input type="hidden" name="tier" value={tier} />}
@@ -102,7 +132,7 @@ export default async function JogadoresPage({
             />
           </form>
 
-          {/* Role Filter */}
+          {/* Role */}
           <div className="flex items-center flex-wrap gap-2">
             <span className="text-xs text-gray-500 mr-1">Role:</span>
             <Link href={buildQuery({ role: undefined })} className={`${btnBase} ${!role ? btnActive : btnInactive}`}>Todos</Link>
@@ -113,7 +143,7 @@ export default async function JogadoresPage({
             ))}
           </div>
 
-          {/* Tier Filter */}
+          {/* Tier */}
           <div className="flex items-center flex-wrap gap-2">
             <span className="text-xs text-gray-500 mr-1">Tier:</span>
             <Link href={buildQuery({ tier: undefined })} className={`${btnBase} ${!tier ? btnActive : btnInactive}`}>Todos</Link>
@@ -125,33 +155,41 @@ export default async function JogadoresPage({
           </div>
         </div>
 
-        {/* Players List */}
+        {/* Lista de Jogadores */}
         {(players ?? []).length === 0 ? (
-          <p className="text-gray-500 text-sm">Nenhum jogador encontrado.</p>
+          <div className="text-center py-16">
+            <p className="text-4xl mb-3">🎮</p>
+            <p className="text-gray-500 text-sm">Nenhum jogador encontrado.</p>
+          </div>
         ) : (
           <div className="grid gap-3">
             {(players ?? []).map((player, idx) => {
-              const winrate =
-                (player.wins ?? 0) + (player.losses ?? 0) > 0
-                  ? Math.round(
-                      ((player.wins ?? 0) /
-                        ((player.wins ?? 0) + (player.losses ?? 0))) *
-                        100
-                    )
-                  : null;
+              const total    = (player.wins ?? 0) + (player.losses ?? 0);
+              const winrate  = total > 0 ? Math.round(((player.wins ?? 0) / total) * 100) : null;
+              const href     = profileHref(player);
+              const emblem   = TIER_EMBLEMS[player.tier ?? ''] ?? null;
 
-              return (
-                <div
-                  key={player.id}
-                  className="bg-[#0D1B2E] border border-[#1E3A5F] rounded-lg p-4 flex items-center gap-4"
-                >
-                  {/* Rank position */}
-                  <span className="text-gray-600 text-sm w-6 text-right flex-shrink-0">{idx + 1}</span>
+              const cardContent = (
+                <div className="bg-[#0D1B2E] border border-[#1E3A5F] rounded-lg p-4 flex items-center gap-4 hover:border-[#C8A84B]/40 hover:bg-[#0F2035] transition-all group">
 
-                  {/* Player info */}
+                  {/* Posição */}
+                  <span className="text-gray-600 text-sm w-6 text-right flex-shrink-0 font-mono">{idx + 1}</span>
+
+                  {/* Emblema de tier */}
+                  <div className="w-10 h-10 flex-shrink-0 flex items-center justify-center">
+                    {emblem ? (
+                      <img src={emblem} width={40} height={40} alt={player.tier ?? ''} className="w-10 h-10 object-contain" />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-[#1E3A5F]/50 flex items-center justify-center">
+                        <span className="text-gray-600 text-xs">?</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Info principal */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-white font-semibold text-sm">
+                      <span className="text-white font-semibold text-sm group-hover:text-[#C8A84B] transition-colors">
                         {player.summoner_name}
                       </span>
                       {player.tag_line && (
@@ -164,12 +202,9 @@ export default async function JogadoresPage({
                       )}
                     </div>
                     {(player.teams as any) && (
-                      <Link
-                        href={`/times/${(player.teams as any).id}`}
-                        className="text-xs text-blue-400 hover:underline mt-0.5 block"
-                      >
+                      <span className="text-xs text-blue-400 mt-0.5 block">
                         [{(player.teams as any).tag}] {(player.teams as any).name}
-                      </Link>
+                      </span>
                     )}
                   </div>
 
@@ -183,33 +218,39 @@ export default async function JogadoresPage({
                     )}
                   </div>
 
-                  {/* Stats */}
-                  <div className="text-right flex-shrink-0 hidden sm:block">
+                  {/* WR */}
+                  <div className="text-right flex-shrink-0 hidden sm:block min-w-[64px]">
                     {winrate !== null ? (
                       <>
-                        <p className="text-xs text-white">
-                          {player.wins}V {player.losses}D
-                        </p>
+                        <p className="text-xs text-white">{player.wins}V {player.losses}D</p>
                         <p className={`text-xs font-semibold ${
                           winrate >= 60 ? 'text-green-400' : winrate >= 50 ? 'text-yellow-400' : 'text-red-400'
-                        }`}>
-                          {winrate}% WR
-                        </p>
+                        }`}>{winrate}% WR</p>
                       </>
                     ) : (
-                      <p className="text-xs text-gray-600">Sem partidas</p>
+                      <p className="text-xs text-gray-600">—</p>
                     )}
                   </div>
 
-                  {/* Profile link */}
-                  {player.puuid && (
-                    <Link
-                      href={`/jogadores/${player.puuid}`}
-                      className="text-xs text-gray-500 hover:text-[#C8A84B] flex-shrink-0"
-                    >
-                      Ver &rarr;
-                    </Link>
+                  {/* Botão Ver Perfil — sempre visível */}
+                  {href && (
+                    <div className="flex-shrink-0">
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-[#C8A84B] bg-[#C8A84B]/10 border border-[#C8A84B]/30 rounded-lg px-3 py-1.5 group-hover:bg-[#C8A84B]/20 transition-colors whitespace-nowrap">
+                        Ver Perfil →
+                      </span>
+                    </div>
                   )}
+                </div>
+              );
+
+              // Se tem href, o card inteiro é clicável
+              return href ? (
+                <Link key={player.id} href={href} className="block">
+                  {cardContent}
+                </Link>
+              ) : (
+                <div key={player.id}>
+                  {cardContent}
                 </div>
               );
             })}
