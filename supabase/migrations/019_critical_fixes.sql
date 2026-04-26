@@ -2,96 +2,55 @@
 -- Migration 019: Correções críticas de schema e RLS
 -- ============================================================
 
+
 -- ─── 1. PICKS_BANS ───────────────────────────────────────────
 -- O banco armazena picks/bans como campo JSONB em match_games.
 -- Não existe (nem deve existir) tabela separada picks_bans.
--- Esta migration é apenas documentação; nenhuma DDL necessária.
 -- O código em partida.ts foi corrigido para usar match_games.picks_bans.
+-- Nenhuma DDL necessária aqui.
 
 
 -- ─── 2. RLS DUPLICADA: teams ─────────────────────────────────
--- Políticas teams_select_all e teams_select_public ambas com USING (true)
--- causam overhead desnecessário. Mantemos apenas uma.
+-- A migration 001 já criou "teams_select_all" com USING (true).
+-- Se por algum motivo existir uma segunda política "teams_select_public"
+-- com a mesma condição, removemos a redundante.
 DO $$
 BEGIN
-  -- Remove a política redundante se existir
   IF EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname = 'public'
-      AND tablename  = 'teams'
-      AND policyname = 'teams_select_all'
-  ) THEN
-    EXECUTE 'DROP POLICY teams_select_all ON public.teams';
-  END IF;
-END;
-$$;
-
--- Garante que existe exatamente uma política de leitura pública
-DO $$
-BEGIN
-  IF NOT EXISTS (
     SELECT 1 FROM pg_policies
     WHERE schemaname = 'public'
       AND tablename  = 'teams'
       AND policyname = 'teams_select_public'
   ) THEN
-    EXECUTE 'CREATE POLICY teams_select_public ON public.teams FOR SELECT USING (true)';
+    EXECUTE 'DROP POLICY teams_select_public ON public.teams';
   END IF;
 END;
 $$;
 
 
 -- ─── 3. TOURNAMENTS.STARTS_AT — coluna GENERATED ─────────────
--- starts_at é GENERATED ALWAYS AS (start_date) STORED.
--- Garante que não existe DEFAULT nem valor manual nessa coluna.
--- O código tournament.ts foi corrigido para usar start_date diretamente.
--- Nenhuma DDL de ALTER necessária; a coluna já está correta no banco.
-
-
--- ─── 4. TEAM_INVITES → TEAM_MEMBERS ──────────────────────────
--- Função auxiliar chamada quando um convite é aceito via RPC ou trigger.
--- O código team_invite.ts já faz o insert diretamente,
--- mas esta função pode ser chamada por triggers futuros.
-CREATE OR REPLACE FUNCTION public.fn_accept_team_invite(p_invite_id uuid, p_profile_id uuid)
-RETURNS void
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  v_invite public.teaminvites%ROWTYPE;
+-- Verifica se starts_at existe como coluna comum (não gerada) e a remove,
+-- pois o valor correto é derivado de start_date pelo próprio Postgres.
+-- Se a coluna não existir, este bloco é no-op seguro.
+DO $$
 BEGIN
-  SELECT * INTO v_invite
-  FROM public.teaminvites
-  WHERE id = p_invite_id AND status = 'PENDING';
-
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Convite não encontrado ou já respondido';
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name   = 'tournaments'
+      AND column_name  = 'starts_at'
+      AND is_generated = 'NEVER'   -- só remove se NÃO for gerada
+  ) THEN
+    EXECUTE 'ALTER TABLE public.tournaments DROP COLUMN starts_at';
   END IF;
-
-  IF v_invite.expires_at IS NOT NULL AND v_invite.expires_at < now() THEN
-    RAISE EXCEPTION 'Convite expirado';
-  END IF;
-
-  -- Marca convite como aceito
-  UPDATE public.teaminvites
-  SET status = 'ACCEPTED'
-  WHERE id = p_invite_id;
-
-  -- Insere em team_members (upsert seguro)
-  INSERT INTO public.teammembers (team_id, profile_id, team_role, status, invited_at, responded_at)
-  VALUES (v_invite.teamid, p_profile_id, COALESCE(v_invite.role::text, 'member')::public.teammemberrole, 'active', now(), now())
-  ON CONFLICT (team_id, profile_id)
-  DO UPDATE SET status = 'active', responded_at = now();
 END;
 $$;
 
 
--- ─── 5. TRIGGERS DE NOTIFICAÇÃO — validar user_id ────────────
--- Os triggers trg_inscricao_nova e trg_inscricao_status_change
--- disparam notificações. Recriamos a função garantindo que o
--- user_id alvo é o requested_by da inscrição (quem pediu),
--- não o reviewed_by (admin que avaliou).
+-- ─── 4. TRIGGERS DE NOTIFICAÇÃO — usa requested_by ───────────
+-- Recria fn_notify_inscricao garantindo que notificações vão para
+-- quem fez a inscrição (requested_by), não para o admin reviewer.
 CREATE OR REPLACE FUNCTION public.fn_notify_inscricao()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -149,9 +108,9 @@ BEGIN
 END;
 $$;
 
--- Remove triggers antigos e recria com a função corrigida
-DROP TRIGGER IF EXISTS trg_inscricao_nova           ON public.inscricoes;
-DROP TRIGGER IF EXISTS trg_inscricao_status_change  ON public.inscricoes;
+-- Recria os triggers com a função corrigida
+DROP TRIGGER IF EXISTS trg_inscricao_nova          ON public.inscricoes;
+DROP TRIGGER IF EXISTS trg_inscricao_status_change ON public.inscricoes;
 
 CREATE TRIGGER trg_inscricao_nova
   AFTER INSERT ON public.inscricoes
@@ -160,3 +119,7 @@ CREATE TRIGGER trg_inscricao_nova
 CREATE TRIGGER trg_inscricao_status_change
   AFTER UPDATE OF status ON public.inscricoes
   FOR EACH ROW EXECUTE FUNCTION public.fn_notify_inscricao();
+
+
+-- ─── 5. GRANTS ───────────────────────────────────────────────
+GRANT EXECUTE ON FUNCTION public.fn_notify_inscricao TO service_role;
