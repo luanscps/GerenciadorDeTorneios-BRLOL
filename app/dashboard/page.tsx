@@ -11,6 +11,12 @@ const TIER_COLORS: Record<string, string> = {
 
 const DD_BASE = "https://ddragon.leagueoflegends.com/cdn/16.8.1";
 
+const STATUS_BADGE: Record<string, string> = {
+  PENDING:  "bg-yellow-400/10 text-yellow-400 border border-yellow-400/30",
+  APPROVED: "bg-green-400/10  text-green-400  border border-green-400/30",
+  REJECTED: "bg-red-400/10   text-red-400   border border-red-400/30",
+};
+
 export default async function DashboardPage({
   searchParams,
 }: {
@@ -22,7 +28,6 @@ export default async function DashboardPage({
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  // Busca paralela: profile + torneios abertos
   const [{ data: profile }, { data: openTournaments }] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", user.id).single(),
     supabase
@@ -32,7 +37,6 @@ export default async function DashboardPage({
       .limit(3),
   ]);
 
-  // Busca conta Riot primária vinculada diretamente em riot_accounts
   const { data: riotAccount } = await supabase
     .from("riot_accounts")
     .select(`
@@ -46,13 +50,24 @@ export default async function DashboardPage({
     .limit(1)
     .maybeSingle();
 
-  // Busca inscrições do usuário
-  const { data: myTeams } = await supabase
+  // Busca times onde o usuário é CAPITÃO (owner), com status de inscrição e check-in
+  const { data: myOwnedTeams } = await supabase
+    .from("teams")
+    .select(`
+      id, name, tag,
+      inscricoes ( id, status, checked_in, checked_in_at, tournament_id,
+        tournaments ( id, name, slug, status )
+      )
+    `)
+    .eq("owner_id", user.id)
+    .limit(10);
+
+  // Times onde é membro (mas não capitão)
+  const { data: myMemberTeams } = await supabase
     .from("inscricoes")
-    .select(
-      "id, status, team_id, tournament_id, teams:team_id(id, name, tag), tournaments:tournament_id(id, name, slug, status)"
-    )
+    .select("id, status, team_id, tournament_id, teams:team_id(id, name, tag), tournaments:tournament_id(id, name, slug, status)")
     .eq("requested_by", user.id)
+    .not("team_id", "in", `(${(myOwnedTeams ?? []).map((t: any) => t.id).join(',') || '00000000-0000-0000-0000-000000000000'})`)
     .limit(5);
 
   const rankSolo = (riotAccount?.rank_snapshots as any[])?.find(
@@ -68,20 +83,17 @@ export default async function DashboardPage({
   return (
     <div className="space-y-8">
 
-      {/* ── Banner de Acesso Negado ── */}
       {params.error === "acesso_negado" && (
         <div className="flex items-start gap-3 bg-red-950/60 border border-red-700/50 rounded-xl px-5 py-4">
           <span className="text-red-400 text-xl shrink-0">🚫</span>
           <div>
             <p className="text-red-300 font-semibold text-sm">Acesso negado</p>
-            <p className="text-red-400/80 text-sm mt-0.5">
-              Você não tem permissão de administrador para acessar essa área.
-            </p>
+            <p className="text-red-400/80 text-sm mt-0.5">Você não tem permissão de administrador.</p>
           </div>
         </div>
       )}
 
-      {/* ── Card de Perfil ── */}
+      {/* ── Perfil ── */}
       <div className="card-lol flex items-center gap-6 flex-wrap">
         <div className="relative shrink-0">
           {riotAccount?.profile_icon_id ? (
@@ -91,12 +103,9 @@ export default async function DashboardPage({
               className="rounded-full border-2 border-[#C8A84B]"
             />
           ) : (
-            <div className="w-20 h-20 rounded-full bg-[#1E3A5F] flex items-center justify-center text-3xl">
-              👤
-            </div>
+            <div className="w-20 h-20 rounded-full bg-[#1E3A5F] flex items-center justify-center text-3xl">👤</div>
           )}
         </div>
-
         <div className="flex-1 min-w-0">
           <h1 className="text-2xl font-bold text-white truncate">
             {profile?.full_name ?? profile?.email}
@@ -105,30 +114,21 @@ export default async function DashboardPage({
             <p className="text-[#C8A84B] font-medium">
               {riotAccount.game_name}
               <span className="text-gray-500">#{riotAccount.tag_line}</span>
-              {" "}
-              <span className="text-gray-400 text-sm">· Nível {riotAccount.summoner_level}</span>
+              {" "}<span className="text-gray-400 text-sm">· Nível {riotAccount.summoner_level}</span>
             </p>
           ) : (
-            <p className="text-gray-400 text-sm">
-              Nenhuma conta Riot vinculada
-            </p>
+            <p className="text-gray-400 text-sm">Nenhuma conta Riot vinculada</p>
           )}
         </div>
-
-        <Link
-          href="/dashboard/jogador/registrar"
-          className="btn-outline-gold text-sm text-center shrink-0"
-        >
+        <Link href="/dashboard/jogador/registrar" className="btn-outline-gold text-sm text-center shrink-0">
           {riotAccount ? "🔄 Atualizar perfil Riot" : "🔗 Vincular conta Riot"}
         </Link>
       </div>
 
-      {/* ── Painel Riot (só aparece se conta vinculada) ── */}
+      {/* ── Conta Riot ── */}
       {riotAccount && (
         <div className="card-lol space-y-4">
           <h2 className="text-lg font-bold text-white">⚔️ Conta Riot Vinculada</h2>
-
-          {/* Ranks */}
           {(rankSolo || rankFlex) ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {[rankSolo, rankFlex].filter(Boolean).map((r: any) => (
@@ -142,9 +142,7 @@ export default async function DashboardPage({
                   <p className="text-white text-sm">{r.lp} LP</p>
                   <p className="text-gray-400 text-xs">
                     {r.wins}V · {r.losses}D ·{" "}
-                    {r.wins + r.losses > 0
-                      ? Math.round((r.wins / (r.wins + r.losses)) * 100)
-                      : 0}% WR
+                    {r.wins + r.losses > 0 ? Math.round((r.wins / (r.wins + r.losses)) * 100) : 0}% WR
                   </p>
                 </div>
               ))}
@@ -152,8 +150,6 @@ export default async function DashboardPage({
           ) : (
             <p className="text-gray-500 text-sm">Sem rank nesta temporada</p>
           )}
-
-          {/* Top Campeões */}
           {topMasteries.length > 0 && (
             <div>
               <p className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2">Top Campeões</p>
@@ -166,9 +162,7 @@ export default async function DashboardPage({
                       className="rounded border border-[#1E3A5F]"
                     />
                     <p className="text-[10px] text-gray-400 mt-0.5">M{m.mastery_level}</p>
-                    <p className="text-[9px] text-gray-600">
-                      {(m.mastery_points / 1000).toFixed(0)}k
-                    </p>
+                    <p className="text-[9px] text-gray-600">{(m.mastery_points / 1000).toFixed(0)}k</p>
                   </div>
                 ))}
               </div>
@@ -177,36 +171,78 @@ export default async function DashboardPage({
         </div>
       )}
 
-      {/* ── Meus Times ── */}
+      {/* ── Meus Times (Capitão) ── */}
       <div className="card-lol">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold text-white">🛡️ Meus Times</h2>
-          <Link href="/torneios" className="text-lol-gold hover:underline text-sm">
-            + Explorar Torneios
-          </Link>
+          <Link href="/torneios" className="text-lol-gold hover:underline text-sm">+ Explorar Torneios</Link>
         </div>
 
-        {myTeams && myTeams.length > 0 ? (
+        {myOwnedTeams && myOwnedTeams.length > 0 ? (
           <div className="space-y-3">
-            {myTeams.map((ins: any) => (
-              <div key={ins.id} className="bg-[#0A1628] rounded-lg p-3 flex items-center justify-between gap-4">
-                <div>
-                  <p className="font-semibold text-white">
-                    {ins.teams?.tag ? `[${ins.teams.tag}] ` : ""}{ins.teams?.name}
-                  </p>
-                  <p className="text-gray-400 text-sm">{ins.tournaments?.name}</p>
+            {myOwnedTeams.map((team: any) => {
+              const insc = team.inscricoes?.[0];
+              const tourn = insc?.tournaments;
+              const statusKey = insc?.status ?? 'PENDING';
+              return (
+                <div key={team.id} className="bg-[#0A1628] rounded-lg p-3 flex items-center gap-3 flex-wrap">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-white">
+                      <span className="text-[#C8A84B]">[{team.tag}]</span> {team.name}
+                    </p>
+                    {tourn && (
+                      <p className="text-gray-400 text-xs mt-0.5">🏆 {tourn.name}</p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {insc && (
+                      <span className={`text-xs px-2 py-0.5 rounded font-medium ${STATUS_BADGE[statusKey] ?? 'text-gray-400'}`}>
+                        {statusKey}
+                      </span>
+                    )}
+                    {insc?.checked_in && (
+                      <span className="text-xs bg-green-900/40 text-green-400 border border-green-500/30 px-2 py-0.5 rounded">
+                        ✅ Check-in
+                      </span>
+                    )}
+                    {insc?.status === 'APPROVED' && !insc?.checked_in && (
+                      <Link
+                        href={`/dashboard/times/${team.id}/checkin`}
+                        className="text-xs bg-[#C8A84B]/10 text-[#C8A84B] border border-[#C8A84B]/30 px-2 py-0.5 rounded hover:bg-[#C8A84B]/20"
+                      >
+                        📋 Fazer Check-in
+                      </Link>
+                    )}
+                    <Link
+                      href={`/dashboard/times/${team.id}`}
+                      className="text-lol-gold hover:underline text-xs"
+                    >
+                      Gerenciar →
+                    </Link>
+                  </div>
                 </div>
-                {ins.tournaments?.slug && (
-                  <Link href={`/torneios/${ins.tournaments.slug}`}
-                    className="text-lol-gold hover:underline text-sm shrink-0">
-                    Ver torneio &rarr;
-                  </Link>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
-          <p className="text-gray-400 text-sm">Você ainda não está em nenhum time.</p>
+          <p className="text-gray-400 text-sm">Você ainda não criou nenhum time.</p>
+        )}
+
+        {/* Times onde é apenas membro */}
+        {myMemberTeams && myMemberTeams.length > 0 && (
+          <div className="mt-4 pt-4 border-t border-[#1E3A5F]">
+            <p className="text-gray-500 text-xs uppercase tracking-wider mb-2">Participando como membro</p>
+            <div className="space-y-2">
+              {myMemberTeams.map((ins: any) => (
+                <div key={ins.id} className="flex items-center justify-between text-sm">
+                  <span className="text-gray-300">
+                    <span className="text-[#C8A84B]">[{ins.teams?.tag}]</span> {ins.teams?.name}
+                  </span>
+                  <span className="text-gray-500 text-xs">{ins.tournaments?.name}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         )}
       </div>
 
@@ -215,9 +251,7 @@ export default async function DashboardPage({
         <div className="card-lol">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold text-white">🏆 Inscrições Abertas</h2>
-            <Link href="/torneios" className="text-lol-gold hover:underline text-sm">
-              Ver todos &rarr;
-            </Link>
+            <Link href="/torneios" className="text-lol-gold hover:underline text-sm">Ver todos →</Link>
           </div>
           <div className="space-y-3">
             {openTournaments.map((t: any) => (
@@ -230,7 +264,7 @@ export default async function DashboardPage({
                     </span>
                   )}
                   <Link href={`/torneios/${t.slug}`} className="text-lol-gold hover:underline text-sm">
-                    Inscrever &rarr;
+                    Inscrever →
                   </Link>
                 </div>
               </div>
