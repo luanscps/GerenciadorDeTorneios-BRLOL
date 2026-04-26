@@ -36,7 +36,47 @@ async function requireOrgOrAdmin(supabase: any, tornId: string, userId: string) 
   return true;
 }
 
-// Mantém compatibilidade com código admin existente
+/** Avança o vencedor para a próxima partida do bracket (eliminatório simples) */
+async function avancarVencedor(supabase: any, match: any, winnerId: string) {
+  const { round, match_number, tournament_id } = match;
+  const proximoRound = round + 1;
+  const proximaPartidaNum = Math.ceil(match_number / 2);
+
+  // Verifica se já existe partida na próxima rodada
+  const { data: proximaPartida } = await supabase
+    .from("matches")
+    .select("id, team_a_id, team_b_id")
+    .eq("tournament_id", tournament_id)
+    .eq("round", proximoRound)
+    .eq("match_number", proximaPartidaNum)
+    .maybeSingle();
+
+  if (proximaPartida) {
+    // Preenche o slot vazio (team_a ou team_b) com o vencedor
+    const update = proximaPartida.team_a_id == null
+      ? { team_a_id: winnerId }
+      : { team_b_id: winnerId };
+    await supabase
+      .from("matches")
+      .update(update)
+      .eq("id", proximaPartida.id);
+  } else {
+    // Cria a partida da próxima rodada com o vencedor no slot A
+    // O outro slot será preenchido quando a partida espelho finalizar
+    const isSlotA = match_number % 2 !== 0;
+    await supabase.from("matches").insert({
+      tournament_id,
+      team_a_id: isSlotA ? winnerId : null,
+      team_b_id: isSlotA ? null : winnerId,
+      round: proximoRound,
+      match_number: proximaPartidaNum,
+      best_of: match.best_of ?? 1,
+      status: "pending",
+    });
+  }
+}
+
+// Mantém compatibilidade com PartidaResultForm existente
 export async function editarResultadoPartida(
   matchDbId: string,
   tournamentId: string,
@@ -61,6 +101,15 @@ export async function updateResultadoPartida(
 
     const { score_a, score_b, winner_team_id, match_id_riot } = parsed.data;
 
+    // Busca partida atual para saber round/match_number
+    const { data: match, error: errMatch } = await supabase
+      .from("matches")
+      .select("id, round, match_number, tournament_id, best_of")
+      .eq("id", matchDbId)
+      .single();
+
+    if (errMatch || !match) return { error: "Partida não encontrada" };
+
     const { error } = await supabase
       .from("matches")
       .update({
@@ -75,7 +124,43 @@ export async function updateResultadoPartida(
 
     if (error) return { error: error.message };
 
-    revalidatePath(`/organizador/torneios/${tournamentId}/partidas`);
+    // Avança vencedor para próxima rodada
+    await avancarVencedor(supabase, match, winner_team_id);
+
+    // Picks & Bans (opcional)
+    const picksBansRaw = formData.get("picks_bans");
+    if (picksBansRaw) {
+      try {
+        const picksBans = JSON.parse(picksBansRaw as string);
+        if (Array.isArray(picksBans) && picksBans.length > 0) {
+          const rows = picksBans
+            .filter((pb: any) => pb.champion)
+            .map((pb: any) => ({
+              match_id: matchDbId,
+              tournament_id: tournamentId,
+              team_id: pb.team === 'A' ? match.team_a_id : match.team_b_id,
+              champion: pb.champion,
+              type: pb.type,
+              order: pb.order,
+            }));
+          if (rows.length > 0) {
+            await supabase.from("picks_bans").insert(rows);
+          }
+        }
+      } catch (_) { /* ignora erro de parse de picks_bans */ }
+    }
+
+    // Busca slug do torneio para revalidatePath correto
+    const { data: torneio } = await supabase
+      .from("tournaments")
+      .select("slug")
+      .eq("id", tournamentId)
+      .single();
+
+    const slug = torneio?.slug ?? tournamentId;
+    revalidatePath(`/admin/torneios/${slug}/partidas`);
+    revalidatePath(`/torneios/${slug}/bracket`);
+    revalidatePath(`/torneios/${slug}`);
     revalidatePath(`/torneios`);
     return { success: true };
   } catch (e: any) {
@@ -117,7 +202,14 @@ export async function createPartida(
       .single();
 
     if (error) return { error: error.message };
-    revalidatePath(`/organizador/torneios/${tournamentId}/partidas`);
+
+    const { data: torneio } = await supabase
+      .from("tournaments")
+      .select("slug")
+      .eq("id", tournamentId)
+      .single();
+    const slug = torneio?.slug ?? tournamentId;
+    revalidatePath(`/admin/torneios/${slug}/partidas`);
     return { success: true, data };
   } catch (e: any) {
     return { error: e.message };
@@ -142,7 +234,14 @@ export async function deletePartida(matchId: string, tournamentId: string) {
 
     const { error } = await supabase.from("matches").delete().eq("id", matchId);
     if (error) return { error: error.message };
-    revalidatePath(`/organizador/torneios/${tournamentId}/partidas`);
+
+    const { data: torneio } = await supabase
+      .from("tournaments")
+      .select("slug")
+      .eq("id", tournamentId)
+      .single();
+    const slug = torneio?.slug ?? tournamentId;
+    revalidatePath(`/admin/torneios/${slug}/partidas`);
     return { success: true };
   } catch (e: any) {
     return { error: e.message };
@@ -166,27 +265,6 @@ export async function getPartidasByTorneio(tournamentId: string) {
   return { data, error: null };
 }
 
-export async function getPartidasByFase(faseId: string) {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("matches")
-    .select(
-      `id, round, match_number, status, score_a, score_b, scheduled_at, finished_at, best_of,
-       team_a:teams!team_a_id(id, name, tag, logo_url),
-       team_b:teams!team_b_id(id, name, tag, logo_url),
-       winner:teams!winner_id(id, name, tag)`
-    )
-    .eq("fase_id", faseId)
-    .order("round")
-    .order("match_number");
-  if (error) return { error: error.message, data: null };
-  return { data, error: null };
-}
-
-/**
- * Gera chaveamento eliminatório simples a partir dos times aprovados.
- * Embaralha e cria confrontos round 1. Retorna as partidas inseridas.
- */
 export async function gerarChaveamento(tournamentId: string, faseId?: string) {
   try {
     const supabase = await createClient();
@@ -194,7 +272,6 @@ export async function gerarChaveamento(tournamentId: string, faseId?: string) {
     if (!user) return { error: "Não autenticado" };
     await requireOrgOrAdmin(supabase, tournamentId, user.id);
 
-    // Busca times aprovados
     const { data: inscricoes, error: errInsc } = await supabase
       .from("inscricoes")
       .select("team_id, teams(id, name, tag)")
@@ -206,10 +283,7 @@ export async function gerarChaveamento(tournamentId: string, faseId?: string) {
       return { error: "É necessário pelo menos 2 times aprovados para gerar o chaveamento" };
     }
 
-    // Embaralha os times
     const times = [...inscricoes].sort(() => Math.random() - 0.5);
-
-    // Garante potência de 2 (preenche com bye se necessário)
     const nextPow2 = Math.pow(2, Math.ceil(Math.log2(times.length)));
     const partidas: any[] = [];
 
@@ -217,10 +291,7 @@ export async function gerarChaveamento(tournamentId: string, faseId?: string) {
       const timeA = times[i * 2];
       const timeB = times[i * 2 + 1];
       if (!timeA) continue;
-      if (!timeB) {
-        // BYE: avança automaticamente — pula inserção de partida
-        continue;
-      }
+      if (!timeB) continue; // BYE
       partidas.push({
         tournament_id: tournamentId,
         team_a_id: timeA.team_id,
@@ -239,8 +310,15 @@ export async function gerarChaveamento(tournamentId: string, faseId?: string) {
       .select();
 
     if (errIns) return { error: errIns.message };
-    revalidatePath(`/organizador/torneios/${tournamentId}/partidas`);
-    revalidatePath(`/organizador/torneios/${tournamentId}/fases`);
+
+    const { data: torneio } = await supabase
+      .from("tournaments")
+      .select("slug")
+      .eq("id", tournamentId)
+      .single();
+    const slug = torneio?.slug ?? tournamentId;
+    revalidatePath(`/admin/torneios/${slug}/partidas`);
+    revalidatePath(`/torneios/${slug}/bracket`);
     revalidatePath(`/torneios`);
     return { success: true, data: inserted };
   } catch (e: any) {

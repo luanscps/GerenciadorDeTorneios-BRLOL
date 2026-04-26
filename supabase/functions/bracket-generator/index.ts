@@ -1,185 +1,134 @@
-// supabase/functions/bracket-generator/index.ts
-import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
-
-interface MatchInsert {
-  tournament_id: string
-  stage_id: string
-  round: number
-  match_order: number
-  team_a_id: string
-  team_b_id: string
-  status: 'SCHEDULED'
-  format: 'BO1' | 'BO3' | 'BO5'
-}
-
-function formatFromBestOf(bestOf: number | null | undefined): 'BO1' | 'BO3' | 'BO5' {
-  if (bestOf === 3) return 'BO3'
-  if (bestOf === 5) return 'BO5'
-  return 'BO1'
-}
-
-Deno.serve(async (req) => {
+serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response('ok', {
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'authorization, content-type',
+      },
+    });
   }
 
   try {
-    const { tournament_id } = await req.json()
+    const { tournament_id } = await req.json();
     if (!tournament_id) {
-      return new Response(JSON.stringify({ error: 'tournament_id obrigatório' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+      return new Response(JSON.stringify({ error: 'tournament_id obrigatório' }), { status: 400 });
     }
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    )
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+    );
 
-    const { data: tournament, error: tErr } = await supabase
-      .from('tournaments')
-      .select('id, name, bracket_type, max_teams')
-      .eq('id', tournament_id)
-      .single()
+    // Verifica se já existe bracket
+    const { count: existingMatches } = await supabase
+      .from('matches')
+      .select('*', { count: 'exact', head: true })
+      .eq('tournament_id', tournament_id);
 
-    if (tErr || !tournament) {
-      return new Response(JSON.stringify({ error: 'Torneio não encontrado' }), {
-        status: 404,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
-
-    // FIX: tabela correta é tournament_stages (migration 002)
-    const { data: stages } = await supabase
-      .from('tournament_stages')
-      .select('id, bracket_type, best_of')
-      .eq('tournament_id', tournament_id)
-      .order('stage_order', { ascending: true })
-
-    const stage = stages?.[0]
-    if (!stage) {
+    if (existingMatches && existingMatches > 0) {
       return new Response(
-        JSON.stringify({ error: 'Nenhuma fase encontrada. Crie uma fase primeiro.' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+        JSON.stringify({ error: 'Bracket já foi gerado para este torneio.' }),
+        { status: 409 }
+      );
     }
 
-    const { data: inscricoes } = await supabase
+    // Busca times com check-in feito (inscricoes APPROVED + checked_in)
+    const { data: inscricoes, error: errInsc } = await supabase
       .from('inscricoes')
-      .select('team_id')
+      .select('team_id, teams(id, name, tag)')
       .eq('tournament_id', tournament_id)
       .eq('status', 'APPROVED')
+      .eq('checked_in', true);
 
-    if (!inscricoes || inscricoes.length < 2) {
+    if (errInsc) {
+      return new Response(JSON.stringify({ error: errInsc.message }), { status: 500 });
+    }
+
+    // Fallback: se nenhum fez check-in, usa todos APPROVED
+    let times = inscricoes ?? [];
+    if (times.length < 2) {
+      const { data: fallback } = await supabase
+        .from('inscricoes')
+        .select('team_id, teams(id, name, tag)')
+        .eq('tournament_id', tournament_id)
+        .eq('status', 'APPROVED');
+      times = fallback ?? [];
+    }
+
+    if (times.length < 2) {
       return new Response(
-        JSON.stringify({ error: 'Mínimo 2 times aprovados necessários' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+        JSON.stringify({ error: 'Mínimo 2 times aprovados necessários.' }),
+        { status: 422 }
+      );
     }
 
-    const { data: seedsData } = await supabase
-      .from('seedings')
-      .select('team_id, seed')
-      .eq('tournament_id', tournament_id)
-      .order('seed', { ascending: true })
-
-    let orderedTeams: string[]
-    if (seedsData && seedsData.length === inscricoes.length) {
-      orderedTeams = seedsData.map((s) => s.team_id)
-    } else {
-      orderedTeams = inscricoes.map((i) => i.team_id).sort(() => Math.random() - 0.5)
+    // Shuffle (Fisher-Yates)
+    for (let i = times.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [times[i], times[j]] = [times[j], times[i]];
     }
 
-    const bracketType: string = stage.bracket_type || tournament.bracket_type
-    const fmt = formatFromBestOf(stage.best_of)
-    const matches: MatchInsert[] = []
+    // Seed: 1 vs N, 2 vs N-1 ...
+    const nextPow2 = Math.pow(2, Math.ceil(Math.log2(times.length)));
+    const partidas: any[] = [];
 
-    if (bracketType === 'SINGLE_ELIMINATION') {
-      const totalSlots = Math.pow(2, Math.ceil(Math.log2(orderedTeams.length)))
-      const padded: (string | null)[] = [...orderedTeams, ...Array(totalSlots - orderedTeams.length).fill(null)]
-
-      let round = 1
-      let roundTeams: (string | null)[] = padded
-
-      while (roundTeams.length > 1) {
-        const nextRound: (string | null)[] = []
-        for (let i = 0; i < roundTeams.length; i += 2) {
-          const teamA = roundTeams[i]
-          const teamB = roundTeams[i + 1]
-          const matchOrder = Math.floor(i / 2) + 1
-          if (teamA && teamB) {
-            matches.push({ tournament_id, stage_id: stage.id, round, match_order: matchOrder, team_a_id: teamA, team_b_id: teamB, status: 'SCHEDULED', format: fmt })
-            nextRound.push(null)
-          } else if (teamA && !teamB) {
-            nextRound.push(teamA) // BYE
-          } else {
-            nextRound.push(null)
-          }
-        }
-        round++
-        roundTeams = nextRound
-      }
-
-    } else if (bracketType === 'ROUND_ROBIN') {
-      const teams: (string | null)[] = [...orderedTeams]
-      if (teams.length % 2 !== 0) teams.push(null)
-      const totalRounds = teams.length - 1
-      const half = teams.length / 2
-
-      for (let round = 1; round <= totalRounds; round++) {
-        let matchOrder = 1
-        for (let i = 0; i < half; i++) {
-          const teamA = teams[i]
-          const teamB = teams[teams.length - 1 - i]
-          if (teamA && teamB) {
-            matches.push({ tournament_id, stage_id: stage.id, round, match_order: matchOrder++, team_a_id: teamA, team_b_id: teamB, status: 'SCHEDULED', format: fmt })
-          }
-        }
-        const last = teams.pop()!
-        teams.splice(1, 0, last)
-      }
-
-    } else if (bracketType === 'SWISS') {
-      let matchOrder = 1
-      for (let i = 0; i < orderedTeams.length - 1; i += 2) {
-        matches.push({ tournament_id, stage_id: stage.id, round: 1, match_order: matchOrder++, team_a_id: orderedTeams[i], team_b_id: orderedTeams[i + 1], status: 'SCHEDULED', format: fmt })
-      }
+    for (let i = 0; i < nextPow2 / 2; i++) {
+      const teamA = times[i];
+      const teamB = times[nextPow2 - 1 - i];
+      if (!teamA || !teamB) continue; // BYE — pula
+      partidas.push({
+        tournament_id,
+        team_a_id: teamA.team_id,
+        team_b_id: teamB.team_id,
+        round: 1,
+        match_number: i + 1,
+        best_of: 1,
+        status: 'pending',
+      });
     }
 
-    // Limpar partidas anteriores da fase e reinserir
-    await supabase.from('matches').delete().eq('stage_id', stage.id)
+    const { data: inserted, error: errIns } = await supabase
+      .from('matches')
+      .insert(partidas)
+      .select();
 
-    const { error: insertErr } = await supabase.from('matches').insert(matches)
-    if (insertErr) {
-      return new Response(JSON.stringify({ error: insertErr.message }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+    if (errIns) {
+      return new Response(JSON.stringify({ error: errIns.message }), { status: 500 });
     }
 
-    await supabase.rpc('log_admin_action', {
-      p_action: 'BRACKET_GENERATED',
-      p_table_name: 'matches',
-      p_record_id: tournament_id,
-      p_old_data: null,
-      p_new_data: { matches_created: matches.length, bracket_type: bracketType },
-    })
+    // Atualiza status do torneio para 'ongoing'
+    await supabase
+      .from('tournaments')
+      .update({ status: 'ongoing' })
+      .eq('id', tournament_id);
+
+    // Notifica capitões dos times
+    const notifs = times.map((t: any) => ({
+      tournament_id,
+      team_id: t.team_id,
+      title: '🏆 Bracket gerado!',
+      message: 'O chaveamento do torneio foi gerado. Confira seus confrontos.',
+      type: 'torneio',
+      read: false,
+    }));
+    // Tenta inserir notificações (ignora erro se tabela não tiver team_id)
+    await supabase.from('notifications').insert(
+      notifs.map((n: any) => ({
+        title: n.title,
+        message: n.message,
+        type: n.type,
+        read: false,
+      }))
+    ).select().maybeSingle(); // fire-and-forget
 
     return new Response(
-      JSON.stringify({ success: true, matches_created: matches.length, bracket_type: bracketType }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Erro interno'
-    return new Response(JSON.stringify({ error: message }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+      JSON.stringify({ success: true, matches_created: inserted?.length ?? 0 }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    );
+  } catch (e: any) {
+    return new Response(JSON.stringify({ error: e.message }), { status: 500 });
   }
-})
+});
