@@ -101,7 +101,7 @@ Para obter dados completos de um jogador a partir do Riot ID (`Nome#TAG`):
 Nome#TAG
    │
    ▼ account-v1 (americas)
- puuid ──────────────────────────────────────┐
+ puuid ────────────────────────────────────────────┬
    │                                         │
    ▼ summoner-v4 (br1)    ▼ league-v4       ▼ mastery-v4
  { id, level,           { tier, rank,      [ { championId,
@@ -118,18 +118,181 @@ Esse fluxo é executado em `app/api/riot/summoner/route.ts` usando `Promise.all(
 
 ---
 
-## Data Dragon (assets estáticos)
+## Assets Estáticos — Sem API Key
 
-Ícones de campeões e perfis são servidos pelo CDN da Riot:
+Todos os assets de imagem do jogo são servidos por CDNs públicas que **não requerem API Key**. O projeto possui funções helper em `lib/riot.ts` para cada tipo de asset.
+
+### Data Dragon (`ddragon.leagueoflegends.com`)
+
+CDN oficial da Riot para assets estáticos. A versão do patch é obtida dinamicamente por `getDDVersion()` e cacheada por 1 hora.
+
+| Função | Fonte | Descrição |
+|---|---|---|
+| `profileIconUrl(id)` | Data Dragon | Ícone de perfil do invocador |
+| `championIconUrl(name)` | Data Dragon | Ícone quadrado do campeão |
+| `championSplashUrl(name, skinNum?)` | Data Dragon | Splash art do campeão (skin 0 = base) |
+| `championLoadingUrl(name, skinNum?)` | Data Dragon | Loading screen do campeão |
+| `itemIconUrl(itemId)` | Data Dragon | Ícone do item (item0–item6 de `MatchParticipant`) |
+| `summonerSpellIconUrl(spellId)` | Data Dragon | Ícone de summoner spell |
+| `getAllChampions()` | Data Dragon JSON | Todos os campeões em `pt_BR` com metadados |
+
+#### URLs diretas (Data Dragon)
 
 ```
-https://ddragon.leagueoflegends.com/cdn/{versão}/img/profileicon/{iconId}.png
-https://ddragon.leagueoflegends.com/cdn/{versão}/img/champion/{championName}.png
-```
+# Ícone de perfil
+https://ddragon.leagueoflegends.com/cdn/{v}/img/profileicon/{id}.png
 
-A versão atual é obtida dinamicamente via:
-```
+# Ícone quadrado de campeão
+https://ddragon.leagueoflegends.com/cdn/{v}/img/champion/{Name}.png
+
+# Splash art (skin base)
+https://ddragon.leagueoflegends.com/cdn/img/champion/splash/{Name}_0.jpg
+
+# Splash art (skin específica)
+https://ddragon.leagueoflegends.com/cdn/img/champion/splash/{Name}_{num}.jpg
+
+# Loading screen
+https://ddragon.leagueoflegends.com/cdn/img/champion/loading/{Name}_{num}.jpg
+
+# Ícone de item
+https://ddragon.leagueoflegends.com/cdn/{v}/img/item/{itemId}.png
+
+# Ícone de summoner spell
+https://ddragon.leagueoflegends.com/cdn/{v}/img/spell/{spellId}.png
+
+# Versão atual do patch
 https://ddragon.leagueoflegends.com/api/versions.json
+
+# JSON de todos os campeões (pt_BR)
+https://ddragon.leagueoflegends.com/cdn/{v}/data/pt_BR/champion.json
 ```
 
-Em `lib/riot.ts`, a função `getDDVersion()` faz cache dessa versão por 1 hora para evitar chamadas repetidas.
+> **Nota sobre `{Name}`:** o Data Dragon usa o nome interno do campeão sem espaços e com capitalização específica. Exemplos: `MissFortune`, `AurelionSol`, `Wukong`. Use a propriedade `id` do JSON de `getAllChampions()` para obter o nome correto.
+
+#### Exemplo de uso no componente
+
+```tsx
+import { championSplashUrl, itemIconUrl, rankEmblemUrl } from "@/lib/riot";
+
+// Splash art como banner de perfil
+<img
+  src={championSplashUrl("Jinx", 0)}
+  alt="Jinx splash art"
+  width={1215}
+  height={717}
+/>
+
+// Item no histórico de partida
+{participant.item0 > 0 && (
+  <img
+    src={await itemIconUrl(participant.item0)}
+    alt={`Item ${participant.item0}`}
+    width={32}
+    height={32}
+  />
+)}
+
+// Emblema de rank
+<img
+  src={rankEmblemUrl(entry.tier)}
+  alt={entry.tier}
+  width={48}
+  height={48}
+/>
+```
+
+---
+
+### CommunityDragon (`raw.communitydragon.org`)
+
+Projeto da comunidade que extrai assets diretamente do cliente do jogo. Usado para assets **não disponíveis** no Data Dragon oficial.
+
+| Função | Descrição |
+|---|---|
+| `rankEmblemUrl(tier)` | Emblema visual do rank (Iron → Challenger) |
+| `masteryIconUrl(level)` | Ícone de nível de maestria (1–10) |
+
+#### URLs diretas (CommunityDragon)
+
+```
+# Emblema de rank
+https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/ranked-mini-regalia/{tier}.png
+
+# Exemplo: iron, bronze, silver, gold, platinum, emerald, diamond, master, grandmaster, challenger
+https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/ranked-mini-regalia/gold.png
+
+# Nível de maestria (1 a 10)
+https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-champion-mastery/global/default/mastery-{level}.png
+```
+
+#### Parâmetros aceitos por `rankEmblemUrl()`
+
+| Tier | Parâmetro |
+|---|---|
+| Ferro | `"iron"` |
+| Bronze | `"bronze"` |
+| Prata | `"silver"` |
+| Ouro | `"gold"` |
+| Platina | `"platinum"` |
+| Esmeralda | `"emerald"` |
+| Diamante | `"diamond"` |
+| Mestre | `"master"` |
+| Grã-Mestre | `"grandmaster"` |
+| Desafiante | `"challenger"` |
+
+A função `rankEmblemUrl()` já aplica `.toLowerCase()` automaticamente, então `rankEmblemUrl(entry.tier)` funciona diretamente com o retorno da API `league-v4`.
+
+---
+
+### getAllChampions() — JSON completo em pt_BR
+
+Retorna um objeto com **todos os campeões** do patch atual indexados pelo nome interno (`id`).
+
+```typescript
+const champions = await getAllChampions();
+// champions["Ahri"] =>
+// {
+//   id: "Ahri",
+//   key: "103",
+//   name: "Ahri",           // nome em pt_BR
+//   title: "a Raposa de Nove Caudas",
+//   blurb: "...",            // descrição curta
+//   tags: ["Mage", "Assassin"],
+//   image: { full: "Ahri.png", ... }
+// }
+```
+
+**Casos de uso no projeto:**
+- Seletor de campeão ao criar fase do torneio (ban/pick)
+- Filtro de campeão no histórico de partidas
+- Exibição do nome em português no perfil do jogador
+- Mapeamento de `championId` (numérico) → nome interno para montar URLs de asset
+
+> **Mapeando ID numérico para nome:** A API retorna `championId: 103` (Ahri). O JSON do Data Dragon contém o campo `key: "103"`. Para converter, itere sobre `getAllChampions()` e encontre o campeão onde `champion.key === String(championId)`.
+
+```typescript
+export async function getChampionNameById(championId: number): Promise<string | null> {
+  const all = await getAllChampions();
+  const found = Object.values(all).find(c => c.key === String(championId));
+  return found?.id ?? null; // retorna o nome interno (ex: "MissFortune")
+}
+```
+
+---
+
+## Referência completa de funções de asset em `lib/riot.ts`
+
+| Função | Async | Parâmetros | Retorno | CDN |
+|---|---|---|---|---|
+| `getDDVersion()` | sim | — | `string` (ex: `"16.8.1"`) | Data Dragon |
+| `profileIconUrl(id)` | sim | `id: number` | URL `.png` | Data Dragon |
+| `championIconUrl(name)` | sim | `name: string` | URL `.png` | Data Dragon |
+| `championSplashUrl(name, skinNum?)` | **não** | `name: string`, `skinNum?: number` (default 0) | URL `.jpg` | Data Dragon |
+| `championLoadingUrl(name, skinNum?)` | **não** | `name: string`, `skinNum?: number` (default 0) | URL `.jpg` | Data Dragon |
+| `itemIconUrl(itemId)` | sim | `itemId: number` | URL `.png` | Data Dragon |
+| `summonerSpellIconUrl(spellId)` | sim | `spellId: string` | URL `.png` | Data Dragon |
+| `rankEmblemUrl(tier)` | **não** | `tier: string` | URL `.png` | CommunityDragon |
+| `masteryIconUrl(level)` | **não** | `level: number` (1–10) | URL `.png` | CommunityDragon |
+| `getAllChampions()` | sim | — | `Record<string, ChampionBasic>` | Data Dragon |
+
+> Funções **não-async** (splash, loading, rank, maestria) retornam a URL imediatamente sem precisar esperar a versão do patch, pois seus URLs não dependem de `{v}`.
