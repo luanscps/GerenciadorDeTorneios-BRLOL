@@ -22,7 +22,25 @@ interface Invite {
   status: string;
   expires_at: string;
   created_at: string;
-  team: InviteTeam;
+  team: InviteTeam; // normalizado — Supabase retorna array, convertemos abaixo
+}
+
+// Tipo bruto do Supabase: FK join retorna sempre array
+interface _RawInvite {
+  id: string;
+  role: string;
+  status: string;
+  expires_at: string;
+  created_at: string;
+  team: InviteTeam | InviteTeam[] | null;
+}
+
+function normalizeInvites(raw: unknown[]): Invite[] {
+  return (raw as _RawInvite[]).map((inv) => ({
+    ...inv,
+    // Supabase retorna team como array em joins — pega o primeiro elemento
+    team: (Array.isArray(inv.team) ? inv.team[0] : inv.team) as InviteTeam,
+  }));
 }
 
 type ActionState = { id: string; type: 'accept' | 'reject' } | null;
@@ -31,17 +49,16 @@ export default function ConvitesPage() {
   const router   = useRouter();
   const supabase = useMemo(() => createClient(), []);
 
-  const [invites, setInvites]     = useState<Invite[]>([]);
-  const [loading, setLoading]     = useState(true);
-  const [action, setAction]       = useState<ActionState>(null);
-  const [feedback, setFeedback]   = useState<Record<string, { type: 'success' | 'error'; msg: string }>>({});
-  const [profile, setProfile]     = useState<{ riot_game_name: string; riot_tagline: string } | null>(null);
+  const [invites, setInvites]   = useState<Invite[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [action, setAction]     = useState<ActionState>(null);
+  const [feedback, setFeedback] = useState<Record<string, { type: 'success' | 'error'; msg: string }>>({});
+  const [profile, setProfile]   = useState<{ riot_game_name: string; riot_tagline: string } | null>(null);
 
   const loadConvites = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { router.push('/login'); return; }
 
-    // Carrega perfil para exibir para quem os convites foram enviados
     const { data: prof } = await supabase
       .from('profiles')
       .select('riot_game_name, riot_tagline')
@@ -50,7 +67,7 @@ export default function ConvitesPage() {
     setProfile(prof);
 
     const result = await listarConvitesPendentes();
-    setInvites((result.data as Invite[]) ?? []);
+    setInvites(result.data ? normalizeInvites(result.data as unknown[]) : []);
     setLoading(false);
   }, [supabase, router]);
 
@@ -58,7 +75,7 @@ export default function ConvitesPage() {
 
   async function handleAccept(inviteId: string) {
     setAction({ id: inviteId, type: 'accept' });
-    setFeedback(prev => ({ ...prev, [inviteId]: undefined! }));
+    setFeedback(prev => { const next = { ...prev }; delete next[inviteId]; return next; });
     const res = await aceitarConvite(inviteId);
     setAction(null);
     if (res.error) {
@@ -71,7 +88,7 @@ export default function ConvitesPage() {
 
   async function handleReject(inviteId: string) {
     setAction({ id: inviteId, type: 'reject' });
-    setFeedback(prev => ({ ...prev, [inviteId]: undefined! }));
+    setFeedback(prev => { const next = { ...prev }; delete next[inviteId]; return next; });
     const res = await recusarConvite(inviteId);
     setAction(null);
     if (res.error) {
@@ -88,8 +105,7 @@ export default function ConvitesPage() {
     const hours = Math.floor(diff / 1000 / 60 / 60);
     if (hours < 1) return 'Expira em menos de 1h';
     if (hours < 24) return `Expira em ${hours}h`;
-    const days = Math.floor(hours / 24);
-    return `Expira em ${days}d`;
+    return `Expira em ${Math.floor(hours / 24)}d`;
   }
 
   if (loading) return (
@@ -155,30 +171,21 @@ export default function ConvitesPage() {
                 >
                   {/* Cabeçalho do card */}
                   <div className="flex items-start gap-4">
-                    {/* Logo do time */}
                     <div className="w-12 h-12 rounded-xl bg-[#1E2A3A] border border-[#1E3A5F] flex items-center justify-center text-xl flex-shrink-0 overflow-hidden">
-                      {invite.team.logo_url ? (
-                        <img
-                          src={invite.team.logo_url}
-                          alt={invite.team.name}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        '🛡️'
-                      )}
+                      {invite.team?.logo_url ? (
+                        <img src={invite.team.logo_url} alt={invite.team.name} className="w-full h-full object-cover" />
+                      ) : '🛡️'}
                     </div>
 
-                    {/* Info do time */}
                     <div className="flex-1 min-w-0">
                       <p className="text-white font-semibold truncate">
-                        [{invite.team.tag}] {invite.team.name}
+                        [{invite.team?.tag}] {invite.team?.name}
                       </p>
                       <p className="text-gray-400 text-sm">
                         Posição: <span className="text-blue-400 font-medium">{ROLE_LABELS[invite.role] ?? invite.role}</span>
                       </p>
                     </div>
 
-                    {/* Badge de expiração */}
                     <span className={`text-xs px-2 py-0.5 rounded-full border flex-shrink-0 ${
                       isExpiring
                         ? 'text-red-400 bg-red-400/10 border-red-400/30'
@@ -199,8 +206,8 @@ export default function ConvitesPage() {
                     </p>
                   )}
 
-                  {/* Ações */}
-                  {!fb?.type || fb.type === 'error' ? (
+                  {/* Ações — some após sucesso */}
+                  {fb?.type !== 'success' && (
                     <div className="flex gap-2">
                       <button
                         onClick={() => handleAccept(invite.id)}
@@ -212,9 +219,7 @@ export default function ConvitesPage() {
                             <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                             Aceitando...
                           </span>
-                        ) : (
-                          '✅ Aceitar'
-                        )}
+                        ) : '✅ Aceitar'}
                       </button>
                       <button
                         onClick={() => handleReject(invite.id)}
@@ -226,19 +231,16 @@ export default function ConvitesPage() {
                             <span className="w-3.5 h-3.5 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
                             Recusando...
                           </span>
-                        ) : (
-                          '❌ Recusar'
-                        )}
+                        ) : '❌ Recusar'}
                       </button>
                     </div>
-                  ) : null}
+                  )}
                 </div>
               );
             })}
           </div>
         )}
 
-        {/* Rodapé informativo */}
         {invites.length > 0 && (
           <p className="text-center text-gray-600 text-xs">
             Convites expiram automaticamente em 48h após o envio.
