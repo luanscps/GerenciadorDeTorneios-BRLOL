@@ -1,51 +1,26 @@
 // lib/riot.ts
 import { getCached, setCached } from "@/lib/riot-cache";
 
-// ─── CORREÇÃO BUG 1: leitura lazy dentro de função, nunca no module-level ─────
 function getApiKey(): string {
   const key = process.env.RIOT_API_KEY;
-  if (!key) {
-    throw new Error("RIOT_API_KEY não configurada no servidor. Adicione no .env.local");
-  }
+  if (!key) throw new Error("RIOT_API_KEY não configurada no servidor.");
   return key;
 }
 
-// Mapa de region → regional routing value (continental)
 const REGION_TO_REGIONAL: Record<string, string> = {
-  br1: "americas",
-  na1: "americas",
-  la1: "americas",
-  la2: "americas",
-  euw1: "europe",
-  eun1: "europe",
-  tr1: "europe",
-  ru: "europe",
-  kr: "asia",
-  jp1: "asia",
-  oc1: "sea",
-  ph2: "sea",
-  sg2: "sea",
-  th2: "sea",
-  tw2: "sea",
-  vn2: "sea",
+  br1: "americas", na1: "americas", la1: "americas", la2: "americas",
+  euw1: "europe", eun1: "europe", tr1: "europe", ru: "europe",
+  kr: "asia", jp1: "asia",
+  oc1: "sea", ph2: "sea", sg2: "sea", th2: "sea", tw2: "sea", vn2: "sea",
 };
 
-function getRegion(): string {
-  return (process.env.RIOT_REGION ?? "br1").toLowerCase();
-}
-
+function getRegion(): string { return (process.env.RIOT_REGION ?? "br1").toLowerCase(); }
 function getRegionalHost(): string {
   const region = getRegion();
   return process.env.RIOT_REGIONAL_HOST ?? REGION_TO_REGIONAL[region] ?? "americas";
 }
-
-function getPlatformUrl(): string {
-  return "https://" + getRegion() + ".api.riotgames.com";
-}
-
-function getRegionalUrl(): string {
-  return "https://" + getRegionalHost() + ".api.riotgames.com";
-}
+function getPlatformUrl(): string { return "https://" + getRegion() + ".api.riotgames.com"; }
+function getRegionalUrl(): string { return "https://" + getRegionalHost() + ".api.riotgames.com"; }
 
 // ─── Data Dragon: versão dinâmica ─────────────────────────────────────────────
 let _ddVersion: string | null = null;
@@ -68,39 +43,30 @@ export async function getDDVersion(): Promise<string> {
   }
 }
 
-// ─── Helper principal ─────────────────────────────────────────────────────────
 async function riotFetch<T>(url: string): Promise<T> {
   const apiKey = getApiKey();
-
   const res = await fetch(url, {
     headers: { "X-Riot-Token": apiKey },
     next: { revalidate: 300 },
   });
-
   if (!res.ok) {
     const e = await res.json().catch(() => ({}));
     const msg = e?.status?.message ?? res.statusText;
     throw new Error(`Riot API ${res.status}: ${msg}`);
   }
-
   return res.json() as Promise<T>;
 }
 
 // ─── Endpoints ────────────────────────────────────────────────────────────────
 
-export async function getAccountByRiotId(
-  gameName: string,
-  tagLine: string
-): Promise<RiotAccount> {
+export async function getAccountByRiotId(gameName: string, tagLine: string): Promise<RiotAccount> {
   const key = ("account:" + gameName + "#" + tagLine).toLowerCase();
   const cached = getCached<RiotAccount>(key);
   if (cached) return cached;
-
   const data = await riotFetch<RiotAccount>(
     getRegionalUrl() +
     "/riot/account/v1/accounts/by-riot-id/" +
-    encodeURIComponent(gameName) + "/" +
-    encodeURIComponent(tagLine)
+    encodeURIComponent(gameName) + "/" + encodeURIComponent(tagLine)
   );
   setCached(key, data, 600);
   return data;
@@ -110,7 +76,6 @@ export async function getSummonerByPuuid(puuid: string): Promise<Summoner> {
   const key = "summoner:" + puuid;
   const cached = getCached<Summoner>(key);
   if (cached) return cached;
-
   const data = await riotFetch<Summoner>(
     getPlatformUrl() + "/lol/summoner/v4/summoners/by-puuid/" + puuid
   );
@@ -122,7 +87,6 @@ export async function getLeagueEntriesByPuuid(puuid: string): Promise<LeagueEntr
   const key = "league:" + puuid;
   const cached = getCached<LeagueEntry[]>(key);
   if (cached) return cached;
-
   const data = await riotFetch<LeagueEntry[]>(
     getPlatformUrl() + "/lol/league/v4/entries/by-puuid/" + puuid
   );
@@ -130,14 +94,10 @@ export async function getLeagueEntriesByPuuid(puuid: string): Promise<LeagueEntr
   return data;
 }
 
-export async function getTopMasteriesByPuuid(
-  puuid: string,
-  count = 5
-): Promise<ChampionMastery[]> {
+export async function getTopMasteriesByPuuid(puuid: string, count = 5): Promise<ChampionMastery[]> {
   const key = "mastery:" + puuid + ":" + count;
   const cached = getCached<ChampionMastery[]>(key);
   if (cached) return cached;
-
   const data = await riotFetch<ChampionMastery[]>(
     getPlatformUrl() +
     "/lol/champion-mastery/v4/champion-masteries/by-puuid/" +
@@ -147,15 +107,10 @@ export async function getTopMasteriesByPuuid(
   return data;
 }
 
-export async function getMatchIdsByPuuid(
-  puuid: string,
-  count = 20,
-  queue?: number
-): Promise<string[]> {
+export async function getMatchIdsByPuuid(puuid: string, count = 20, queue?: number): Promise<string[]> {
   const key = "matchids:" + puuid + ":" + count + ":" + (queue ?? "all");
   const cached = getCached<string[]>(key);
   if (cached) return cached;
-
   const q = queue ? "&queue=" + queue : "";
   const data = await riotFetch<string[]>(
     getRegionalUrl() +
@@ -170,7 +125,6 @@ export async function getMatchById(matchId: string): Promise<MatchDto> {
   const key = "match:" + matchId;
   const cached = getCached<MatchDto>(key);
   if (cached) return cached;
-
   const data = await riotFetch<MatchDto>(
     getRegionalUrl() + "/lol/match/v5/matches/" + matchId
   );
@@ -178,7 +132,7 @@ export async function getMatchById(matchId: string): Promise<MatchDto> {
   return data;
 }
 
-// ─── Asset URLs — Data Dragon (sem API Key) ───────────────────────────────────
+// ─── Asset URLs — Data Dragon ──────────────────────────────────────────────────
 
 /** Ícone circular de perfil do invocador */
 export async function profileIconUrl(id: number): Promise<string> {
@@ -187,20 +141,24 @@ export async function profileIconUrl(id: number): Promise<string> {
 }
 
 /**
- * Ícone quadrado do campeão (usado em cartas, listas).
- *
- * FIX: guard contra name null/undefined — retorna placeholder genérico.
- * O nome deve ser exatamente o "id" do DataDragon (ex: "MissFortune", "Ahri").
- * Campeões sem nome salvo no DB recebem o ícone de placeholder do DD.
+ * Ícone do campeão via CommunityDragon usando champion_id numérico.
+ * Mais confiável que DataDragon por nome pois não depende de normalização de string.
+ * Fallback: -1 retorna ícone genérico de placeholder.
+ */
+export function championIconByCDragon(championId: number | null | undefined): string {
+  const id = championId ?? -1;
+  return `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-icons/${id}.png`;
+}
+
+/**
+ * Ícone quadrado do campeão via DataDragon (por nome).
+ * Mantido como fallback. Prefira championIconByCDragon quando tiver o ID.
  */
 export async function championIconUrl(name: string | null | undefined): Promise<string> {
   const v = await getDDVersion();
   if (!name || name === "null" || name.trim() === "") {
-    // Retorna ícone genérico: champion -1 é o placeholder oficial do DataDragon
     return `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-icons/-1.png`;
   }
-  // DataDragon usa o ID do campeão (ex: "MissFortune"), não o displayName
-  // Normaliza: remove espaços e caracteres especiais para os campeões com nome composto
   const normalized = name.replace(/[^a-zA-Z0-9]/g, "");
   return `https://ddragon.leagueoflegends.com/cdn/${v}/img/champion/${normalized}.png`;
 }
@@ -208,7 +166,7 @@ export async function championIconUrl(name: string | null | undefined): Promise<
 /**
  * Splash art do campeão.
  * @param name     Nome exato do campeão (ex: "Ahri", "MissFortune")
- * @param skinNum  0 = skin base, 1+ = skins numeradas
+ * @param skinNum  0 = skin base
  */
 export function championSplashUrl(name: string | null | undefined, skinNum = 0): string {
   if (!name || name === "null") return "";
@@ -216,39 +174,28 @@ export function championSplashUrl(name: string | null | undefined, skinNum = 0):
   return `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${normalized}_${skinNum}.jpg`;
 }
 
-/**
- * Imagem de loading screen do campeão.
- * @param name     Nome exato do campeão
- * @param skinNum  0 = skin base, 1+ = skins numeradas
- */
 export function championLoadingUrl(name: string | null | undefined, skinNum = 0): string {
   if (!name || name === "null") return "";
   const normalized = name.replace(/[^a-zA-Z0-9]/g, "");
   return `https://ddragon.leagueoflegends.com/cdn/img/champion/loading/${normalized}_${skinNum}.jpg`;
 }
 
-/** Ícone de item (útil para exibir item0–item6 em MatchParticipant) */
 export async function itemIconUrl(itemId: number): Promise<string> {
   const v = await getDDVersion();
   return `https://ddragon.leagueoflegends.com/cdn/${v}/img/item/${itemId}.png`;
 }
 
-/** Ícone de summoner spell (ex: "SummonerFlash", "SummonerIgnite") */
 export async function summonerSpellIconUrl(spellId: string): Promise<string> {
   const v = await getDDVersion();
   return `https://ddragon.leagueoflegends.com/cdn/${v}/img/spell/${spellId}.png`;
 }
 
-// ─── Asset URLs — CommunityDragon (sem API Key) ───────────────────────────────
+// ─── Asset URLs — CommunityDragon ─────────────────────────────────────────────
 
 /**
  * Emblema de rank (tier) — ícone grande estilo in-client.
- *
- * FIX: path correto via rcp-fe-lol-static-assets.
- * URL verificada: /plugins/rcp-fe-lol-static-assets/global/default/ranked-emblem/emblem-{tier}.png
- *
- * @param tier  ex: "IRON", "BRONZE", "GOLD", "PLATINUM", "EMERALD",
- *              "DIAMOND", "MASTER", "GRANDMASTER", "CHALLENGER"
+ * URL verificada: retorna 200 para iron, bronze, silver, gold, platinum,
+ * emerald, diamond, master, grandmaster, challenger.
  */
 export function rankEmblemUrl(tier: string): string {
   const t = tier.toLowerCase();
@@ -256,31 +203,52 @@ export function rankEmblemUrl(tier: string): string {
 }
 
 /**
- * Ícone visual do nível de maestria do campeão (1–10).
- *
- * FIX: path correto via rcp-fe-lol-static-assets/champion-mastery.
- * URL verificada: /plugins/rcp-fe-lol-static-assets/global/default/champion-mastery/mastery_{level}.png
- * Níveis 1–10 disponíveis. Clamped entre 1 e 10 por segurança.
- *
- * @param level  Nível de maestria (1 a 10)
+ * Cor CSS da moldura de perfil por faixa de nível do invocador.
+ * Usado para renderizar a borda CSS animada no ícone de perfil.
+ * Espelha as faixas de cor do cliente do LoL.
  */
-export function masteryIconUrl(level: number): string {
-  const clamped = Math.min(Math.max(level, 1), 10);
-  return `https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/champion-mastery/mastery_${clamped}.png`;
+export function profileIconBorderStyle(level: number): {
+  color: string;
+  glow: string;
+  label: string;
+} {
+  if (level >= 500) return { color: "#FFD700", glow: "rgba(255,215,0,0.7)",   label: "Ouro Ancestral" };
+  if (level >= 400) return { color: "#C0C0FF", glow: "rgba(192,192,255,0.7)", label: "Prata Ancien" };
+  if (level >= 300) return { color: "#00D4FF", glow: "rgba(0,212,255,0.6)",   label: "Ciano Elite" };
+  if (level >= 200) return { color: "#9B59B6", glow: "rgba(155,89,182,0.6)",  label: "Violeta" };
+  if (level >= 150) return { color: "#E74C3C", glow: "rgba(231,76,60,0.6)",   label: "Vermelho" };
+  if (level >= 100) return { color: "#00E5CC", glow: "rgba(0,229,204,0.6)",   label: "Teal" };
+  if (level >= 50)  return { color: "#C8A84B", glow: "rgba(200,168,75,0.6)",  label: "Dourado" };
+  if (level >= 30)  return { color: "#A8A9AD", glow: "rgba(168,169,173,0.5)", label: "Prata" };
+  return            { color: "#8B7A6B", glow: "rgba(139,122,107,0.4)", label: "Bronze" };
+}
+
+/**
+ * Ícone de maestria — usa mastery-mark.png do CommunityDragon (verificado 200).
+ * A cor de destaque é aplicada via CSS no componente, por isso retornamos
+ * também a cor correspondente ao nível.
+ */
+export function masteryIconUrl(_level: number): string {
+  // CommunityDragon só tem o mark genérico; cor diferenciada via CSS overlay
+  return `https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/champion-mastery/mastery-mark.png`;
+}
+
+/** Cor CSS do nível de maestria (para tint/filter no ícone) */
+export function masteryLevelColor(level: number): string {
+  if (level >= 10) return "#FFD700"; // Maestria Suprema
+  if (level >= 7)  return "#C8A84B"; // Mestria dourada
+  if (level >= 6)  return "#9B59B6"; // Violeta
+  if (level >= 5)  return "#E74C3C"; // Vermelho
+  if (level >= 4)  return "#00E5CC"; // Teal
+  return "#8B7A6B"; // cinza
 }
 
 // ─── Data Dragon: JSON estático ───────────────────────────────────────────────
 
-/**
- * Retorna todos os campeões do jogo em português (pt_BR).
- * Útil para seletores de campeão, filtros e listagens no painel de torneio.
- * Cache de 1 hora — dados mudam apenas em novos patches.
- */
 export async function getAllChampions(): Promise<Record<string, ChampionBasic>> {
   const cacheKey = "dd:champions:pt_BR";
   const cached = getCached<Record<string, ChampionBasic>>(cacheKey);
   if (cached) return cached;
-
   const v = await getDDVersion();
   const res = await fetch(
     `https://ddragon.leagueoflegends.com/cdn/${v}/data/pt_BR/champion.json`,

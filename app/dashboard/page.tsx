@@ -4,9 +4,11 @@ import Link from "next/link";
 import Image from "next/image";
 import {
   profileIconUrl,
-  championIconUrl,
+  championIconByCDragon,
   rankEmblemUrl,
   masteryIconUrl,
+  masteryLevelColor,
+  profileIconBorderStyle,
   championSplashUrl,
 } from "@/lib/riot";
 
@@ -21,28 +23,6 @@ const STATUS_BADGE: Record<string, string> = {
   APPROVED: "bg-green-400/10  text-green-400  border border-green-400/30",
   REJECTED: "bg-red-400/10   text-red-400   border border-red-400/30",
 };
-
-/**
- * Retorna a URL da moldura de nível do invocador (profile icon border).
- * O LoL usa faixas: 1-29, 30-44, 45-69, 70-99, 100+ etc.
- * CommunityDragon disponibiliza as molduras no plugin rcp-fe-lol-uikit.
- * Usamos o asset genérico de moldura padrão que funciona para todos os níveis.
- */
-function profileIconFrameUrl(level: number): string {
-  // Faixas oficiais de moldura por nível do invocador
-  let frame = "honor-level-0-crest-icon"; // fallback genérico
-  if (level >= 1   && level < 30)  frame = "summoner-level-borders-1-29";
-  else if (level >= 30  && level < 50)  frame = "summoner-level-borders-30-49";
-  else if (level >= 50  && level < 100) frame = "summoner-level-borders-50-99";
-  else if (level >= 100 && level < 150) frame = "summoner-level-borders-100-149";
-  else if (level >= 150 && level < 200) frame = "summoner-level-borders-150-199";
-  else if (level >= 200 && level < 300) frame = "summoner-level-borders-200-299";
-  else if (level >= 300 && level < 400) frame = "summoner-level-borders-300-399";
-  else if (level >= 400 && level < 500) frame = "summoner-level-borders-400-499";
-  else if (level >= 500)                frame = "summoner-level-borders-500";
-
-  return `https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-profile-page/global/default/images/${frame}.png`;
-}
 
 export default async function DashboardPage({
   searchParams,
@@ -112,28 +92,27 @@ export default async function DashboardPage({
     .sort((a: any, b: any) => b.mastery_points - a.mastery_points)
     .slice(0, 5);
 
-  // ── Asset URLs (resolvidos server-side, versão dinâmica via getDDVersion) ──
+  // ── Asset URLs ──────────────────────────────────────────────────────────────
   const profileIcon = riotAccount?.profile_icon_id
     ? await profileIconUrl(riotAccount.profile_icon_id)
     : null;
 
-  // Moldura de nível do invocador
-  const iconFrame = riotAccount?.summoner_level
-    ? profileIconFrameUrl(riotAccount.summoner_level)
+  // Estilo da moldura CSS por faixa de nível
+  const borderStyle = riotAccount?.summoner_level
+    ? profileIconBorderStyle(riotAccount.summoner_level)
     : null;
 
   const mainChampionSplash = topMasteries[0]?.champion_name
     ? championSplashUrl(topMasteries[0].champion_name, 0)
     : null;
 
-  // Pré-resolve URLs de campeões e maestrias para evitar await dentro do JSX
-  const masteryAssets = await Promise.all(
-    topMasteries.map(async (m: any) => ({
-      ...m,
-      iconUrl:    await championIconUrl(m.champion_name),
-      masteryUrl: masteryIconUrl(m.mastery_level),
-    }))
-  );
+  // Ícone por champion_id via CommunityDragon (sempre 200, sem risco de 404 por nome)
+  const masteryAssets = topMasteries.map((m: any) => ({
+    ...m,
+    iconUrl:    championIconByCDragon(m.champion_id),
+    masteryUrl: masteryIconUrl(m.mastery_level),
+    masteryColor: masteryLevelColor(m.mastery_level),
+  }));
 
   return (
     <div className="space-y-8">
@@ -148,40 +127,72 @@ export default async function DashboardPage({
         </div>
       )}
 
-      {/* ── Perfil ── */}
+      {/* ── Perfil ─────────────────────────────────────────────────────────── */}
       <div className="card-lol flex items-center gap-6 flex-wrap">
 
-        {/* Ícone de perfil + moldura de nível sobreposta */}
-        <div className="relative shrink-0 w-[88px] h-[88px]">
+        {/* Ícone de perfil com moldura CSS animada por faixa de nível */}
+        <div className="relative shrink-0" style={{ width: 96, height: 96 }}>
           {profileIcon ? (
             <>
-              {/* Ícone de perfil Riot */}
-              <Image
-                src={profileIcon}
-                width={80} height={80}
-                alt="Profile Icon"
-                className="rounded-full absolute top-1 left-1"
-                unoptimized
-              />
-              {/* Moldura de nível sobreposta (overlay) */}
-              {iconFrame && (
-                <Image
-                  src={iconFrame}
-                  width={88} height={88}
-                  alt={`Moldura Nível ${riotAccount?.summoner_level}`}
-                  className="absolute inset-0 z-10"
-                  unoptimized
+              {/* Anel externo brilhante (moldura CSS) */}
+              {borderStyle && (
+                <span
+                  aria-hidden="true"
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    borderRadius: "50%",
+                    border: `3px solid ${borderStyle.color}`,
+                    boxShadow: `0 0 10px 3px ${borderStyle.glow}, inset 0 0 6px 1px ${borderStyle.glow}`,
+                    animation: "profile-frame-pulse 2.4s ease-in-out infinite",
+                    zIndex: 10,
+                    pointerEvents: "none",
+                  }}
                 />
               )}
-              {/* Nível do invocador na parte inferior da moldura */}
-              <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 z-20 bg-[#0A1428] border border-[#C8A84B]/60 text-[#C8A84B] text-[10px] font-bold px-1.5 py-0 rounded-full leading-5">
-                {riotAccount?.summoner_level}
+              {/* Ícone de perfil Riot (DataDragon) */}
+              <Image
+                src={profileIcon}
+                width={90} height={90}
+                alt="Ícone de Perfil Riot"
+                className="rounded-full"
+                style={{ position: "absolute", top: 3, left: 3 }}
+                unoptimized
+              />
+              {/* Badge de nível */}
+              <span
+                style={{
+                  position: "absolute",
+                  bottom: -6,
+                  left: "50%",
+                  transform: "translateX(-50%)",
+                  zIndex: 20,
+                  background: "#0A1428",
+                  border: `1px solid ${borderStyle?.color ?? "#C8A84B"}`,
+                  color: borderStyle?.color ?? "#C8A84B",
+                  fontSize: 10,
+                  fontWeight: 700,
+                  padding: "1px 6px",
+                  borderRadius: 9999,
+                  lineHeight: "16px",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Nv. {riotAccount?.summoner_level}
               </span>
             </>
           ) : (
             <div className="w-20 h-20 rounded-full bg-[#1E3A5F] flex items-center justify-center text-3xl">👤</div>
           )}
         </div>
+
+        {/* Animação da moldura — injetada inline para evitar dependência de CSS global */}
+        <style>{`
+          @keyframes profile-frame-pulse {
+            0%, 100% { opacity: 1; box-shadow: 0 0 10px 3px var(--glow), inset 0 0 6px 1px var(--glow); }
+            50% { opacity: 0.7; box-shadow: 0 0 18px 6px var(--glow), inset 0 0 10px 3px var(--glow); }
+          }
+        `}</style>
 
         <div className="flex-1 min-w-0">
           <h1 className="text-2xl font-bold text-white truncate">
@@ -201,7 +212,7 @@ export default async function DashboardPage({
         </Link>
       </div>
 
-      {/* ── Conta Riot ── */}
+      {/* ── Conta Riot ─────────────────────────────────────────────────────── */}
       {riotAccount && (
         <div className="card-lol space-y-4">
           <h2 className="text-lg font-bold text-white">⚔️ Conta Riot Vinculada</h2>
@@ -226,26 +237,30 @@ export default async function DashboardPage({
             </div>
           )}
 
-          {/* Rank cards com emblema visual */}
+          {/* Rank cards com emblema visual maior */}
           {(rankSolo || rankFlex) ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {[rankSolo, rankFlex].filter(Boolean).map((r: any) => (
-                <div key={r.queue_type} className="bg-[#0A1428] rounded-lg p-3 flex items-center gap-3">
-                  <Image
-                    src={rankEmblemUrl(r.tier)}
-                    width={52} height={52}
-                    alt={r.tier}
-                    title={r.tier}
-                    unoptimized
-                  />
+                <div key={r.queue_type} className="bg-[#0A1428] rounded-xl p-4 flex items-center gap-4">
+                  {/* Emblema 72x72 */}
+                  <div className="shrink-0 w-[72px] h-[72px] relative">
+                    <Image
+                      src={rankEmblemUrl(r.tier)}
+                      width={72} height={72}
+                      alt={r.tier}
+                      title={r.tier}
+                      className="object-contain"
+                      unoptimized
+                    />
+                  </div>
                   <div>
                     <p className="text-gray-400 text-xs uppercase tracking-wider">
                       {r.queue_type === "RANKED_SOLO_5x5" ? "Solo/Duo" : "Flex 5v5"}
                     </p>
-                    <p className="font-bold text-base" style={{ color: TIER_COLORS[r.tier] ?? "#fff" }}>
+                    <p className="font-bold text-lg leading-tight" style={{ color: TIER_COLORS[r.tier] ?? "#fff" }}>
                       {r.tier} {r.rank}
                     </p>
-                    <p className="text-white text-sm">{r.lp} LP</p>
+                    <p className="text-white font-semibold text-sm">{r.lp} LP</p>
                     <p className="text-gray-400 text-xs">
                       {r.wins}V · {r.losses}D ·{" "}
                       {r.wins + r.losses > 0
@@ -260,7 +275,7 @@ export default async function DashboardPage({
             <p className="text-gray-500 text-sm">Sem rank nesta temporada</p>
           )}
 
-          {/* Top Campeões com ícone de maestria visual */}
+          {/* Top Campeões — ícone via CommunityDragon por champion_id */}
           {masteryAssets.length > 0 && (
             <div>
               <p className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-3">
@@ -268,22 +283,46 @@ export default async function DashboardPage({
               </p>
               <div className="flex gap-4 flex-wrap">
                 {masteryAssets.map((m: any) => (
-                  <div key={m.champion_id} className="flex flex-col items-center gap-1" title={m.champion_name}>
-                    <Image
-                      src={m.iconUrl}
-                      width={48} height={48}
-                      alt={m.champion_name ?? "Campeão"}
-                      className="rounded border border-[#1E3A5F]"
-                      unoptimized
-                    />
-                    <Image
-                      src={m.masteryUrl}
-                      width={24} height={24}
-                      alt={`Maestria ${m.mastery_level}`}
-                      title={`Maestria ${m.mastery_level} · ${(m.mastery_points / 1000).toFixed(0)}k pts`}
-                      unoptimized
-                    />
-                    <p className="text-[9px] text-gray-500">
+                  <div
+                    key={m.champion_id}
+                    className="flex flex-col items-center gap-1"
+                    title={`${m.champion_name} · Maestria ${m.mastery_level} · ${(m.mastery_points / 1000).toFixed(0)}k pts`}
+                  >
+                    {/* Ícone do campeão */}
+                    <div className="relative w-[52px] h-[52px]">
+                      <Image
+                        src={m.iconUrl}
+                        width={52} height={52}
+                        alt={m.champion_name ?? "Campeão"}
+                        className="rounded-md w-full h-full object-cover"
+                        style={{ border: `2px solid ${m.masteryColor}` }}
+                        unoptimized
+                      />
+                      {/* Nível de maestria badge canto inferior */}
+                      <span
+                        style={{
+                          position: "absolute",
+                          bottom: -4,
+                          right: -4,
+                          background: "#0A1428",
+                          border: `1px solid ${m.masteryColor}`,
+                          color: m.masteryColor,
+                          fontSize: 9,
+                          fontWeight: 800,
+                          borderRadius: 9999,
+                          padding: "0 4px",
+                          lineHeight: "14px",
+                        }}
+                      >
+                        M{m.mastery_level}
+                      </span>
+                    </div>
+                    {/* Nome abreviado */}
+                    <p className="text-[10px] text-gray-400 max-w-[52px] truncate text-center">
+                      {m.champion_name}
+                    </p>
+                    {/* Pontos */}
+                    <p className="text-[9px] text-gray-600">
                       {(m.mastery_points / 1000).toFixed(0)}k
                     </p>
                   </div>
@@ -294,7 +333,7 @@ export default async function DashboardPage({
         </div>
       )}
 
-      {/* ── Meus Times (Capitão) ── */}
+      {/* ── Meus Times (Capitão) ───────────────────────────────────────────── */}
       <div className="card-lol">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold text-white">🛡️ Meus Times</h2>
@@ -304,9 +343,9 @@ export default async function DashboardPage({
         {myOwnedTeams && myOwnedTeams.length > 0 ? (
           <div className="space-y-3">
             {myOwnedTeams.map((team: any) => {
-              const insc   = team.inscricoes?.[0];
-              const tourn  = insc?.tournaments;
-              const statusKey = insc?.status ?? 'PENDING';
+              const insc      = team.inscricoes?.[0];
+              const tourn     = insc?.tournaments;
+              const statusKey = insc?.status ?? "PENDING";
               return (
                 <div key={team.id} className="bg-[#0A1628] rounded-lg p-3 flex items-center gap-3 flex-wrap">
                   <div className="flex-1 min-w-0">
@@ -319,7 +358,7 @@ export default async function DashboardPage({
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {insc && (
-                      <span className={`text-xs px-2 py-0.5 rounded font-medium ${STATUS_BADGE[statusKey] ?? 'text-gray-400'}`}>
+                      <span className={`text-xs px-2 py-0.5 rounded font-medium ${STATUS_BADGE[statusKey] ?? "text-gray-400"}`}>
                         {statusKey}
                       </span>
                     )}
@@ -328,7 +367,7 @@ export default async function DashboardPage({
                         ✅ Check-in
                       </span>
                     )}
-                    {insc?.status === 'APPROVED' && !insc?.checked_in && (
+                    {insc?.status === "APPROVED" && !insc?.checked_in && (
                       <Link
                         href={`/dashboard/times/${team.id}/checkin`}
                         className="text-xs bg-[#C8A84B]/10 text-[#C8A84B] border border-[#C8A84B]/30 px-2 py-0.5 rounded hover:bg-[#C8A84B]/20"
@@ -336,10 +375,7 @@ export default async function DashboardPage({
                         📋 Fazer Check-in
                       </Link>
                     )}
-                    <Link
-                      href={`/dashboard/times/${team.id}`}
-                      className="text-lol-gold hover:underline text-xs"
-                    >
+                    <Link href={`/dashboard/times/${team.id}`} className="text-lol-gold hover:underline text-xs">
                       Gerenciar →
                     </Link>
                   </div>
@@ -368,7 +404,7 @@ export default async function DashboardPage({
         )}
       </div>
 
-      {/* ── Torneios Abertos ── */}
+      {/* ── Torneios Abertos ───────────────────────────────────────────────── */}
       {openTournaments && openTournaments.length > 0 && (
         <div className="card-lol">
           <div className="flex items-center justify-between mb-4">
