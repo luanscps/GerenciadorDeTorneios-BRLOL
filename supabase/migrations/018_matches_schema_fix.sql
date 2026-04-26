@@ -16,14 +16,18 @@ ALTER TABLE public.matches
 CREATE INDEX IF NOT EXISTS idx_matches_tournament_round
   ON public.matches (tournament_id, round, match_number);
 
--- RLS: admin e organizador podem update
+-- RLS
 ALTER TABLE public.matches ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "matches_read_all"
+-- DROP seguro antes de recriar (evita "policy already exists")
+DROP POLICY IF EXISTS "matches_read_all"  ON public.matches;
+DROP POLICY IF EXISTS "matches_write_admin" ON public.matches;
+
+CREATE POLICY "matches_read_all"
   ON public.matches FOR SELECT
   USING (true);
 
-CREATE POLICY IF NOT EXISTS "matches_write_admin"
+CREATE POLICY "matches_write_admin"
   ON public.matches FOR ALL
   USING (
     EXISTS (
