@@ -2,14 +2,19 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
+import {
+  profileIconUrl,
+  championIconUrl,
+  rankEmblemUrl,
+  masteryIconUrl,
+  championSplashUrl,
+} from "@/lib/riot";
 
 const TIER_COLORS: Record<string, string> = {
   IRON: "#8B7A6B", BRONZE: "#CD7F32", SILVER: "#A8A9AD", GOLD: "#FFD700",
   PLATINUM: "#00E5CC", EMERALD: "#50C878", DIAMOND: "#99CCFF",
   MASTER: "#9B59B6", GRANDMASTER: "#E74C3C", CHALLENGER: "#00D4FF",
 };
-
-const DD_BASE = "https://ddragon.leagueoflegends.com/cdn/16.8.1";
 
 const STATUS_BADGE: Record<string, string> = {
   PENDING:  "bg-yellow-400/10 text-yellow-400 border border-yellow-400/30",
@@ -50,7 +55,6 @@ export default async function DashboardPage({
     .limit(1)
     .maybeSingle();
 
-  // Times onde o usuário é capitão (owner)
   const { data: myOwnedTeams } = await supabase
     .from("teams")
     .select(`
@@ -62,7 +66,6 @@ export default async function DashboardPage({
     .eq("owner_id", user.id)
     .limit(10);
 
-  // Times onde é apenas membro — query segura: só executa se houver times próprios
   const ownedIds = (myOwnedTeams ?? []).map((t: any) => t.id);
   const { data: myMemberTeams } = ownedIds.length > 0
     ? await supabase
@@ -87,6 +90,24 @@ export default async function DashboardPage({
     .sort((a: any, b: any) => b.mastery_points - a.mastery_points)
     .slice(0, 5);
 
+  // ── Asset URLs (resolvidos server-side, versão dinâmica via getDDVersion) ──
+  const profileIcon = riotAccount?.profile_icon_id
+    ? await profileIconUrl(riotAccount.profile_icon_id)
+    : null;
+
+  const mainChampionSplash = topMasteries[0]?.champion_name
+    ? championSplashUrl(topMasteries[0].champion_name, 0)
+    : null;
+
+  // Pré-resolve URLs de campeões e maestrias para evitar await dentro do JSX
+  const masteryAssets = await Promise.all(
+    topMasteries.map(async (m: any) => ({
+      ...m,
+      iconUrl:    await championIconUrl(m.champion_name),
+      masteryUrl: masteryIconUrl(m.mastery_level),
+    }))
+  );
+
   return (
     <div className="space-y-8">
 
@@ -103,9 +124,9 @@ export default async function DashboardPage({
       {/* ── Perfil ── */}
       <div className="card-lol flex items-center gap-6 flex-wrap">
         <div className="relative shrink-0">
-          {riotAccount?.profile_icon_id ? (
+          {profileIcon ? (
             <Image
-              src={`${DD_BASE}/img/profileicon/${riotAccount.profile_icon_id}.png`}
+              src={profileIcon}
               width={80} height={80} alt="Profile Icon"
               className="rounded-full border-2 border-[#C8A84B]"
             />
@@ -136,40 +157,90 @@ export default async function DashboardPage({
       {riotAccount && (
         <div className="card-lol space-y-4">
           <h2 className="text-lg font-bold text-white">⚔️ Conta Riot Vinculada</h2>
+
+          {/* Banner: splash art do campeão principal */}
+          {mainChampionSplash && (
+            <div
+              className="relative h-28 rounded-xl overflow-hidden"
+              style={{
+                backgroundImage: `url(${mainChampionSplash})`,
+                backgroundSize: "cover",
+                backgroundPosition: "center 20%",
+              }}
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-[#0A1428]/90 via-[#0A1428]/50 to-transparent" />
+              <div className="absolute bottom-3 left-4">
+                <p className="text-white font-bold text-base leading-tight">
+                  {topMasteries[0].champion_name}
+                </p>
+                <p className="text-[#C8A84B] text-xs">Campeão Principal</p>
+              </div>
+            </div>
+          )}
+
+          {/* Rank cards com emblema visual */}
           {(rankSolo || rankFlex) ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {[rankSolo, rankFlex].filter(Boolean).map((r: any) => (
-                <div key={r.queue_type} className="bg-[#0A1428] rounded-lg p-3">
-                  <p className="text-gray-400 text-xs uppercase tracking-wider mb-1">
-                    {r.queue_type === "RANKED_SOLO_5x5" ? "Solo/Duo" : "Flex 5v5"}
-                  </p>
-                  <p className="font-bold text-lg" style={{ color: TIER_COLORS[r.tier] ?? "#fff" }}>
-                    {r.tier} {r.rank}
-                  </p>
-                  <p className="text-white text-sm">{r.lp} LP</p>
-                  <p className="text-gray-400 text-xs">
-                    {r.wins}V · {r.losses}D ·{" "}
-                    {r.wins + r.losses > 0 ? Math.round((r.wins / (r.wins + r.losses)) * 100) : 0}% WR
-                  </p>
+                <div key={r.queue_type} className="bg-[#0A1428] rounded-lg p-3 flex items-center gap-3">
+                  {/* Emblema de rank via CommunityDragon */}
+                  <Image
+                    src={rankEmblemUrl(r.tier)}
+                    width={52} height={52}
+                    alt={r.tier}
+                    title={r.tier}
+                    unoptimized
+                  />
+                  <div>
+                    <p className="text-gray-400 text-xs uppercase tracking-wider">
+                      {r.queue_type === "RANKED_SOLO_5x5" ? "Solo/Duo" : "Flex 5v5"}
+                    </p>
+                    <p className="font-bold text-base" style={{ color: TIER_COLORS[r.tier] ?? "#fff" }}>
+                      {r.tier} {r.rank}
+                    </p>
+                    <p className="text-white text-sm">{r.lp} LP</p>
+                    <p className="text-gray-400 text-xs">
+                      {r.wins}V · {r.losses}D ·{" "}
+                      {r.wins + r.losses > 0
+                        ? Math.round((r.wins / (r.wins + r.losses)) * 100)
+                        : 0}% WR
+                    </p>
+                  </div>
                 </div>
               ))}
             </div>
           ) : (
             <p className="text-gray-500 text-sm">Sem rank nesta temporada</p>
           )}
-          {topMasteries.length > 0 && (
+
+          {/* Top Campeões com ícone de maestria visual */}
+          {masteryAssets.length > 0 && (
             <div>
-              <p className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2">Top Campeões</p>
-              <div className="flex gap-3 flex-wrap">
-                {topMasteries.map((m: any) => (
-                  <div key={m.champion_id} className="text-center" title={m.champion_name}>
+              <p className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-3">
+                Top Campeões
+              </p>
+              <div className="flex gap-4 flex-wrap">
+                {masteryAssets.map((m: any) => (
+                  <div key={m.champion_id} className="flex flex-col items-center gap-1" title={m.champion_name}>
+                    {/* Ícone do campeão — URL dinâmica via getDDVersion */}
                     <Image
-                      src={`${DD_BASE}/img/champion/${m.champion_name}.png`}
-                      width={48} height={48} alt={m.champion_name}
+                      src={m.iconUrl}
+                      width={48} height={48}
+                      alt={m.champion_name}
                       className="rounded border border-[#1E3A5F]"
+                      unoptimized
                     />
-                    <p className="text-[10px] text-gray-400 mt-0.5">M{m.mastery_level}</p>
-                    <p className="text-[9px] text-gray-600">{(m.mastery_points / 1000).toFixed(0)}k</p>
+                    {/* Ícone visual de nível de maestria — CommunityDragon */}
+                    <Image
+                      src={m.masteryUrl}
+                      width={24} height={24}
+                      alt={`Maestria ${m.mastery_level}`}
+                      title={`Maestria ${m.mastery_level} · ${(m.mastery_points / 1000).toFixed(0)}k pts`}
+                      unoptimized
+                    />
+                    <p className="text-[9px] text-gray-500">
+                      {(m.mastery_points / 1000).toFixed(0)}k
+                    </p>
                   </div>
                 ))}
               </div>
@@ -235,7 +306,6 @@ export default async function DashboardPage({
           <p className="text-gray-400 text-sm">Você ainda não criou nenhum time.</p>
         )}
 
-        {/* Membro em outros times */}
         {myMemberTeams && myMemberTeams.length > 0 && (
           <div className="mt-4 pt-4 border-t border-[#1E3A5F]">
             <p className="text-gray-500 text-xs uppercase tracking-wider mb-2">Participando como membro</p>
