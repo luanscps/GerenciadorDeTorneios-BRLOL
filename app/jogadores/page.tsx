@@ -1,20 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import Link from 'next/link';
 
-const TIER_ORDER: Record<string, number> = {
-  CHALLENGER: 1,
-  GRANDMASTER: 2,
-  MASTER: 3,
-  DIAMOND: 4,
-  EMERALD: 5,
-  PLATINUM: 6,
-  GOLD: 7,
-  SILVER: 8,
-  BRONZE: 9,
-  IRON: 10,
-  UNRANKED: 11,
-};
-
 const TIER_COLORS: Record<string, string> = {
   CHALLENGER: 'text-yellow-300',
   GRANDMASTER: 'text-red-400',
@@ -30,25 +16,56 @@ const TIER_COLORS: Record<string, string> = {
 };
 
 const TIER_EMBLEMS: Record<string, string> = {
-  CHALLENGER:   'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/ranked-emblems/emblem-challenger.png',
-  GRANDMASTER:  'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/ranked-emblems/emblem-grandmaster.png',
-  MASTER:       'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/ranked-emblems/emblem-master.png',
-  DIAMOND:      'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/ranked-emblems/emblem-diamond.png',
-  EMERALD:      'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/ranked-emblems/emblem-emerald.png',
-  PLATINUM:     'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/ranked-emblems/emblem-platinum.png',
-  GOLD:         'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/ranked-emblems/emblem-gold.png',
-  SILVER:       'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/ranked-emblems/emblem-silver.png',
-  BRONZE:       'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/ranked-emblems/emblem-bronze.png',
-  IRON:         'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/ranked-emblems/emblem-iron.png',
+  CHALLENGER:  'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/ranked-emblems/emblem-challenger.png',
+  GRANDMASTER: 'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/ranked-emblems/emblem-grandmaster.png',
+  MASTER:      'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/ranked-emblems/emblem-master.png',
+  DIAMOND:     'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/ranked-emblems/emblem-diamond.png',
+  EMERALD:     'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/ranked-emblems/emblem-emerald.png',
+  PLATINUM:    'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/ranked-emblems/emblem-platinum.png',
+  GOLD:        'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/ranked-emblems/emblem-gold.png',
+  SILVER:      'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/ranked-emblems/emblem-silver.png',
+  BRONZE:      'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/ranked-emblems/emblem-bronze.png',
+  IRON:        'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/ranked-emblems/emblem-iron.png',
 };
 
 const ROLE_LABELS: Record<string, string> = {
-  top: 'Top',
-  jungle: 'Jungle',
-  mid: 'Mid',
-  adc: 'ADC',
-  support: 'Support',
+  top: 'Top', jungle: 'Jungle', mid: 'Mid', adc: 'ADC', support: 'Support',
 };
+
+/**
+ * Separa summoner_name que pode vir de duas formas do banco:
+ *   1. summoner_name = "Gilius #93",  tag_line = "0001"  → usa tag_line
+ *   2. summoner_name = "Gilius #93",  tag_line = null     → split no '#'
+ *   3. summoner_name = "Gilius",      tag_line = "BR1"    → formato correto
+ *
+ * Retorna { gameName, tagLine } prontos para a URL e para a Riot API.
+ */
+function splitRiotId(
+  summoner_name: string | null | undefined,
+  tag_line: string | null | undefined,
+): { gameName: string; tagLine: string } | null {
+  if (!summoner_name) return null;
+
+  // Remove espaços extras
+  const raw = summoner_name.trim();
+
+  // Caso: summoner_name contém '#' (legado "Nick #TAG" ou "Nick#TAG")
+  const hashIdx = raw.indexOf('#');
+  if (hashIdx !== -1) {
+    const namePart = raw.slice(0, hashIdx).trim();
+    // Prefere tag_line do banco, mas usa o que vem depois do '#' como fallback
+    const tagPart  = (tag_line ?? raw.slice(hashIdx + 1)).trim();
+    if (!namePart || !tagPart) return null;
+    return { gameName: namePart, tagLine: tagPart };
+  }
+
+  // Caso normal: summoner_name limpo + tag_line separado
+  if (tag_line?.trim()) {
+    return { gameName: raw, tagLine: tag_line.trim() };
+  }
+
+  return null;
+}
 
 export default async function JogadoresPage({
   searchParams,
@@ -60,9 +77,7 @@ export default async function JogadoresPage({
 
   let query = supabase
     .from('players')
-    .select(
-      'id, summoner_name, tag_line, role, tier, rank, lp, wins, losses, puuid, team_id, teams(id, name, tag)'
-    )
+    .select('id, summoner_name, tag_line, role, tier, rank, lp, wins, losses, puuid, team_id, teams(id, name, tag)')
     .order('lp', { ascending: false });
 
   if (role) query = query.eq('role', role);
@@ -84,33 +99,16 @@ export default async function JogadoresPage({
     if (tier) params.set('tier', tier);
     if (q)    params.set('q', q);
     Object.entries(patch).forEach(([k, v]) => {
-      if (v === undefined) params.delete(k);
-      else params.set(k, v);
+      if (v === undefined) params.delete(k); else params.set(k, v);
     });
     const str = params.toString();
     return '/jogadores' + (str ? '?' + str : '');
-  }
-
-  // Monta URL de perfil: usa summoner_name + tag_line se disponível, senão puuid
-  function profileHref(player: {
-    summoner_name?: string | null;
-    tag_line?: string | null;
-    puuid?: string | null;
-  }): string | null {
-    if (player.summoner_name && player.tag_line) {
-      return `/jogadores/${encodeURIComponent(player.summoner_name)}/${encodeURIComponent(player.tag_line)}`;
-    }
-    if (player.puuid) {
-      return `/jogadores/${player.puuid}`;
-    }
-    return null;
   }
 
   return (
     <main className="min-h-screen bg-[#050E1A] py-10 px-4">
       <div className="max-w-5xl mx-auto space-y-8">
 
-        {/* Header */}
         <div>
           <h1 className="text-3xl font-bold text-white">Jogadores</h1>
           <p className="text-gray-400 text-sm mt-1">
@@ -120,7 +118,6 @@ export default async function JogadoresPage({
 
         {/* Filtros */}
         <div className="space-y-3">
-          {/* Busca */}
           <form method="GET" action="/jogadores">
             {role && <input type="hidden" name="role" value={role} />}
             {tier && <input type="hidden" name="tier" value={tier} />}
@@ -132,7 +129,6 @@ export default async function JogadoresPage({
             />
           </form>
 
-          {/* Role */}
           <div className="flex items-center flex-wrap gap-2">
             <span className="text-xs text-gray-500 mr-1">Role:</span>
             <Link href={buildQuery({ role: undefined })} className={`${btnBase} ${!role ? btnActive : btnInactive}`}>Todos</Link>
@@ -143,7 +139,6 @@ export default async function JogadoresPage({
             ))}
           </div>
 
-          {/* Tier */}
           <div className="flex items-center flex-wrap gap-2">
             <span className="text-xs text-gray-500 mr-1">Tier:</span>
             <Link href={buildQuery({ tier: undefined })} className={`${btnBase} ${!tier ? btnActive : btnInactive}`}>Todos</Link>
@@ -155,7 +150,7 @@ export default async function JogadoresPage({
           </div>
         </div>
 
-        {/* Lista de Jogadores */}
+        {/* Lista */}
         {(players ?? []).length === 0 ? (
           <div className="text-center py-16">
             <p className="text-4xl mb-3">🎮</p>
@@ -164,36 +159,41 @@ export default async function JogadoresPage({
         ) : (
           <div className="grid gap-3">
             {(players ?? []).map((player, idx) => {
-              const total    = (player.wins ?? 0) + (player.losses ?? 0);
-              const winrate  = total > 0 ? Math.round(((player.wins ?? 0) / total) * 100) : null;
-              const href     = profileHref(player);
-              const emblem   = TIER_EMBLEMS[player.tier ?? ''] ?? null;
+              const total   = (player.wins ?? 0) + (player.losses ?? 0);
+              const winrate = total > 0 ? Math.round(((player.wins ?? 0) / total) * 100) : null;
+              const emblem  = TIER_EMBLEMS[player.tier ?? ''] ?? null;
+
+              // Resolve gameName/tagLine considerando dados legados
+              const riotId  = splitRiotId(player.summoner_name, player.tag_line);
+              const href    = riotId
+                ? `/jogadores/${encodeURIComponent(riotId.gameName)}/${encodeURIComponent(riotId.tagLine)}`
+                : null;
+
+              // Nome a exibir: sempre sem o '#TAG'
+              const displayName = riotId?.gameName ?? player.summoner_name ?? '?';
+              const displayTag  = riotId?.tagLine  ?? player.tag_line      ?? '';
 
               const cardContent = (
                 <div className="bg-[#0D1B2E] border border-[#1E3A5F] rounded-lg p-4 flex items-center gap-4 hover:border-[#C8A84B]/40 hover:bg-[#0F2035] transition-all group">
-
-                  {/* Posição */}
                   <span className="text-gray-600 text-sm w-6 text-right flex-shrink-0 font-mono">{idx + 1}</span>
 
-                  {/* Emblema de tier */}
                   <div className="w-10 h-10 flex-shrink-0 flex items-center justify-center">
                     {emblem ? (
                       <img src={emblem} width={40} height={40} alt={player.tier ?? ''} className="w-10 h-10 object-contain" />
                     ) : (
                       <div className="w-8 h-8 rounded-full bg-[#1E3A5F]/50 flex items-center justify-center">
-                        <span className="text-gray-600 text-xs">?</span>
+                        <span className="text-gray-600 text-xs">🎮</span>
                       </div>
                     )}
                   </div>
 
-                  {/* Info principal */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-white font-semibold text-sm group-hover:text-[#C8A84B] transition-colors">
-                        {player.summoner_name}
+                        {displayName}
                       </span>
-                      {player.tag_line && (
-                        <span className="text-gray-500 text-xs">#{player.tag_line}</span>
+                      {displayTag && (
+                        <span className="text-gray-500 text-xs">#{displayTag}</span>
                       )}
                       {player.role && (
                         <span className="text-xs text-[#C8A84B] bg-[#C8A84B]/10 border border-[#C8A84B]/20 rounded px-1.5 py-0.5">
@@ -208,7 +208,6 @@ export default async function JogadoresPage({
                     )}
                   </div>
 
-                  {/* Tier / LP */}
                   <div className="text-right flex-shrink-0">
                     <p className={`text-sm font-semibold ${TIER_COLORS[player.tier ?? 'UNRANKED']}`}>
                       {player.tier ?? 'UNRANKED'} {player.rank ?? ''}
@@ -218,7 +217,6 @@ export default async function JogadoresPage({
                     )}
                   </div>
 
-                  {/* WR */}
                   <div className="text-right flex-shrink-0 hidden sm:block min-w-[64px]">
                     {winrate !== null ? (
                       <>
@@ -232,7 +230,6 @@ export default async function JogadoresPage({
                     )}
                   </div>
 
-                  {/* Botão Ver Perfil — sempre visível */}
                   {href && (
                     <div className="flex-shrink-0">
                       <span className="inline-flex items-center gap-1 text-xs font-semibold text-[#C8A84B] bg-[#C8A84B]/10 border border-[#C8A84B]/30 rounded-lg px-3 py-1.5 group-hover:bg-[#C8A84B]/20 transition-colors whitespace-nowrap">
@@ -243,15 +240,12 @@ export default async function JogadoresPage({
                 </div>
               );
 
-              // Se tem href, o card inteiro é clicável
               return href ? (
                 <Link key={player.id} href={href} className="block">
                   {cardContent}
                 </Link>
               ) : (
-                <div key={player.id}>
-                  {cardContent}
-                </div>
+                <div key={player.id}>{cardContent}</div>
               );
             })}
           </div>
