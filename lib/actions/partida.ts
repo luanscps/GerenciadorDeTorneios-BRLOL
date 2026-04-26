@@ -101,10 +101,10 @@ export async function updateResultadoPartida(
 
     const { score_a, score_b, winner_team_id, match_id_riot } = parsed.data;
 
-    // Busca partida atual para saber round/match_number
+    // Busca partida atual — inclui team_a_id e team_b_id para Picks & Bans
     const { data: match, error: errMatch } = await supabase
       .from("matches")
-      .select("id, round, match_number, tournament_id, best_of")
+      .select("id, round, match_number, tournament_id, best_of, team_a_id, team_b_id")
       .eq("id", matchDbId)
       .single();
 
