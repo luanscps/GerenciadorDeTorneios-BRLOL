@@ -1,18 +1,25 @@
-# Banco de Dados — BRLOL (Supabase)
+# Banco de Dados — Stub de Documentação
 
-> Esta documentação foi consolidada. Este arquivo agora funciona como índice para o documento unificado.
+> Este arquivo foi simplificado para evitar divergência com a documentação principal.  
+> O **modelo de dados completo** do GerenciadorDeTorneios-BRLOL (tabelas, colunas, enums, FKs, RLS, views e funções) está descrito em detalhes em:
+>
+> - `docs/BRLOL-DOCS-UNIFICADO.md`
+>   - Seção **"Modelo de dados — schema público Supabase"**
+>   - Seção **"Views e estatísticas"** (leaderboards, KDA, standings)
+>   - Seção **"Notificações e auditoria"**
+>
+> Quando precisar entender **como os dados são persistidos**, **quem pode ler/escrever** (RLS) ou **como uma feature usa o banco**:
+>
+> 1. Comece por `BRLOL-DOCS-UNIFICADO.md`.
+> 2. Se for algo específico de API, veja também `docs/api/supabase.md`.
 
-A descrição técnica **completa** do schema atual do Supabase está em **`docs/BRLOL-DOCS-UNIFICADO.md`**, na seção:
+---
 
-- "Modelo de dados — schema público Supabase"
+## Como usar este stub
 
-Lá você encontra:
+- Este arquivo existe apenas para:
+  - aparecer em buscas por "banco" / "database" no repositório;
+  - lembrar que o **único ponto de verdade** do schema é o documento unificado;
+  - evitar que alguém atualize aqui e esqueça de atualizar o resto.
 
-- enums de domínio (`tournament_status`, `bracket_type`, `match_status`, `inscricao_status`, `player_role`);
-- tabelas core (`profiles`, `tournaments`, `teams`, `players`, `inscricoes`, `tournament_stages`, `matches`, `match_games`, `player_stats`, `notifications`, `audit_log`);
-- camada Riot (`riot_accounts`, `rank_snapshots`, `champion_masteries`);
-- tabelas auxiliares (`prize_distribution`, `seedings`, `team_invites`, `disputes`, `tournament_rules`);
-- principais views (`v_stage_standings`, `v_player_tournament_kda`, `v_player_leaderboard`);
-- visão geral de RLS e funções SQL (`is_admin`, `handle_new_user`, `set_updated_at`, `log_admin_action`, `audit_matches_changes`).
-
-Use este arquivo como ponto de entrada rápido; para detalhes, sempre consulte o documento unificado.
+Se você achar que falta alguma informação de banco na documentação, **não adicione aqui**: abra um PR ajustando diretamente `BRLOL-DOCS-UNIFICADO.md`.
