@@ -110,6 +110,9 @@ function StatPill({
   );
 }
 
+// ── UUID v4 regex — FIX 1: regex correta, exige formato xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx ──
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 // ── Main Page ──────────────────────────────────────────────────────────────
 export default async function TimeDetailPage({
   params,
@@ -119,20 +122,76 @@ export default async function TimeDetailPage({
   const { slug } = await params;
   const admin = createAdminClient();
 
-  const isUUID = /^[0-9a-f-]{36}$/.test(slug);
+  // FIX 1: UUID regex estrita (não aceita apenas 36 chars com hífens)
+  const isUUID = UUID_REGEX.test(slug);
   const { data: team } = isUUID
     ? await admin.from("teams").select("*").eq("id", slug).single()
     : await admin.from("teams").select("*").eq("slug", slug).single();
 
   if (!team) notFound();
 
-  // ── Jogadores ─────────────────────────────────────────────────────────
-  const { data: players } = await admin
-    .from("players")
-    .select("id, summoner_name, tag_line, tier, rank, lp, wins, losses, role, profile_icon, summoner_level")
+  // ── FIX 2: busca roster via team_members → profiles → riot_accounts ───
+  // A tabela correta é team_members (relação profile_id → riot_accounts)
+  // e não players.eq("team_id") que estava errada e retornava vazio.
+  const { data: members } = await admin
+    .from("team_members")
+    .select(`
+      id,
+      role,
+      profile:profiles!team_members_profile_id_fkey(
+        id,
+        riot_accounts!riot_accounts_profile_id_fkey(
+          puuid,
+          game_name,
+          tag_line,
+          profile_icon_id,
+          tier,
+          rank,
+          lp,
+          wins,
+          losses,
+          summoner_level
+        )
+      )
+    `)
     .eq("team_id", team.id);
 
-  const sortedPlayers = (players ?? []).sort(
+  // Normaliza a estrutura para facilitar o render
+  type PlayerRow = {
+    id: string;
+    role: string | null;
+    summoner_name: string;
+    tag_line: string;          // FIX 3: vem de riot_accounts.tag_line (sem undefined)
+    profile_icon_id: number | null; // FIX 3: nome correto da coluna
+    tier: string | null;
+    rank: string | null;
+    lp: number | null;
+    wins: number | null;
+    losses: number | null;
+    summoner_level: number | null;
+  };
+
+  const players: PlayerRow[] = (members ?? [])
+    .map((m: any) => {
+      const ra = m.profile?.riot_accounts?.[0] ?? null;
+      return {
+        id:               m.id,
+        role:             m.role ?? null,
+        summoner_name:    ra?.game_name ?? "—",
+        // FIX 4: tag_line normalizado — remove "#" se existir, trata undefined/null
+        tag_line:         ra?.tag_line ? String(ra.tag_line).replace(/^#/, "") : "",
+        profile_icon_id:  ra?.profile_icon_id ?? null,   // FIX 3: coluna correta
+        tier:             ra?.tier ?? null,
+        rank:             ra?.rank ?? null,
+        lp:               ra?.lp ?? null,
+        wins:             ra?.wins ?? null,
+        losses:           ra?.losses ?? null,
+        summoner_level:   ra?.summoner_level ?? null,
+      };
+    })
+    .filter((p: PlayerRow) => p.summoner_name !== "—"); // remove membros sem conta Riot
+
+  const sortedPlayers = players.sort(
     (a, b) => (ROLE_ORDER[a.role ?? ""] ?? 99) - (ROLE_ORDER[b.role ?? ""] ?? 99),
   );
 
@@ -207,18 +266,25 @@ export default async function TimeDetailPage({
       : -1;
   const avgTierName = Object.entries(tierOrder).find(([, v]) => v === avgTierIdx)?.[0] ?? null;
 
+  // FIX 5: tabs como array para usar CSS class hover em vez de onMouseOver/Out inline
+  const NAV_TABS = [
+    { label: "👥 Roster",   href: "#roster"   },
+    { label: "⚔️ Partidas", href: "#partidas" },
+    { label: "📋 Torneios", href: "#torneios" },
+  ];
+
   return (
     <div className="min-h-screen bg-[#050E1A]">
 
       {/* ══════════════════════════════════════════════════════════════ */}
-      {/* BANNER HERO MELHORADO                                          */}
+      {/* BANNER HERO                                                     */}
       {/* ══════════════════════════════════════════════════════════════ */}
       <div className="relative w-full overflow-hidden" style={{ minHeight: 280 }}>
 
         {/* Camada 1 — fundo escuro base */}
         <div className="absolute inset-0 bg-[#050E1A]" />
 
-        {/* Camada 2 — logo espelhado/blurred como wallpaper se existir */}
+        {/* Camada 2 — logo blurred como wallpaper */}
         {team.logo_url && (
           <>
             <div
@@ -231,7 +297,6 @@ export default async function TimeDetailPage({
                 transform: "scale(1.15)",
               }}
             />
-            {/* Overlay gradiente escuro sobre o fundo */}
             <div
               className="absolute inset-0"
               style={{
@@ -242,7 +307,7 @@ export default async function TimeDetailPage({
           </>
         )}
 
-        {/* Camada 3 — gradiente radial dourado saindo do logo */}
+        {/* Camada 3 — gradiente radial dourado */}
         <div
           className="absolute inset-0 pointer-events-none"
           style={{
@@ -261,7 +326,7 @@ export default async function TimeDetailPage({
           }}
         />
 
-        {/* Partículas hexagonais decorativas (SVG inline) */}
+        {/* Hexágonos decorativos */}
         <svg
           className="absolute inset-0 w-full h-full pointer-events-none opacity-[0.04]"
           xmlns="http://www.w3.org/2000/svg"
@@ -284,13 +349,12 @@ export default async function TimeDetailPage({
         <div className="relative max-w-5xl mx-auto px-4 md:px-6 pt-10 pb-0">
           <div className="flex flex-col sm:flex-row items-center sm:items-end gap-6">
 
-            {/* Logo com borda dourada animada */}
-            <div className="relative flex-shrink-0 group">
+            {/* Logo */}
+            <div className="relative flex-shrink-0">
               <div
                 className="absolute -inset-[3px] rounded-2xl opacity-60"
                 style={{
-                  background:
-                    "linear-gradient(135deg, #C8A84B, #F4C874, #8B6914, #C8A84B)",
+                  background: "linear-gradient(135deg, #C8A84B, #F4C874, #8B6914, #C8A84B)",
                   borderRadius: "18px",
                 }}
               />
@@ -311,19 +375,16 @@ export default async function TimeDetailPage({
                   🛡️
                 </div>
               )}
-              {/* Reflexo brilhante no logo */}
               <div
                 className="absolute top-0 left-0 right-0 h-1/2 rounded-t-2xl pointer-events-none opacity-10"
                 style={{
-                  background:
-                    "linear-gradient(180deg, rgba(255,255,255,0.6) 0%, transparent 100%)",
+                  background: "linear-gradient(180deg, rgba(255,255,255,0.6) 0%, transparent 100%)",
                 }}
               />
             </div>
 
             {/* Informações do time */}
             <div className="flex-1 min-w-0 text-center sm:text-left pb-2">
-              {/* Tag + região */}
               <div className="flex items-center justify-center sm:justify-start gap-2 mb-2">
                 <span
                   className="text-xs font-black uppercase tracking-[0.25em] px-3 py-1 rounded border"
@@ -355,7 +416,6 @@ export default async function TimeDetailPage({
                 )}
               </div>
 
-              {/* Nome principal */}
               <h1
                 className="font-black leading-none tracking-tight"
                 style={{
@@ -367,14 +427,12 @@ export default async function TimeDetailPage({
                 {team.name}
               </h1>
 
-              {/* Descrição */}
               {team.description && (
                 <p className="text-gray-400 text-sm mt-2 max-w-xl leading-relaxed">
                   {team.description}
                 </p>
               )}
 
-              {/* Média de tier dos jogadores */}
               {avgTierName && (
                 <div className="flex items-center justify-center sm:justify-start gap-2 mt-3">
                   {TIER_EMBLEM[avgTierName] && (
@@ -408,13 +466,9 @@ export default async function TimeDetailPage({
                 boxShadow: "0 4px 24px rgba(0,0,0,0.4)",
               }}
             >
-              <StatPill value={wins} label="Vitórias" color="#2AC56F" />
-              <StatPill value={losses} label="Derrotas" color="#EF4444" />
-              <StatPill
-                value={`${wr}%`}
-                label="Winrate"
-                color={wr >= 50 ? "#2AC56F" : "#EF4444"}
-              />
+              <StatPill value={wins}   label="Vitórias"  color="#2AC56F" />
+              <StatPill value={losses} label="Derrotas"  color="#EF4444" />
+              <StatPill value={`${wr}%`} label="Winrate" color={wr >= 50 ? "#2AC56F" : "#EF4444"} />
               <StatPill value={sortedPlayers.length} label="Jogadores" color="#576BCE" />
               {total > 0 && <StatPill value={total} label="Partidas" color="#C8A84B" />}
               {tournamentsParticipated.length > 0 && (
@@ -447,33 +501,26 @@ export default async function TimeDetailPage({
             </div>
           )}
 
-          {/* ── Abas de navegação (estilo Leaguepedia) ──────────────── */}
+          {/* ── FIX 5: Abas de navegação sem onMouseOver/Out inline ── */}
+          {/* hover gerenciado por CSS class group/hover do Tailwind    */}
           <div
             className="flex gap-0 mt-8 border-b"
             style={{ borderColor: "rgba(30,58,95,0.7)" }}
           >
-            {[
-              { label: "👥 Roster", href: "#roster" },
-              { label: "⚔️ Partidas", href: "#partidas" },
-              { label: "📋 Torneios", href: "#torneios" },
-            ].map((tab) => (
+            {NAV_TABS.map((tab) => (
               <a
                 key={tab.href}
                 href={tab.href}
-                className="px-5 py-2.5 text-sm font-semibold transition-all relative"
-                style={{ color: "#9CA3AF" }}
-                onMouseOver={(e) =>
-                  ((e.currentTarget as HTMLElement).style.color = "#C8A84B")
-                }
-                onMouseOut={(e) =>
-                  ((e.currentTarget as HTMLElement).style.color = "#9CA3AF")
-                }
+                className="
+                  relative px-5 py-2.5 text-sm font-semibold
+                  text-gray-500 hover:text-[#C8A84B]
+                  transition-colors duration-150
+                  after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px]
+                  after:bg-[#C8A84B] after:scale-x-0 hover:after:scale-x-100
+                  after:transition-transform after:duration-200 after:origin-left
+                "
               >
                 {tab.label}
-                <span
-                  className="absolute bottom-0 left-0 right-0 h-[2px] opacity-0 hover:opacity-100 transition-opacity"
-                  style={{ background: "#C8A84B" }}
-                />
               </a>
             ))}
           </div>
@@ -545,8 +592,6 @@ export default async function TimeDetailPage({
                 const gamesPlayed = (p.wins ?? 0) + (p.losses ?? 0);
                 const playerWr =
                   gamesPlayed > 0 ? Math.round(((p.wins ?? 0) / gamesPlayed) * 100) : 0;
-                const tierColor =
-                  TIER_HEX[(p.tier ?? "UNRANKED").toUpperCase()] ?? "#4B5563";
 
                 return (
                   <div
@@ -559,7 +604,7 @@ export default async function TimeDetailPage({
                       {i + 1}
                     </span>
 
-                    {/* Ícone de role (CDragon SVG) */}
+                    {/* Ícone de role */}
                     <div className="flex flex-col items-center gap-0.5 w-10 flex-shrink-0">
                       {ROLE_ICON_URL[p.role ?? ""] ? (
                         <img
@@ -579,8 +624,8 @@ export default async function TimeDetailPage({
                       </span>
                     </div>
 
-                    {/* Avatar */}
-                    <PlayerAvatar iconId={p.profile_icon} name={p.summoner_name ?? ""} size={44} />
+                    {/* FIX 3: profile_icon_id — coluna correta de riot_accounts */}
+                    <PlayerAvatar iconId={p.profile_icon_id} name={p.summoner_name} size={44} />
 
                     {/* Info do summoner */}
                     <div className="flex-1 min-w-0">
@@ -589,7 +634,10 @@ export default async function TimeDetailPage({
                         style={{ color: "#fff" }}
                       >
                         {p.summoner_name}
-                        <span className="text-gray-600 font-normal text-xs">#{p.tag_line}</span>
+                        {/* FIX 4: tag_line normalizado — só renderiza se não for string vazia */}
+                        {p.tag_line && (
+                          <span className="text-gray-600 font-normal text-xs">#{p.tag_line}</span>
+                        )}
                       </p>
                       <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                         {p.summoner_level && (
@@ -611,7 +659,7 @@ export default async function TimeDetailPage({
                       </div>
                     </div>
 
-                    {/* Rank badge com emblema */}
+                    {/* Rank badge */}
                     <div className="hidden sm:flex flex-col items-end gap-1 flex-shrink-0">
                       <TierBadge tier={p.tier} rank={p.rank} lp={p.lp} />
                     </div>
@@ -779,7 +827,7 @@ export default async function TimeDetailPage({
                 <Link
                   key={t.id}
                   href={`/torneios/${t.slug}`}
-                  className="flex items-center justify-between px-4 py-3 transition-colors group"
+                  className="flex items-center justify-between px-4 py-3 transition-colors group hover:bg-[#0A1428]"
                   style={{
                     borderBottom:
                       i < tournamentsParticipated.length - 1
@@ -812,7 +860,7 @@ export default async function TimeDetailPage({
           </Link>
           <Link
             href="/dashboard/times/criar"
-            className="text-sm font-medium transition-colors"
+            className="text-sm font-medium transition-colors hover:text-[#F4C874]"
             style={{ color: "#C8A84B" }}
           >
             + Criar Time
