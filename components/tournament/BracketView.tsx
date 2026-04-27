@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 interface MatchTeam {
@@ -26,7 +27,7 @@ export interface BracketMatch {
 }
 
 function MatchCard({ match: m }: { match: BracketMatch }) {
-  const fin = m.status === 'FINISHED'
+  const fin  = m.status === 'FINISHED'
   const live = m.status === 'IN_PROGRESS'
 
   return (
@@ -89,7 +90,10 @@ function MatchCard({ match: m }: { match: BracketMatch }) {
       ))}
       {m.scheduled_at && m.status === 'SCHEDULED' && (
         <div className="px-3 py-1 text-xs text-gray-500 border-t border-[#1E3A5F]">
-          {new Date(m.scheduled_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+          {new Date(m.scheduled_at).toLocaleString('pt-BR', {
+            day: '2-digit', month: '2-digit',
+            hour: '2-digit', minute: '2-digit',
+          })}
         </div>
       )}
     </div>
@@ -97,7 +101,7 @@ function MatchCard({ match: m }: { match: BracketMatch }) {
 }
 
 function roundName(r: number, total: number): string {
-  if (r === total) return 'Final'
+  if (r === total)     return 'Final'
   if (r === total - 1) return 'Semifinal'
   if (r === total - 2) return 'Quartas de Final'
   if (r === total - 3) return 'Oitavas de Final'
@@ -112,10 +116,33 @@ interface BracketViewProps {
 
 export function BracketView({ initialMatches, tournamentId, readonly = false }: BracketViewProps) {
   const [matches, setMatches] = useState<BracketMatch[]>(initialMatches)
+  const router  = useRouter()
   const supabase = createClient()
 
+  // Estabiliza referencia do callback para evitar re-subscribe desnecessario
+  const handlePayload = useCallback((payload: any) => {
+    if (payload.eventType === 'UPDATE') {
+      setMatches(prev =>
+        prev.map(m =>
+          m.id === payload.new.id
+            ? {
+                ...m,
+                status:         payload.new.status,
+                score_a:        payload.new.score_a ?? m.score_a,
+                score_b:        payload.new.score_b ?? m.score_b,
+                winner_team_id: payload.new.winner_team_id,
+              }
+            : m
+        )
+      )
+    } else if (payload.eventType === 'INSERT') {
+      // Novas partidas inseridas: atualiza dados server-side sem reload completo
+      router.refresh()
+    }
+  }, [router])
+
   useEffect(() => {
-    if (readonly) return // No realtime for public view embedding
+    if (readonly) return
 
     const channel = supabase
       .channel(`bracket-${tournamentId}`)
@@ -127,40 +154,19 @@ export function BracketView({ initialMatches, tournamentId, readonly = false }: 
           table: 'matches',
           filter: `tournament_id=eq.${tournamentId}`,
         },
-        (payload) => {
-          if (payload.eventType === 'UPDATE') {
-            setMatches((prev) =>
-              prev.map((m) => {
-                if (m.id === (payload.new as any).id) {
-                  return {
-                    ...m,
-                    status: (payload.new as any).status,
-                    score_a: (payload.new as any).score_a ?? m.score_a,
-                    score_b: (payload.new as any).score_b ?? m.score_b,
-                    winner_team_id: (payload.new as any).winner_team_id,
-                  }
-                }
-                return m
-              })
-            )
-          } else if (payload.eventType === 'INSERT') {
-            // Recarregar ao inserir novas partidas
-            window.location.reload()
-          }
-        }
+        handlePayload
       )
       .subscribe()
 
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [tournamentId, readonly])
+    return () => { supabase.removeChannel(channel) }
+  }, [tournamentId, readonly, handlePayload])
 
   if (matches.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-gray-500">
         <svg className="w-16 h-16 mb-4 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1}
+            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
         </svg>
         <p className="text-lg">Bracket ainda não gerado</p>
         <p className="text-sm mt-1">Aguarde o início do torneio</p>
@@ -168,9 +174,9 @@ export function BracketView({ initialMatches, tournamentId, readonly = false }: 
     )
   }
 
-  const maxRound = Math.max(...matches.map((m) => m.round), 1)
+  const maxRound = Math.max(...matches.map(m => m.round), 1)
   const rounds = Array.from({ length: maxRound }, (_, i) =>
-    matches.filter((m) => m.round === i + 1).sort((a, b) => a.match_order - b.match_order)
+    matches.filter(m => m.round === i + 1).sort((a, b) => a.match_order - b.match_order)
   )
 
   return (
@@ -194,7 +200,7 @@ export function BracketView({ initialMatches, tournamentId, readonly = false }: 
                 paddingTop: `${Math.pow(2, i) * 8}px`,
               }}
             >
-              {roundMatches.map((match) => (
+              {roundMatches.map(match => (
                 <MatchCard key={match.id} match={match} />
               ))}
             </div>
