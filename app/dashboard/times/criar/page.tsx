@@ -25,6 +25,7 @@ interface PlayerSlot {
   summonerLevel: number | null;
   lane: "TOP" | "JUNGLE" | "MID" | "ADC" | "SUPPORT";
   existingRiotAccountId: string | null;
+  existingProfileId: string | null;
 }
 
 const ROLES: Array<"TOP" | "JUNGLE" | "MID" | "ADC" | "SUPPORT"> = [
@@ -62,31 +63,34 @@ function generateSlug(name: string): string {
 }
 
 function CriarTimeForm() {
-  const [nome, setNome]           = useState("");
-  const [tag, setTag]             = useState("");
-  const [description, setDesc]    = useState("");
-  const [logoUrl, setLogoUrl]     = useState("");
-  const [players, setPlayers]     = useState<PlayerSlot[]>([]);
-  const [searchQuery, setSearch]  = useState("");
-  const [searchResult, setResult] = useState<Omit<PlayerSlot, "lane" | "existingRiotAccountId"> | null>(null);
+  const [nome, setNome] = useState("");
+  const [tag, setTag] = useState("");
+  const [description, setDesc] = useState("");
+  const [logoUrl, setLogoUrl] = useState("");
+  const [players, setPlayers] = useState<PlayerSlot[]>([]);
+  const [searchQuery, setSearch] = useState("");
+  const [searchResult, setResult] = useState<Omit<PlayerSlot, "lane"> | null>(null);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState("");
-  const [addLane, setAddLane]     = useState<"TOP" | "JUNGLE" | "MID" | "ADC" | "SUPPORT">("TOP");
-  const [loading, setLoading]     = useState(false);
-  const [error, setError]         = useState("");
-  const [checking, setChecking]   = useState(true);
-  const [account, setAccount]     = useState<RiotAccount | null>(null);
+  const [addLane, setAddLane] = useState<"TOP" | "JUNGLE" | "MID" | "ADC" | "SUPPORT">("TOP");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [checking, setChecking] = useState(true);
+  const [account, setAccount] = useState<RiotAccount | null>(null);
   const [captainLane, setCaptainLane] = useState<"TOP" | "JUNGLE" | "MID" | "ADC" | "SUPPORT">("TOP");
 
-  const router       = useRouter();
+  const router = useRouter();
   const searchParams = useSearchParams();
-  const supabase     = useMemo(() => createClient(), []);
+  const supabase = useMemo(() => createClient(), []);
   const tournamentId = searchParams.get("tournament") ?? null;
 
   useEffect(() => {
     async function checkAccount() {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { router.push("/login"); return; }
+      if (!user) {
+        router.push("/login");
+        return;
+      }
 
       const { data: acct } = await supabase
         .from("riot_accounts")
@@ -101,7 +105,6 @@ function CriarTimeForm() {
     checkAccount();
   }, [supabase, router]);
 
-  // ── Busca por Riot ID ───────────────────────────────────────────────────
   async function handleSearch() {
     const q = searchQuery.trim();
     const hashIdx = q.lastIndexOf("#");
@@ -109,40 +112,41 @@ function CriarTimeForm() {
       setSearchError("Use o formato: NomeIngame#TAG  (ex: renektonforever#019)");
       return;
     }
+
     const gameName = q.slice(0, hashIdx);
-    const tagLine  = q.slice(hashIdx + 1);
+    const tagLine = q.slice(hashIdx + 1);
 
     setSearching(true);
     setSearchError("");
     setResult(null);
 
     try {
-      const res  = await fetch(
+      const res = await fetch(
         `/api/riot/player?gameName=${encodeURIComponent(gameName)}&tagLine=${encodeURIComponent(tagLine)}`
       );
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error ?? "Jogador não encontrado");
 
-      // Verifica se o jogador tem conta cadastrada no sistema
       const { data: existingAcct } = await supabase
         .from("riot_accounts")
-        .select("id")
+        .select("id, profile_id")
         .eq("puuid", data.puuid)
         .maybeSingle();
 
       setResult({
-        puuid:         data.puuid,
-        gameName:      data.gameName,
-        tagLine:       data.tagLine,
-        tier:          data.tier ?? "UNRANKED",
-        rank:          data.rank ?? "",
-        lp:            data.lp ?? 0,
-        wins:          data.wins ?? 0,
-        losses:        data.losses ?? 0,
+        puuid: data.puuid,
+        gameName: data.gameName,
+        tagLine: data.tagLine,
+        tier: data.tier ?? "UNRANKED",
+        rank: data.rank ?? "",
+        lp: data.lp ?? 0,
+        wins: data.wins ?? 0,
+        losses: data.losses ?? 0,
         profileIconId: data.profileIconId ?? null,
         summonerLevel: data.summonerLevel ?? null,
         existingRiotAccountId: existingAcct?.id ?? null,
-      } as any);
+        existingProfileId: existingAcct?.profile_id ?? null,
+      });
     } catch (e: any) {
       setSearchError(e.message);
     } finally {
@@ -152,37 +156,32 @@ function CriarTimeForm() {
 
   function addPlayer() {
     if (!searchResult) return;
-    if (players.some(p => p.puuid === searchResult.puuid)) {
+    if (players.some((p) => p.puuid === searchResult.puuid)) {
       setSearchError("Este jogador já foi adicionado.");
       return;
     }
-    const takenLanes = new Set([...players.map(p => p.lane), captainLane]);
+
+    const takenLanes = new Set([...players.map((p) => p.lane), captainLane]);
     if (takenLanes.has(addLane)) {
       setSearchError(`A lane ${ROLE_LABELS[addLane]} já está preenchida.`);
       return;
     }
+
     if (players.length >= 4) {
       setSearchError("O time já tem os 4 jogadores adicionais (você é o capitão, 5/5).");
       return;
     }
-    setPlayers(prev => [
-      ...prev,
-      {
-        ...searchResult,
-        lane: addLane,
-        existingRiotAccountId: (searchResult as any).existingRiotAccountId ?? null,
-      } as PlayerSlot,
-    ]);
+
+    setPlayers((prev) => [...prev, { ...searchResult, lane: addLane }]);
     setResult(null);
     setSearch("");
     setSearchError("");
   }
 
   function removePlayer(puuid: string) {
-    setPlayers(prev => prev.filter(p => p.puuid !== puuid));
+    setPlayers((prev) => prev.filter((p) => p.puuid !== puuid));
   }
 
-  // ── Submit ──────────────────────────────────────────────────────────────
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!account) return;
@@ -191,27 +190,40 @@ function CriarTimeForm() {
 
     try {
       const { data: { user }, error: authError } = await supabase.auth.getUser();
-      if (authError || !user) { router.push("/login"); return; }
+      if (authError || !user) {
+        router.push("/login");
+        return;
+      }
 
-      const slug = generateSlug(nome.trim());
+      const normalizedTag = tag.trim().toUpperCase();
+      const slugBase = generateSlug(nome.trim());
 
-      const { data: existing } = await supabase
+      const { data: existingByTag } = await supabase
         .from("teams")
-        .select("id")
-        .eq("slug", slug)
+        .select("id, name, slug")
+        .eq("tag", normalizedTag)
         .maybeSingle();
 
-      const finalSlug = existing ? `${slug}-${Date.now()}` : slug;
+      if (existingByTag) {
+        throw new Error(`Já existe um time com a tag [${normalizedTag}] (${existingByTag.name}). Escolha outra tag.`);
+      }
 
-      // 1. Cria o time
+      const { data: existingBySlug } = await supabase
+        .from("teams")
+        .select("id")
+        .eq("slug", slugBase)
+        .maybeSingle();
+
+      const finalSlug = existingBySlug ? `${slugBase}-${Date.now()}` : slugBase;
+
       const insertPayload: Record<string, unknown> = {
-        name:        nome.trim(),
-        tag:         tag.trim().toUpperCase(),
-        owner_id:    user.id,
-        slug:        finalSlug,
+        name: nome.trim(),
+        tag: normalizedTag,
+        owner_id: user.id,
+        slug: finalSlug,
         description: description.trim() || null,
-        logo_url:    logoUrl.trim() || null,
-        is_active:   true,
+        logo_url: logoUrl.trim() || null,
+        is_active: true,
       };
       if (tournamentId) insertPayload.tournament_id = tournamentId;
 
@@ -223,65 +235,41 @@ function CriarTimeForm() {
 
       if (teamError) throw new Error(teamError.message);
 
-      // 2. Insere capitão em team_members (status accepted, team_role captain)
-      const { error: captainError } = await supabase
-        .from("team_members")
-        .insert({
-          team_id:         team.id,
-          profile_id:      user.id,
+      const memberRows = [
+        {
+          team_id: team.id,
+          profile_id: user.id,
           riot_account_id: account.id,
-          team_role:       "captain",
-          status:          "accepted",
-          lane:            captainLane,
-          invited_by:      user.id,
-        });
+          team_role: "captain",
+          status: "accepted",
+          lane: captainLane,
+          invited_by: user.id,
+        },
+        ...players
+          .filter((p) => p.existingProfileId && p.existingRiotAccountId)
+          .map((p) => ({
+            team_id: team.id,
+            profile_id: p.existingProfileId as string,
+            riot_account_id: p.existingRiotAccountId as string,
+            team_role: "member",
+            status: "accepted",
+            lane: p.lane,
+            invited_by: user.id,
+          })),
+      ];
 
-      if (captainError) throw new Error("Erro ao inserir capitão: " + captainError.message);
+      const { error: membersError } = await supabase
+        .from("team_members")
+        .insert(memberRows);
 
-      // 3. Busca profile_id de cada jogador adicionado pelo puuid da conta Riot
-      //    e insere em team_members (status accepted, team_role member)
-      if (players.length > 0) {
-        const membersToInsert = await Promise.all(
-          players.map(async (p) => {
-            // Tenta encontrar o profile do jogador pelo riot_account
-            let profileId: string | null = null;
-            if (p.existingRiotAccountId) {
-              const { data: ra } = await supabase
-                .from("riot_accounts")
-                .select("profile_id")
-                .eq("id", p.existingRiotAccountId)
-                .maybeSingle();
-              profileId = ra?.profile_id ?? null;
-            }
+      if (membersError) throw new Error("Erro ao inserir membros do time: " + membersError.message);
 
-            return {
-              team_id:         team.id,
-              // Se não encontrou perfil no sistema, usa o do capitão como fallback
-              // Isso é um placeholder até o jogador aceitar convite
-              profile_id:      profileId ?? user.id,
-              riot_account_id: p.existingRiotAccountId ?? null,
-              team_role:       "member",
-              status:          profileId ? "accepted" : "pending",
-              lane:            p.lane,
-              invited_by:      user.id,
-            };
-          })
-        );
-
-        const { error: membersError } = await supabase
-          .from("team_members")
-          .insert(membersToInsert);
-
-        if (membersError) console.warn("Aviso team_members:", membersError.message);
-      }
-
-      // 4. Se tem torneio, inscreve o time
       if (tournamentId) {
         await supabase.from("inscricoes").insert({
           tournament_id: tournamentId,
-          team_id:       team.id,
-          requested_by:  user.id,
-          status:        "PENDING",
+          team_id: team.id,
+          requested_by: user.id,
+          status: "PENDING",
         });
         router.push(`/torneios/${tournamentId}?inscrito=true`);
       } else {
@@ -294,7 +282,6 @@ function CriarTimeForm() {
     }
   }
 
-  // ── Loading / Sem conta ────────────────────────────────────────────────
   if (checking) {
     return (
       <div className="max-w-2xl mx-auto card-lol py-16 text-center">
@@ -318,9 +305,8 @@ function CriarTimeForm() {
     );
   }
 
-  const takenLanes = new Set([...players.map(p => p.lane), captainLane]);
+  const takenLanes = new Set([...players.map((p) => p.lane), captainLane]);
 
-  // ── Render ─────────────────────────────────────────────────────────────
   return (
     <div className="max-w-2xl mx-auto space-y-6 pb-10">
       <div>
@@ -338,7 +324,6 @@ function CriarTimeForm() {
         </div>
       )}
 
-      {/* Conta vinculada — Capitão */}
       <div className="card-lol space-y-3">
         <p className="text-[#C8A84B] font-semibold text-xs uppercase tracking-widest">Capitão (você)</p>
         <div className="flex items-center gap-3">
@@ -359,11 +344,10 @@ function CriarTimeForm() {
             <p className="text-gray-500 text-xs">Nível {account.summoner_level} · Capitão ✅</p>
           </div>
         </div>
-        {/* Lane do capitão */}
         <div>
           <p className="text-gray-500 text-xs mb-2">Sua lane no time:</p>
           <div className="flex gap-2 flex-wrap">
-            {ROLES.map(r => (
+            {ROLES.map((r) => (
               <button
                 key={r}
                 type="button"
@@ -387,8 +371,6 @@ function CriarTimeForm() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
-
-        {/* ── Dados do Time ── */}
         <div className="card-lol space-y-4">
           <h2 className="text-[#C8A84B] font-semibold text-sm uppercase tracking-widest">Dados do Time</h2>
 
@@ -399,7 +381,7 @@ function CriarTimeForm() {
               </label>
               <input
                 value={nome}
-                onChange={e => setNome(e.target.value)}
+                onChange={(e) => setNome(e.target.value)}
                 placeholder="Ex: Team Fúria BR"
                 className="input-lol w-full"
                 maxLength={32}
@@ -414,10 +396,11 @@ function CriarTimeForm() {
               </label>
               <input
                 value={tag}
-                onChange={e => setTag(e.target.value.toUpperCase())}
+                onChange={(e) => setTag(e.target.value.toUpperCase())}
                 placeholder="Ex: FURA"
                 className="input-lol w-full"
-                maxLength={5} minLength={2}
+                maxLength={5}
+                minLength={2}
                 required
               />
               <p className="text-gray-600 text-xs mt-1">2–5 letras · exibida como [TAG]</p>
@@ -428,7 +411,7 @@ function CriarTimeForm() {
             <label className="block text-gray-400 text-sm mb-1">URL do Logotipo</label>
             <input
               value={logoUrl}
-              onChange={e => setLogoUrl(e.target.value)}
+              onChange={(e) => setLogoUrl(e.target.value)}
               placeholder="https://exemplo.com/logo.png"
               className="input-lol w-full"
               type="url"
@@ -438,9 +421,10 @@ function CriarTimeForm() {
                 <img
                   src={logoUrl}
                   alt="logo preview"
-                  width={48} height={48}
+                  width={48}
+                  height={48}
                   className="rounded-lg border border-[#1E3A5F] object-cover w-12 h-12"
-                  onError={e => (e.currentTarget.style.display = "none")}
+                  onError={(e) => (e.currentTarget.style.display = "none")}
                 />
                 <span className="text-gray-500 text-xs">Preview do logotipo</span>
               </div>
@@ -451,7 +435,7 @@ function CriarTimeForm() {
             <label className="block text-gray-400 text-sm mb-1">Descrição (opcional)</label>
             <textarea
               value={description}
-              onChange={e => setDesc(e.target.value)}
+              onChange={(e) => setDesc(e.target.value)}
               placeholder="Descreva o time, história, objetivos..."
               className="input-lol w-full resize-none"
               rows={2}
@@ -461,7 +445,6 @@ function CriarTimeForm() {
           </div>
         </div>
 
-        {/* ── Roster ── */}
         <div className="card-lol space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-[#C8A84B] font-semibold text-sm uppercase tracking-widest">Roster</h2>
@@ -470,18 +453,17 @@ function CriarTimeForm() {
             </span>
           </div>
 
-          {/* Busca por Riot ID */}
           {players.length < 4 && (
             <div className="space-y-3">
               <label className="block text-gray-400 text-sm">
                 Adicionar jogador por Riot ID
-                <span className="ml-1 text-gray-600 font-normal">(apenas contas cadastradas terão status "aceito" automaticamente)</span>
+                <span className="ml-1 text-gray-600 font-normal">(somente jogadores cadastrados no sistema entram no roster agora)</span>
               </label>
               <div className="flex gap-2">
                 <input
                   value={searchQuery}
-                  onChange={e => setSearch(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && (e.preventDefault(), handleSearch())}
+                  onChange={(e) => setSearch(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleSearch())}
                   placeholder="renektonforever#019"
                   className="flex-1 input-lol"
                 />
@@ -489,8 +471,7 @@ function CriarTimeForm() {
                   type="button"
                   onClick={handleSearch}
                   disabled={searching || !searchQuery.trim()}
-                  className="bg-[#1E3A5F] hover:bg-[#2a4f7a] disabled:opacity-40 text-white text-sm
-                             font-semibold px-4 py-2 rounded-lg transition-colors"
+                  className="bg-[#1E3A5F] hover:bg-[#2a4f7a] disabled:opacity-40 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
                 >
                   {searching ? (
                     <span className="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -500,7 +481,6 @@ function CriarTimeForm() {
 
               {searchError && <p className="text-red-400 text-xs">⚠️ {searchError}</p>}
 
-              {/* Resultado da busca */}
               {searchResult && (
                 <div className="bg-[#0A1428] border border-[#1E3A5F] rounded-xl p-3 space-y-3">
                   <div className="flex items-center gap-3">
@@ -519,13 +499,13 @@ function CriarTimeForm() {
                           {searchResult.gameName}
                           <span className="text-gray-500 font-normal">#{searchResult.tagLine}</span>
                         </p>
-                        {(searchResult as any).existingRiotAccountId ? (
+                        {searchResult.existingRiotAccountId && searchResult.existingProfileId ? (
                           <span className="text-[10px] bg-emerald-900/40 text-emerald-400 border border-emerald-700/40 px-1.5 py-0.5 rounded font-bold">
                             ✓ No sistema
                           </span>
                         ) : (
-                          <span className="text-[10px] bg-yellow-900/30 text-yellow-500 border border-yellow-700/30 px-1.5 py-0.5 rounded">
-                            Não cadastrado
+                          <span className="text-[10px] bg-red-900/30 text-red-400 border border-red-700/30 px-1.5 py-0.5 rounded font-bold">
+                            Não pode adicionar agora
                           </span>
                         )}
                       </div>
@@ -535,11 +515,10 @@ function CriarTimeForm() {
                     </div>
                   </div>
 
-                  {/* Seleção de lane */}
                   <div>
                     <p className="text-gray-500 text-xs mb-2">Lane deste jogador:</p>
                     <div className="flex gap-2 flex-wrap">
-                      {ROLES.map(r => (
+                      {ROLES.map((r) => (
                         <button
                           key={r}
                           type="button"
@@ -549,8 +528,8 @@ function CriarTimeForm() {
                             addLane === r
                               ? "bg-[#C8A84B] text-black"
                               : takenLanes.has(r)
-                              ? "bg-[#0D1B2E] text-gray-700 cursor-not-allowed"
-                              : "bg-[#0D1B2E] text-gray-400 hover:text-white border border-[#1E3A5F]"
+                                ? "bg-[#0D1B2E] text-gray-700 cursor-not-allowed"
+                                : "bg-[#0D1B2E] text-gray-400 hover:text-white border border-[#1E3A5F]"
                           }`}
                         >
                           <img
@@ -568,7 +547,8 @@ function CriarTimeForm() {
                   <button
                     type="button"
                     onClick={addPlayer}
-                    className="w-full bg-[#C8A84B] hover:bg-[#d4b55a] text-black font-bold text-sm py-2 rounded-lg transition-colors"
+                    disabled={!searchResult.existingRiotAccountId || !searchResult.existingProfileId}
+                    className="w-full bg-[#C8A84B] hover:bg-[#d4b55a] disabled:opacity-40 disabled:cursor-not-allowed text-black font-bold text-sm py-2 rounded-lg transition-colors"
                   >
                     + Adicionar ao Roster
                   </button>
@@ -577,10 +557,9 @@ function CriarTimeForm() {
             </div>
           )}
 
-          {/* Lista do roster atual */}
           {players.length > 0 && (
             <div className="border-t border-[#1E3A5F] pt-3 space-y-2">
-              {players.map(p => (
+              {players.map((p) => (
                 <div key={p.puuid} className="flex items-center gap-3 py-2 border-b border-[#1E3A5F]/50 last:border-0">
                   <img
                     src={ROLE_ICON_URL[p.lane]} alt={p.lane} width={16} height={16}
@@ -626,9 +605,8 @@ function CriarTimeForm() {
 
         <button
           type="submit"
-          disabled={loading || !nome.trim() || tag.length < 2}
-          className="w-full bg-[#C8A84B] hover:bg-[#d4b55a] disabled:opacity-40 disabled:cursor-not-allowed
-                     text-black font-black text-base py-3 rounded-xl transition-colors"
+          disabled={loading || !nome.trim() || tag.trim().length < 2}
+          className="w-full bg-[#C8A84B] hover:bg-[#d4b55a] disabled:opacity-40 disabled:cursor-not-allowed text-black font-black text-base py-3 rounded-xl transition-colors"
         >
           {loading ? (
             <span className="inline-flex items-center gap-2">
