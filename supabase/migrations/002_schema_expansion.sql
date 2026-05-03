@@ -144,52 +144,69 @@ alter table public.player_stats      enable row level security;
 alter table public.audit_log         enable row level security;
 alter table public.notifications     enable row level security;
 
+-- tournament_stages: leitura publica, escrita admin
 drop policy if exists "stages_select_all" on public.tournament_stages;
 drop policy if exists "stages_all_admin" on public.tournament_stages;
+
 create policy "stages_select_all"
   on public.tournament_stages for select using (true);
+
 create policy "stages_all_admin"
   on public.tournament_stages for all
   using (public.is_admin(auth.uid()));
 
+-- match_games: leitura publica, escrita admin
 drop policy if exists "match_games_select_all" on public.match_games;
 drop policy if exists "match_games_all_admin" on public.match_games;
+
 create policy "match_games_select_all"
   on public.match_games for select using (true);
+
 create policy "match_games_all_admin"
   on public.match_games for all
   using (public.is_admin(auth.uid()));
 
+-- player_stats: leitura publica, escrita admin
 drop policy if exists "player_stats_select_all" on public.player_stats;
 drop policy if exists "player_stats_all_admin" on public.player_stats;
+
 create policy "player_stats_select_all"
   on public.player_stats for select using (true);
+
 create policy "player_stats_all_admin"
   on public.player_stats for all
   using (public.is_admin(auth.uid()));
 
+-- audit_log: apenas admins leem, insert via service_role/trigger
 drop policy if exists "audit_log_select_admin" on public.audit_log;
 drop policy if exists "audit_log_insert_admin" on public.audit_log;
+
 create policy "audit_log_select_admin"
   on public.audit_log for select
   using (public.is_admin(auth.uid()));
+
 create policy "audit_log_insert_admin"
   on public.audit_log for insert
   with check (public.is_admin(auth.uid()));
 
+-- notifications: usuario ve apenas as proprias
 drop policy if exists "notifications_select_own" on public.notifications;
 drop policy if exists "notifications_update_own" on public.notifications;
 drop policy if exists "notifications_insert_service" on public.notifications;
 drop policy if exists "notifications_delete_own" on public.notifications;
+
 create policy "notifications_select_own"
   on public.notifications for select
   using (auth.uid() = user_id);
+
 create policy "notifications_update_own"
   on public.notifications for update
   using (auth.uid() = user_id);
+
 create policy "notifications_insert_service"
   on public.notifications for insert
   with check (true);
+
 create policy "notifications_delete_own"
   on public.notifications for delete
   using (auth.uid() = user_id);
