@@ -4,8 +4,7 @@ import ProfileHeader from '@/components/profile/ProfileHeader';
 import RankedCards from '@/components/profile/RankedCards';
 import MatchHistoryRow from '@/components/profile/MatchHistoryRow';
 import ChampionStatsTable from '@/components/profile/ChampionStatsTable';
-
-const DD_VERSION = '14.10.1';
+import { getDDVersion, championSplashUrl } from '@/lib/riot';
 
 async function getPlayerProfile(summonerName: string) {
   try {
@@ -28,6 +27,10 @@ export default async function ProfilePage({
   const { summonerName } = await params;
   const data = await getPlayerProfile(summonerName);
   if (!data) return notFound();
+
+  const DD_VERSION = await getDDVersion();
+  const topChamp = data.topMasteries?.[0]?.championName;
+  const splashUrl = championSplashUrl(topChamp);
 
   // Calcula estatísticas agregadas por campeão
   const champStats: Record<string, { games: number; wins: number; kills: number; deaths: number; assists: number }> = {};
@@ -60,7 +63,20 @@ export default async function ProfilePage({
   return (
     <main className="min-h-screen bg-[#0A0E17]">
       {/* Banner top */}
-      <div className="h-32 w-full bg-gradient-to-r from-[#0D1B2E] via-[#091528] to-[#0D1B2E] relative overflow-hidden">
+      <div className="h-64 w-full relative overflow-hidden">
+        {splashUrl ? (
+          <>
+            <img
+              src={splashUrl}
+              alt="Background"
+              className="w-full h-full object-cover object-[center_20%] opacity-40 blur-sm scale-105"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#0A0E17] via-transparent to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-r from-[#0A0E17] via-transparent to-[#0A0E17]" />
+          </>
+        ) : (
+          <div className="h-full w-full bg-gradient-to-r from-[#0D1B2E] via-[#091528] to-[#0D1B2E]" />
+        )}
         <div className="absolute inset-0 opacity-10"
           style={{
             backgroundImage: 'repeating-linear-gradient(45deg, #C89B3C 0, #C89B3C 1px, transparent 0, transparent 50%)',
@@ -69,7 +85,7 @@ export default async function ProfilePage({
         />
       </div>
 
-      <div className="max-w-5xl mx-auto px-4 -mt-10 pb-16">
+      <div className="max-w-5xl mx-auto px-4 -mt-20 relative z-10 pb-16">
         {/* Header: avatar + nome + nível */}
         <ProfileHeader
           summonerName={data.summonerName}
@@ -80,22 +96,43 @@ export default async function ProfilePage({
         />
 
         {/* Ranked cards */}
-        <div className="mt-6">
+        <div className="mt-8">
           <RankedCards rankedSolo={data.rankedSolo} rankedFlex={data.rankedFlex} />
         </div>
 
         {/* Grid principal */}
-        <div className="mt-6 grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4">
-          {/* Campeões mais jogados */}
-          <div>
-            <h3 className="text-[#A0AEC0] text-xs font-semibold uppercase tracking-widest mb-2 px-1">Campeões (últimas 20)</h3>
-            <ChampionStatsTable champions={champList} DD_VERSION={DD_VERSION} />
+        <div className="mt-8 grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
+          {/* Coluna Lateral: Maestrias e stats */}
+          <div className="space-y-6">
+            <div>
+              <h3 className="text-[#A0AEC0] text-xs font-semibold uppercase tracking-widest mb-3 px-1">Top Maestrias</h3>
+              <div className="bg-[#0D1421] border border-[#1E2D45] rounded-xl p-3 space-y-3">
+                {data.topMasteries?.map((m: any) => (
+                  <div key={m.championId} className="flex items-center gap-3">
+                    <img
+                      src={`https://ddragon.leagueoflegends.com/cdn/${DD_VERSION}/img/champion/${m.championName}.png`}
+                      alt={m.championName}
+                      className="w-10 h-10 rounded border border-[#C89B3C]/30"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white text-sm font-bold truncate">{m.championName}</p>
+                      <p className="text-[#718096] text-[10px] uppercase">Nv. {m.masteryLevel} · {m.masteryPoints.toLocaleString()} pts</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-[#A0AEC0] text-xs font-semibold uppercase tracking-widest mb-3 px-1">Campeões (últimas 10)</h3>
+              <ChampionStatsTable champions={champList} DD_VERSION={DD_VERSION} />
+            </div>
           </div>
 
           {/* Histórico de partidas */}
           <div>
-            <h3 className="text-[#A0AEC0] text-xs font-semibold uppercase tracking-widest mb-2 px-1">Histórico de Partidas</h3>
-            <div className="space-y-1.5">
+            <h3 className="text-[#A0AEC0] text-xs font-semibold uppercase tracking-widest mb-3 px-1">Histórico de Partidas</h3>
+            <div className="space-y-2">
               {data.matchHistory?.length > 0 ? (
                 data.matchHistory.map((match: any) => (
                   <MatchHistoryRow
@@ -111,6 +148,7 @@ export default async function ProfilePage({
                     cs={match.cs ?? 0}
                     vision={match.vision ?? 0}
                     DD_VERSION={DD_VERSION}
+                    items={match.items}
                   />
                 ))
               ) : (

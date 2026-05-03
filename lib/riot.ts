@@ -14,13 +14,13 @@ const REGION_TO_REGIONAL: Record<string, string> = {
   oc1: "sea", ph2: "sea", sg2: "sea", th2: "sea", tw2: "sea", vn2: "sea",
 };
 
-function getRegion(): string { return (process.env.RIOT_REGION ?? "br1").toLowerCase(); }
-function getRegionalHost(): string {
+export function getRegion(): string { return (process.env.RIOT_REGION ?? "br1").toLowerCase(); }
+export function getRegionalHost(): string {
   const region = getRegion();
   return process.env.RIOT_REGIONAL_HOST ?? REGION_TO_REGIONAL[region] ?? "americas";
 }
-function getPlatformUrl(): string { return "https://" + getRegion() + ".api.riotgames.com"; }
-function getRegionalUrl(): string { return "https://" + getRegionalHost() + ".api.riotgames.com"; }
+export function getPlatformUrl(): string { return "https://" + getRegion() + ".api.riotgames.com"; }
+export function getRegionalUrl(): string { return "https://" + getRegionalHost() + ".api.riotgames.com"; }
 
 // ─── Data Dragon: versão dinâmica ─────────────────────────────────────────────
 let _ddVersion: string | null = null;
@@ -38,7 +38,7 @@ export async function getDDVersion(): Promise<string> {
     setCached("dd:version", _ddVersion, 3600);
     return _ddVersion;
   } catch {
-    _ddVersion = "16.8.1";
+    _ddVersion = "15.1.1";
     return _ddVersion;
   }
 }
@@ -169,13 +169,15 @@ export async function championIconUrl(name: string | null | undefined): Promise<
  * @param skinNum  0 = skin base
  */
 export function championSplashUrl(name: string | null | undefined, skinNum = 0): string {
-  if (!name || name === "null") return "";
+  if (!name || name === "null" || name.trim() === "") {
+    return "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-splashes/unmasked-magician.png";
+  }
   const normalized = name.replace(/[^a-zA-Z0-9]/g, "");
   return `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${normalized}_${skinNum}.jpg`;
 }
 
 export function championLoadingUrl(name: string | null | undefined, skinNum = 0): string {
-  if (!name || name === "null") return "";
+  if (!name || name === "null" || name.trim() === "") return "";
   const normalized = name.replace(/[^a-zA-Z0-9]/g, "");
   return `https://ddragon.leagueoflegends.com/cdn/img/champion/loading/${normalized}_${skinNum}.jpg`;
 }

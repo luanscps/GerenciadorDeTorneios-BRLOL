@@ -23,6 +23,7 @@ export async function GET(
 
     const summoner = await getSummonerByPuuid(account.puuid);
     const ranked = await getLeagueEntriesByPuuid(account.puuid);
+    const topMasteries = await getTopMasteriesByPuuid(account.puuid, 5);
     const matchIds = await getMatchIdsByPuuid(account.puuid, 10);
 
     const matchHistory = await Promise.all(
@@ -37,9 +38,11 @@ export async function GET(
           participant.deaths === 0
             ? 'Perfect'
             : ((participant.kills + participant.assists) / participant.deaths).toFixed(2);
+
         return {
           matchId,
           championName: participant.championName,
+          championId: participant.championId,
           teamPosition: participant.teamPosition,
           gameMode: match.info.gameMode,
           kills: participant.kills,
@@ -48,6 +51,15 @@ export async function GET(
           kda,
           win: participant.win,
           minutes: durationMin,
+          items: [
+            participant.item0, participant.item1, participant.item2,
+            participant.item3, participant.item4, participant.item5,
+            participant.item6
+          ],
+          cs: participant.totalMinionsKilled + (participant.neutralMinionsKilled || 0),
+          vision: participant.visionScore,
+          gold: participant.goldEarned,
+          damage: participant.totalDamageDealtToChampions,
         };
       })
     );
@@ -61,6 +73,12 @@ export async function GET(
       puuid: account.puuid,
       profileIconId: summoner.profileIconId,
       summonerLevel: summoner.summonerLevel,
+      topMasteries: topMasteries.map(m => ({
+        championId: m.championId,
+        championName: m.championName,
+        masteryLevel: m.championLevel,
+        masteryPoints: m.championPoints,
+      })),
       rankedSolo: soloQueue
         ? { tier: soloQueue.tier, rank: soloQueue.rank, lp: soloQueue.leaguePoints, wins: soloQueue.wins, losses: soloQueue.losses }
         : null,
