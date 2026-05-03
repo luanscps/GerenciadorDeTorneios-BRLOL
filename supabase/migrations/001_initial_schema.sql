@@ -140,6 +140,8 @@ create index if not exists idx_players_puuid
   on public.players(puuid);
 create extension if not exists pg_trgm with schema public;
 
+set search_path = public, extensions, pg_catalog;
+
 create index if not exists idx_players_name_trgm
   on public.players using gin (summoner_name gin_trgm_ops);
 
