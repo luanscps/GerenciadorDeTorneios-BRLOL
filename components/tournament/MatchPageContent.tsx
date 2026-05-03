@@ -15,10 +15,10 @@ export default function MatchPageContent({ match, teamAPlayers, teamBPlayers, us
   const [lobbyEvents, setLobbyEvents] = useState<any>(null);
   const [loadingEvents, setLoadingEvents] = useState(false);
 
-  // Tournament Code (geralmente guardado no notes ou campo específico se existir)
-  const tournamentCode = match.notes?.includes('BR1_') 
-    ? match.notes.match(/BR1_[A-Z0-9-]+/)?.[0] 
-    : null;
+  // Tournament Code (prioriza a nova coluna, com fallback para extração via regex em notes)
+  const tournamentCode = match.tournament_code ?? (match.notes?.includes('BR1_')
+    ? match.notes.match(/BR1_[A-Z0-9-]+/)?.[0]
+    : null);
 
   useEffect(() => {
     if (!tournamentCode) return;
