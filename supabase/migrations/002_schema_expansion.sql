@@ -8,6 +8,8 @@
 -- PASSO 1: NOVA TABELA tournament_stages
 -- Criada ANTES de alterar matches (FK depende dela)
 -- ---------------------------------------------------------------
+drop trigger if exists trg_stages_updated_at on public.tournament_stages;
+
 create table if not exists public.tournament_stages (
   id            uuid primary key default uuid_generate_v4(),
   tournament_id uuid not null references public.tournaments(id) on delete cascade,
@@ -29,23 +31,24 @@ create trigger trg_stages_updated_at
 -- PASSO 2: NOVAS COLUNAS EM TABELAS EXISTENTES
 -- ---------------------------------------------------------------
 
--- matches: formato BO1/BO3/BO5 e vinculo com stage
 alter table public.matches
-  add column if not exists format text not null default 'BO1'
-    check (format in ('BO1','BO3','BO5')),
-  add column if not exists stage_id uuid
-    references public.tournament_stages(id) on delete set null;
+  add column if not exists format text not null default 'BO1';
 
--- tournaments: tier minimo e discord webhook
+alter table public.matches
+  add constraint matches_format_check check (format in ('BO1','BO3','BO5'));
+
+alter table public.matches
+  add column if not exists stage_id uuid references public.tournament_stages(id) on delete set null;
+
 alter table public.tournaments
-  add column if not exists min_tier text,
+  add column if not exists min_tier text;
+
+alter table public.tournaments
   add column if not exists discord_webhook_url text;
 
--- inscricoes: controle de check-in
 alter table public.inscricoes
   add column if not exists checked_in_at timestamptz;
 
--- teams: flag de eliminacao no torneio
 alter table public.teams
   add column if not exists is_eliminated boolean not null default false;
 
@@ -141,28 +144,32 @@ alter table public.player_stats      enable row level security;
 alter table public.audit_log         enable row level security;
 alter table public.notifications     enable row level security;
 
--- tournament_stages: leitura publica, escrita admin
+drop policy if exists "stages_select_all" on public.tournament_stages;
+drop policy if exists "stages_all_admin" on public.tournament_stages;
 create policy "stages_select_all"
   on public.tournament_stages for select using (true);
 create policy "stages_all_admin"
   on public.tournament_stages for all
   using (public.is_admin(auth.uid()));
 
--- match_games: leitura publica, escrita admin
+drop policy if exists "match_games_select_all" on public.match_games;
+drop policy if exists "match_games_all_admin" on public.match_games;
 create policy "match_games_select_all"
   on public.match_games for select using (true);
 create policy "match_games_all_admin"
   on public.match_games for all
   using (public.is_admin(auth.uid()));
 
--- player_stats: leitura publica, escrita admin
+drop policy if exists "player_stats_select_all" on public.player_stats;
+drop policy if exists "player_stats_all_admin" on public.player_stats;
 create policy "player_stats_select_all"
   on public.player_stats for select using (true);
 create policy "player_stats_all_admin"
   on public.player_stats for all
   using (public.is_admin(auth.uid()));
 
--- audit_log: apenas admins leem, insert via service_role/trigger
+drop policy if exists "audit_log_select_admin" on public.audit_log;
+drop policy if exists "audit_log_insert_admin" on public.audit_log;
 create policy "audit_log_select_admin"
   on public.audit_log for select
   using (public.is_admin(auth.uid()));
@@ -170,7 +177,10 @@ create policy "audit_log_insert_admin"
   on public.audit_log for insert
   with check (public.is_admin(auth.uid()));
 
--- notifications: usuario ve apenas as proprias
+drop policy if exists "notifications_select_own" on public.notifications;
+drop policy if exists "notifications_update_own" on public.notifications;
+drop policy if exists "notifications_insert_service" on public.notifications;
+drop policy if exists "notifications_delete_own" on public.notifications;
 create policy "notifications_select_own"
   on public.notifications for select
   using (auth.uid() = user_id);
@@ -203,7 +213,6 @@ grant select, insert, update, delete on public.notifications to authenticated;
 -- PASSO 9: VIEWS uteis para o frontend
 -- ---------------------------------------------------------------
 
--- View: standings por fase de grupo
 create or replace view public.v_stage_standings as
 select
   ts.tournament_id,
@@ -222,7 +231,6 @@ join public.teams t on t.id = m.team_a_id or t.id = m.team_b_id
 where m.status = 'FINISHED'
 group by ts.tournament_id, ts.id, ts.name, t.id, t.name, t.tag;
 
--- View: KDA medio por jogador por torneio
 create or replace view public.v_player_tournament_kda as
 select
   ps.player_id,
