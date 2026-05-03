@@ -34,10 +34,12 @@ export default async function MatchPage({
   // 2. Busca jogadores dos times
   const { data: teamAPlayers } = await supabase
     .from("players")
+    .select("*")
     .eq("team_id", match.team_a_id);
 
   const { data: teamBPlayers } = await supabase
     .from("players")
+    .select("*")
     .eq("team_id", match.team_b_id);
 
   // 3. Verifica se o usuário logado faz parte de um dos times (para liberar o Tournament Code)
