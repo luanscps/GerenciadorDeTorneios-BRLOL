@@ -3,6 +3,7 @@ import {
   getAccountByRiotId,
   getSummonerByPuuid,
   getLeagueEntriesByPuuid,
+  getTopMasteriesByPuuid,
   getMatchIdsByPuuid,
   getMatchById,
 } from '@/lib/riot';
