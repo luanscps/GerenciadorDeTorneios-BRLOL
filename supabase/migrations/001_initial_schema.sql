@@ -61,7 +61,11 @@ create table if not exists public.profiles (
 
 -- Trigger: criar profile automaticamente apos signup
 create or replace function public.handle_new_user()
-returns trigger language plpgsql security definer as $$
+returns trigger
+language plpgsql
+security definer
+set search_path = public, extensions, pg_catalog
+as $$
 begin
   insert into public.profiles (id, email, full_name, avatar_url)
   values (
@@ -136,8 +140,10 @@ create table if not exists public.players (
 
 create index if not exists idx_players_team_id
   on public.players(team_id);
+
 create index if not exists idx_players_puuid
   on public.players(puuid);
+
 create extension if not exists pg_trgm with schema public;
 
 set search_path = public, extensions, pg_catalog;
@@ -185,6 +191,7 @@ create table if not exists public.matches (
 
 create index if not exists idx_matches_tournament
   on public.matches(tournament_id);
+
 create index if not exists idx_matches_round
   on public.matches(tournament_id, round);
 
@@ -192,25 +199,33 @@ create index if not exists idx_matches_round
 -- FUNCAO: atualizar updated_at automaticamente
 -- ---------------------------------------------------------------
 create or replace function public.set_updated_at()
-returns trigger language plpgsql as $$
+returns trigger
+language plpgsql
+security definer
+set search_path = public, extensions, pg_catalog
+as $$
 begin
   new.updated_at = now();
   return new;
 end;
 $$;
 
+drop trigger if exists trg_profiles_updated_at on public.profiles;
 create trigger trg_profiles_updated_at
   before update on public.profiles
   for each row execute function public.set_updated_at();
 
+drop trigger if exists trg_tournaments_updated_at on public.tournaments;
 create trigger trg_tournaments_updated_at
   before update on public.tournaments
   for each row execute function public.set_updated_at();
 
+drop trigger if exists trg_players_updated_at on public.players;
 create trigger trg_players_updated_at
   before update on public.players
   for each row execute function public.set_updated_at();
 
+drop trigger if exists trg_matches_updated_at on public.matches;
 create trigger trg_matches_updated_at
   before update on public.matches
   for each row execute function public.set_updated_at();
@@ -227,7 +242,12 @@ alter table public.matches     enable row level security;
 
 -- Helper: verifica se uid() eh admin
 create or replace function public.is_admin(uid uuid)
-returns boolean language sql security definer stable as $$
+returns boolean
+language sql
+security definer
+stable
+set search_path = public, extensions, pg_catalog
+as $$
   select coalesce(
     (select is_admin from public.profiles where id = uid),
     false
@@ -235,6 +255,10 @@ returns boolean language sql security definer stable as $$
 $$;
 
 -- PROFILES --
+drop policy if exists "profiles_select_all" on public.profiles;
+drop policy if exists "profiles_update_own" on public.profiles;
+drop policy if exists "profiles_update_admin" on public.profiles;
+
 create policy "profiles_select_all"
   on public.profiles for select using (true);
 
@@ -247,6 +271,11 @@ create policy "profiles_update_admin"
   using (public.is_admin(auth.uid()));
 
 -- TOURNAMENTS --
+drop policy if exists "tournaments_select_all" on public.tournaments;
+drop policy if exists "tournaments_insert_admin" on public.tournaments;
+drop policy if exists "tournaments_update_admin" on public.tournaments;
+drop policy if exists "tournaments_delete_admin" on public.tournaments;
+
 create policy "tournaments_select_all"
   on public.tournaments for select using (true);
 
@@ -263,6 +292,11 @@ create policy "tournaments_delete_admin"
   using (public.is_admin(auth.uid()));
 
 -- TEAMS --
+drop policy if exists "teams_select_all" on public.teams;
+drop policy if exists "teams_insert_owner_or_admin" on public.teams;
+drop policy if exists "teams_update_owner_or_admin" on public.teams;
+drop policy if exists "teams_delete_admin" on public.teams;
+
 create policy "teams_select_all"
   on public.teams for select using (true);
 
@@ -279,6 +313,11 @@ create policy "teams_delete_admin"
   using (public.is_admin(auth.uid()));
 
 -- PLAYERS --
+drop policy if exists "players_select_all" on public.players;
+drop policy if exists "players_insert_admin" on public.players;
+drop policy if exists "players_update_admin" on public.players;
+drop policy if exists "players_delete_admin" on public.players;
+
 create policy "players_select_all"
   on public.players for select using (true);
 
@@ -295,6 +334,11 @@ create policy "players_delete_admin"
   using (public.is_admin(auth.uid()));
 
 -- INSCRICOES --
+drop policy if exists "inscricoes_select_auth" on public.inscricoes;
+drop policy if exists "inscricoes_insert_user" on public.inscricoes;
+drop policy if exists "inscricoes_update_admin" on public.inscricoes;
+drop policy if exists "inscricoes_delete_admin" on public.inscricoes;
+
 create policy "inscricoes_select_auth"
   on public.inscricoes for select
   using (auth.role() = 'authenticated');
@@ -312,6 +356,9 @@ create policy "inscricoes_delete_admin"
   using (public.is_admin(auth.uid()));
 
 -- MATCHES --
+drop policy if exists "matches_select_all" on public.matches;
+drop policy if exists "matches_all_admin" on public.matches;
+
 create policy "matches_select_all"
   on public.matches for select using (true);
 
