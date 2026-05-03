@@ -138,6 +138,8 @@ create index if not exists idx_players_team_id
   on public.players(team_id);
 create index if not exists idx_players_puuid
   on public.players(puuid);
+create extension if not exists pg_trgm with schema public;
+
 create index if not exists idx_players_name_trgm
   on public.players using gin (summoner_name gin_trgm_ops);
 
