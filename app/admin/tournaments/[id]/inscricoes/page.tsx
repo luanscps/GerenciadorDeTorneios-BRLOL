@@ -3,7 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { listarInscricoesPorTorneio } from "@/lib/actions/inscricao";
 import InscricoesTable from "@/components/admin/InscricoesTable";
 
-export default async function InscricoesPage({ params }: { params: { id: string } }) {
+export default async function InscricoesPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");

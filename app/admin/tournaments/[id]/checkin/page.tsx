@@ -2,7 +2,8 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import CheckinPanel from "@/components/admin/CheckinPanel";
 
-export default async function AdminCheckinPage({ params }: { params: { id: string } }) {
+export default async function AdminCheckinPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");

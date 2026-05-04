@@ -2,7 +2,8 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { fazerCheckin } from "@/lib/actions/inscricao";
 
-export default async function CheckinPage({ params }: { params: { id: string } }) {
+export default async function CheckinPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
