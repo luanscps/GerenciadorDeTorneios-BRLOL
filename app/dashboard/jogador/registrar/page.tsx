@@ -33,7 +33,7 @@ export default function RegistrarRiotPage() {
   const [ddVersion, setDdVersion] = useState("16.8.1");
 
   const router   = useRouter();
-  const supabase = await createClient();
+  const supabase = createClient();
 
   useEffect(() => {
     fetch("https://ddragon.leagueoflegends.com/api/versions.json")

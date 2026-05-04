@@ -117,7 +117,7 @@ interface BracketViewProps {
 export function BracketView({ initialMatches, tournamentId, readonly = false }: BracketViewProps) {
   const [matches, setMatches] = useState<BracketMatch[]>(initialMatches)
   const router  = useRouter()
-  const supabase = await createClient()
+  const supabase = createClient();
 
   // Estabiliza referencia do callback para evitar re-subscribe desnecessario
   const handlePayload = useCallback((payload: any) => {

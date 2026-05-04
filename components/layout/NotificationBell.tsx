@@ -23,7 +23,7 @@ export function NotificationBell({ userId }: { userId: string }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const supabase = await createClient();
+  const supabase = createClient();
 
   const unread = notifications.filter((n) => !n.read).length;
 
