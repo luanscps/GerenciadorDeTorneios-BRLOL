@@ -295,7 +295,7 @@ export async function finalizeMatchIngestion(tournamentCode: string, gameId: num
     success: true,
     data: {
       localMatchId,
-      matchGameId: gameRes.data.matchGameId
+      matchGameId: gameRes.data!.matchGameId
     }
   };
 }
