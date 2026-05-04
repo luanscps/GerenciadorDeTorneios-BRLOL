@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { finalizeMatchIngestion } from "@/lib/actions/ingest-match";
 
 export async function POST(req: Request) {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   // 1. Validar autenticação
   const { data: { user } } = await supabase.auth.getUser();
@@ -43,8 +43,6 @@ export async function POST(req: Request) {
 
   // 4. Executar ingestão
   try {
-    // Nota: finalizeMatchIngestion usa o client admin interno definido no arquivo, 
-    // portanto não requer passar o client por parâmetro.
     const result = await finalizeMatchIngestion(tournamentCode, parsedGameId);
     
     if (!result.success) {
