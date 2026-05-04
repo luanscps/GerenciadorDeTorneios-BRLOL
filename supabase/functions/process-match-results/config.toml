@@ -1,0 +1,2 @@
+[functions.process-match-results]
+schedule = "*/5 * * * *"
