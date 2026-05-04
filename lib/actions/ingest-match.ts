@@ -75,7 +75,7 @@ export async function fetchAndResolveMatch(tournamentCode: string, gameId: numbe
   const result = await processMatchResult(tournamentCode, gameId);
   if (!result.success) return { success: false, error: result.error };
 
-  const normalized = result.data;
+  const normalized = result.data!;
   const matchId = `${normalized.platformId}_${normalized.gameId}`.toUpperCase();
   console.log(`[IngestMatch] Buscando detalhes na Riot para: ${matchId}`);
 
@@ -116,7 +116,7 @@ export async function persistMatchGame(tournamentCode: string, gameId: number) {
   const resolved = await fetchAndResolveMatch(tournamentCode, gameId);
   if (!resolved.success) return { success: false, error: resolved.error };
 
-  const { matchDetails, localMatchId } = resolved.data;
+  const { matchDetails, localMatchId } = resolved.data!;
   const supabase = createAdminClient();
 
   const { data: existing } = await supabase
@@ -165,7 +165,7 @@ export async function persistPlayerStats(tournamentCode: string, gameId: number)
   const matchResult = await fetchAndResolveMatch(tournamentCode, gameId);
   if (!matchResult.success) return { success: false, error: matchResult.error };
 
-  const { matchDetails } = matchResult.data;
+  const { matchDetails } = matchResult.data!;
   const matchGameId = gameResult.data.matchGameId;
   const supabase = createAdminClient();
 
@@ -261,7 +261,7 @@ export async function finalizeMatchIngestion(tournamentCode: string, gameId: num
   // 2. Resolver dados necessários ANTES de marcar como processed
   const resolved = await fetchAndResolveMatch(tournamentCode, gameId);
   if (!resolved.success) return { success: false, error: resolved.error };
-  const { localMatchId } = resolved.data;
+  const { localMatchId } = resolved.data!;
 
   const supabase = createAdminClient();
 
