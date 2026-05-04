@@ -43,8 +43,6 @@ export async function POST(req: Request) {
 
   // 4. Executar ingestão
   try {
-    // Nota: finalizeMatchIngestion usa o client admin interno definido no arquivo, 
-    // portanto não requer passar o client por parâmetro.
     const result = await finalizeMatchIngestion(tournamentCode, parsedGameId);
     
     if (!result.success) {
