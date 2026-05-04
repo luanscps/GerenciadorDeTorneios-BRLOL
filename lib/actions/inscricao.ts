@@ -22,12 +22,12 @@ export async function aprovarInscricao(teamId: string, tournamentId: string) {
     const { supabase, adminId } = await requireAdmin();
     const { error } = await supabase
       .from('inscricoes')
-      .update({ status: 'APPROVED', reviewed_by: adminId })
+      .update({ status: 'APPROVED', reviewed_by: adminId, reviewed_at: new Date().toISOString() })
       .eq('team_id', teamId)
       .eq('tournament_id', tournamentId);
     if (error) return { error: error.message };
-    revalidatePath(`/admin/torneios/${tournamentId}/inscricoes`);
-    revalidatePath(`/admin/torneios/${tournamentId}`);
+    revalidatePath(`/admin/tournaments/${tournamentId}/inscricoes`);
+    revalidatePath(`/admin/tournaments/${tournamentId}`);
     return { success: true };
   } catch (e: any) {
     return { error: e.message };
@@ -35,17 +35,17 @@ export async function aprovarInscricao(teamId: string, tournamentId: string) {
 }
 
 // ─── ADMIN: Rejeitar inscrição ─────────────────────────────────────────────
-export async function rejeitarInscricao(teamId: string, tournamentId: string) {
+export async function rejeitarInscricao(teamId: string, tournamentId: string, notes: string) {
   try {
     const { supabase, adminId } = await requireAdmin();
     const { error } = await supabase
       .from('inscricoes')
-      .update({ status: 'REJECTED', reviewed_by: adminId })
+      .update({ status: 'REJECTED', reviewed_by: adminId, reviewed_at: new Date().toISOString(), notes })
       .eq('team_id', teamId)
       .eq('tournament_id', tournamentId);
     if (error) return { error: error.message };
-    revalidatePath(`/admin/torneios/${tournamentId}/inscricoes`);
-    revalidatePath(`/admin/torneios/${tournamentId}`);
+    revalidatePath(`/admin/tournaments/${tournamentId}/inscricoes`);
+    revalidatePath(`/admin/tournaments/${tournamentId}`);
     return { success: true };
   } catch (e: any) {
     return { error: e.message };
@@ -61,7 +61,7 @@ export async function desfazerCheckin(inscricaoId: string) {
       .update({ checked_in: false, checked_in_at: null, checked_in_by: null })
       .eq('id', inscricaoId);
     if (error) return { error: error.message };
-    revalidatePath('/admin/torneios');
+    revalidatePath('/admin/tournaments');
     return { success: true };
   } catch (e: any) {
     return { error: e.message };
@@ -138,7 +138,10 @@ export async function listarInscricoesPorTorneio(tournamentId: string) {
     .from('inscricoes')
     .select(`
       id, status, checked_in, checked_in_at, created_at,
-      team:teams ( id, name, tag, tournament_id, owner_id )
+      team:teams (
+        id, name, tag, logo_url, owner_id,
+        players ( id, summoner_name, role, tier, lp )
+      )
     `)
     .eq('tournament_id', tournamentId)
     .order('created_at', { ascending: true });
