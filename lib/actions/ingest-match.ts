@@ -232,14 +232,71 @@ export async function persistPlayerStats(tournamentCode: string, gameId: number)
     }
   }
 
+
   console.log(`[IngestMatch] Subtarefa 4 concluída. Inseridos: ${insertedCount}, Pulados/Erros: ${skippedCount}`);
-  
-  return { 
-    success: true, 
-    data: { 
-      inserted: insertedCount, 
-      skipped: skippedCount, 
-      unresolvedPlayers 
-    } 
+
+  return {
+    success: true,
+    data: {
+      inserted: insertedCount,
+      skipped: skippedCount,
+      unresolvedPlayers
+    }
   };
 }
+
+/**
+ * Subtarefa 5: Finalização da Ingestão
+ */
+export async function finalizeMatchIngestion(tournamentCode: string, gameId: number) {
+  console.log(`[IngestMatch] Subtarefa 5 iniciada: Finalizando ${tournamentCode} / ${gameId}`);
+
+  // 1. Persistência de dados
+  const gameRes = await persistMatchGame(tournamentCode, gameId);
+  if (!gameRes.success) return { success: false, error: gameRes.error };
+
+  const statsRes = await persistPlayerStats(tournamentCode, gameId);
+  if (!statsRes.success) return { success: false, error: statsRes.error };
+
+  // 2. Resolver dados necessários ANTES de marcar como processed
+  const resolved = await fetchAndResolveMatch(tournamentCode, gameId);
+  if (!resolved.success) return { success: false, error: resolved.error };
+  const { localMatchId } = resolved.data;
+
+  const supabase = createAdminClient();
+
+  // 3. Marcar como processado
+  const { error: procError } = await supabase
+    .from("tournament_match_results")
+    .update({ processed: true })
+    .eq("tournament_code", tournamentCode)
+    .eq("game_id", gameId);
+
+  if (procError) {
+    console.error(`[IngestMatch] Erro ao marcar como processado:`, procError);
+    return { success: false, error: "Falha ao marcar registro como processado" };
+  }
+
+  // 4. Atualizar status da partida para FINISHED
+  const { error: matchError } = await supabase
+    .from("matches")
+    .update({
+      status: 'FINISHED',
+      finished_at: new Date().toISOString()
+    })
+    .eq("id", localMatchId);
+
+  if (matchError) {
+    console.error(`[IngestMatch] Erro ao atualizar status da partida:`, matchError);
+    return { success: false, error: "Falha ao finalizar status da partida" };
+  }
+
+  return {
+    success: true,
+    data: {
+      localMatchId,
+      matchGameId: gameRes.data.matchGameId
+    }
+  };
+}
+
