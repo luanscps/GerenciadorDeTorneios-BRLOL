@@ -166,7 +166,7 @@ export async function persistPlayerStats(tournamentCode: string, gameId: number)
   if (!matchResult.success) return { success: false, error: matchResult.error };
 
   const { matchDetails } = matchResult.data!;
-  const matchGameId = gameResult.data.matchGameId;
+  const matchGameId = gameResult.data!.matchGameId;
   const supabase = createAdminClient();
 
   let insertedCount = 0;
