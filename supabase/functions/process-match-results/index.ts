@@ -3,6 +3,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const INTERNAL_SECRET = Deno.env.get("INTERNAL_SECRET")!;
 const SITE_URL = Deno.env.get("SITE_URL") || "http://localhost:3000";
 
 Deno.serve(async (req) => {
@@ -38,11 +39,11 @@ Deno.serve(async (req) => {
   // 2. Processar cada resultado
   for (const match of results) {
     try {
-      const response = await fetch(`${SITE_URL}/api/admin/process-match`, {
+      const response = await fetch(`${SITE_URL}/api/internal/process-match`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          "x-internal-secret": INTERNAL_SECRET,
         },
         body: JSON.stringify({
           tournamentCode: match.tournament_code,
