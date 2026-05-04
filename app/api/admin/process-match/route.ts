@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { finalizeMatchIngestion } from "@/lib/actions/ingest-match";
 
 export async function POST(req: Request) {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   // 1. Validar autenticação
   const { data: { user } } = await supabase.auth.getUser();

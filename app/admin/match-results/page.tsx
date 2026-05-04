@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import AdminMatchResultsTable from "@/components/admin/AdminMatchResultsTable";
 
 export default async function AdminMatchResultsPage() {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   // Verificar sessão e admin
   const { data: { user } } = await supabase.auth.getUser();
