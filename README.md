@@ -1,5 +1,6 @@
 # ⚔️ GerenciadorDeTorneios-BRLOL
 
+
 > Plataforma completa para torneios casuais de **League of Legends 5v5**  
 > com integração real à **Riot Games API v5**, backend em **Supabase** e frontend em **Next.js**.
 
