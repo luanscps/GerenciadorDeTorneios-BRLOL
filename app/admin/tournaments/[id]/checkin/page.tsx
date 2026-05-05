@@ -20,13 +20,13 @@ export default async function AdminCheckinPage({ params }: { params: Promise<{ i
   const { data: inscricoes } = await supabase
     .from("inscricoes")
     .select("id, checked_in, checked_in_at, team:teams(id, name, tag, logo_url)")
-    .eq("tournament_id", params.id)
+    .eq("tournament_id", id)
     .eq("status", "APPROVED");
 
   return (
     <div className="p-6">
       <h1 className="text-2xl font-bold mb-6">Monitoramento de Check-in</h1>
-      <CheckinPanel initialData={inscricoes || []} tournamentId={params.id} />
+      <CheckinPanel initialData={inscricoes || []} tournamentId={id} />
     </div>
   );
 }
