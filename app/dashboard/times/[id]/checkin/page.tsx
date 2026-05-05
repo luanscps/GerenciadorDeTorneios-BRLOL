@@ -12,7 +12,7 @@ export default async function CheckinPage({ params }: { params: Promise<{ id: st
   const { data: team } = await supabase
     .from("teams")
     .select("owner_id, name")
-    .eq("id", params.id)
+    .eq("id", id)
     .single();
 
   if (!team || team.owner_id !== user.id) redirect("/dashboard");
@@ -21,7 +21,7 @@ export default async function CheckinPage({ params }: { params: Promise<{ id: st
   const { data: inscricao } = await supabase
     .from("inscricoes")
     .select("id, status, checked_in, checked_in_at")
-    .eq("team_id", params.id)
+    .eq("team_id", id)
     .eq("status", "APPROVED")
     .maybeSingle();
 
