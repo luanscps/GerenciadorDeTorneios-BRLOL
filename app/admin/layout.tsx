@@ -15,7 +15,6 @@ export default async function AdminLayout({
 }) {
   const cookieStore = await cookies()
 
-  // 1. Verifica autenticacao com anon key (lê cookies do browser)
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -39,8 +38,6 @@ export default async function AdminLayout({
     redirect('/login?redirectTo=/admin')
   }
 
-  // 2. Verifica is_admin com service role (bypassa RLS completamente)
-  // Não usa fetch interno — queries diretas são mais confiáveis na Vercel Serverless
   const supabaseAdmin = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -61,7 +58,6 @@ export default async function AdminLayout({
 
   const isAdmin = profile?.is_admin === true
 
-  // Redireciona para /dashboard com aviso — dashboard exibe banner de acesso negado
   if (!isAdmin) {
     redirect('/dashboard?error=acesso_negado')
   }
@@ -75,7 +71,7 @@ export default async function AdminLayout({
           </span>
           <div className="flex items-center gap-4 text-sm">
             <Link href="/admin" className="text-gray-400 hover:text-white transition-colors">Dashboard</Link>
-            <Link href="/admin/torneios" className="text-gray-400 hover:text-white transition-colors">Torneios</Link>
+            <Link href="/admin/tournaments" className="text-gray-400 hover:text-white transition-colors">Torneios</Link>
             <Link href="/admin/usuarios" className="text-gray-400 hover:text-white transition-colors">Usuários</Link>
             <Link href="/admin/jogadores" className="text-gray-400 hover:text-white transition-colors">Jogadores</Link>
           </div>
