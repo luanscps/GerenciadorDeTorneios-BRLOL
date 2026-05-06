@@ -4,19 +4,25 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 
 const STATUS_COLOR: Record<string, string> = {
-  OPEN:        "bg-green-500/10 text-green-400 border border-green-500/20",
-  IN_PROGRESS: "bg-yellow-500/10 text-yellow-400 border border-yellow-500/20",
-  CHECKIN:     "bg-blue-500/10 text-blue-400 border border-blue-500/20",
-  FINISHED:    "bg-gray-500/10 text-gray-400 border border-gray-500/20",
-  DRAFT:       "bg-gray-700/20 text-gray-500 border border-gray-700/30",
+  REGISTRATION: "bg-green-500/10 text-green-400 border border-green-500/20",
+  ACTIVE:       "bg-yellow-500/10 text-yellow-400 border border-yellow-500/20",
+  FINISHED:     "bg-gray-500/10 text-gray-400 border border-gray-500/20",
+  DRAFT:        "bg-gray-700/20 text-gray-500 border border-gray-700/30",
+  // legados — mantidos para compatibilidade com dados antigos
+  OPEN:         "bg-green-500/10 text-green-400 border border-green-500/20",
+  IN_PROGRESS:  "bg-yellow-500/10 text-yellow-400 border border-yellow-500/20",
+  CHECKIN:      "bg-blue-500/10 text-blue-400 border border-blue-500/20",
 };
 
 const STATUS_LABEL: Record<string, string> = {
-  OPEN:        "Aberto",
-  IN_PROGRESS: "Em andamento",
-  CHECKIN:     "Check-in",
-  FINISHED:    "Finalizado",
-  DRAFT:       "Rascunho",
+  REGISTRATION: "Inscrições abertas",
+  ACTIVE:       "Em andamento",
+  FINISHED:     "Finalizado",
+  DRAFT:        "Rascunho",
+  // legados
+  OPEN:         "Aberto",
+  IN_PROGRESS:  "Em andamento",
+  CHECKIN:      "Check-in",
 };
 
 export default async function AdminTorneios() {
@@ -38,8 +44,9 @@ export default async function AdminTorneios() {
     .select("id, name, slug, status, start_date, max_teams, game_mode, format, created_at")
     .order("created_at", { ascending: false });
 
+  // tabela correta: inscricoes (nao tournament_registrations)
   const { data: regRows } = await admin
-    .from("tournament_registrations")
+    .from("inscricoes")
     .select("tournament_id");
 
   const countMap: Record<string, number> = {};
@@ -48,8 +55,8 @@ export default async function AdminTorneios() {
   }
 
   const list        = torneios ?? [];
-  const abertos     = list.filter(t => t.status === "OPEN");
-  const andamento   = list.filter(t => t.status === "IN_PROGRESS" || t.status === "CHECKIN");
+  const abertos     = list.filter(t => t.status === "REGISTRATION" || t.status === "OPEN");
+  const andamento   = list.filter(t => t.status === "ACTIVE" || t.status === "IN_PROGRESS" || t.status === "CHECKIN");
   const finalizados = list.filter(t => t.status === "FINISHED");
   const rascunhos   = list.filter(t => t.status === "DRAFT");
 
@@ -114,10 +121,10 @@ export default async function AdminTorneios() {
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: "Abertos",      value: abertos.length,     color: "text-green-400"  },
-          { label: "Em andamento", value: andamento.length,   color: "text-yellow-400" },
-          { label: "Finalizados",  value: finalizados.length, color: "text-gray-400"   },
-          { label: "Rascunhos",    value: rascunhos.length,   color: "text-gray-500"   },
+          { label: "Inscrições abertas", value: abertos.length,     color: "text-green-400"  },
+          { label: "Em andamento",       value: andamento.length,   color: "text-yellow-400" },
+          { label: "Finalizados",        value: finalizados.length, color: "text-gray-400"   },
+          { label: "Rascunhos",          value: rascunhos.length,   color: "text-gray-500"   },
         ].map(s => (
           <div key={s.label} className="card-lol text-center py-4">
             <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
@@ -134,10 +141,10 @@ export default async function AdminTorneios() {
         </div>
       ) : (
         <div className="space-y-8">
-          <Section title="🟢 Abertos para inscrição" color="text-green-400"  list={abertos} />
-          <Section title="🟡 Em andamento / Check-in" color="text-yellow-400" list={andamento} />
-          <Section title="⚫ Rascunhos"               color="text-gray-500"  list={rascunhos} />
-          <Section title="✅ Finalizados"             color="text-gray-400"  list={finalizados} />
+          <Section title="🟢 Inscrições abertas" color="text-green-400"  list={abertos} />
+          <Section title="🟡 Em andamento"      color="text-yellow-400" list={andamento} />
+          <Section title="⚫ Rascunhos"           color="text-gray-500"  list={rascunhos} />
+          <Section title="✅ Finalizados"         color="text-gray-400"  list={finalizados} />
         </div>
       )}
     </div>

@@ -4,19 +4,25 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 
 const STATUS_COLOR: Record<string, string> = {
-  OPEN:        "text-green-400",
-  CHECKIN:     "text-blue-400",
-  IN_PROGRESS: "text-yellow-400",
-  FINISHED:    "text-gray-400",
-  DRAFT:       "text-gray-500",
+  REGISTRATION: "text-green-400",
+  ACTIVE:       "text-yellow-400",
+  FINISHED:     "text-gray-400",
+  DRAFT:        "text-gray-500",
+  // legados
+  OPEN:         "text-green-400",
+  CHECKIN:      "text-blue-400",
+  IN_PROGRESS:  "text-yellow-400",
 };
 
 const STATUS_LABEL: Record<string, string> = {
-  OPEN:        "Aberto",
-  CHECKIN:     "Check-in",
-  IN_PROGRESS: "Em andamento",
-  FINISHED:    "Finalizado",
-  DRAFT:       "Rascunho",
+  REGISTRATION: "Inscrições abertas",
+  ACTIVE:       "Em andamento",
+  FINISHED:     "Finalizado",
+  DRAFT:        "Rascunho",
+  // legados
+  OPEN:         "Aberto",
+  CHECKIN:      "Check-in",
+  IN_PROGRESS:  "Em andamento",
 };
 
 export default async function AdminDashboard() {
@@ -42,7 +48,8 @@ export default async function AdminDashboard() {
   ] = await Promise.all([
     adminClient.from("players").select("*", { count: "exact", head: true }),
     adminClient.from("teams").select("*",   { count: "exact", head: true }),
-    adminClient.from("tournaments").select("*", { count: "exact", head: true }).eq("status", "IN_PROGRESS"),
+    // status real do banco: ACTIVE (era IN_PROGRESS)
+    adminClient.from("tournaments").select("*", { count: "exact", head: true }).eq("status", "ACTIVE"),
     adminClient.from("matches").select("*",     { count: "exact", head: true }).eq("status", "pending"),
     adminClient
       .from("tournaments")
