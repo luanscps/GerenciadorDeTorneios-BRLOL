@@ -8,7 +8,7 @@ const STATUS_COLOR: Record<string, string> = {
   ACTIVE:       "bg-yellow-500/10 text-yellow-400 border border-yellow-500/20",
   FINISHED:     "bg-gray-500/10 text-gray-400 border border-gray-500/20",
   DRAFT:        "bg-gray-700/20 text-gray-500 border border-gray-700/30",
-  // legados — mantidos para compatibilidade com dados antigos
+  // legados
   OPEN:         "bg-green-500/10 text-green-400 border border-green-500/20",
   IN_PROGRESS:  "bg-yellow-500/10 text-yellow-400 border border-yellow-500/20",
   CHECKIN:      "bg-blue-500/10 text-blue-400 border border-blue-500/20",
@@ -26,6 +26,7 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 export default async function AdminTorneios() {
+  // createClient usa a sessão do usuário (anon key) — RLS pública de tournaments permite leitura
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
@@ -37,17 +38,25 @@ export default async function AdminTorneios() {
     .single();
   if (!profile?.is_admin) redirect("/dashboard");
 
-  const admin = createAdminClient();
-
-  const { data: torneios } = await admin
+  // query de torneios via supabase normal (mesma estratégia do /admin/page.tsx que funciona)
+  const { data: torneios, error: torneiosError } = await supabase
     .from("tournaments")
     .select("id, name, slug, status, start_date, max_teams, game_mode, format, created_at")
     .order("created_at", { ascending: false });
 
-  // tabela correta: inscricoes (nao tournament_registrations)
-  const { data: regRows } = await admin
+  if (torneiosError) {
+    console.error("[admin/tournaments] erro ao buscar torneios:", torneiosError);
+  }
+
+  // inscricoes pode ter RLS restritiva — usa adminClient com service_role
+  const admin = createAdminClient();
+  const { data: regRows, error: regError } = await admin
     .from("inscricoes")
     .select("tournament_id");
+
+  if (regError) {
+    console.error("[admin/tournaments] erro ao buscar inscricoes:", regError);
+  }
 
   const countMap: Record<string, number> = {};
   for (const r of regRows ?? []) {
@@ -142,7 +151,7 @@ export default async function AdminTorneios() {
       ) : (
         <div className="space-y-8">
           <Section title="🟢 Inscrições abertas" color="text-green-400"  list={abertos} />
-          <Section title="🟡 Em andamento"      color="text-yellow-400" list={andamento} />
+          <Section title="🟡 Em andamento"       color="text-yellow-400" list={andamento} />
           <Section title="⚫ Rascunhos"           color="text-gray-500"  list={rascunhos} />
           <Section title="✅ Finalizados"         color="text-gray-400"  list={finalizados} />
         </div>
