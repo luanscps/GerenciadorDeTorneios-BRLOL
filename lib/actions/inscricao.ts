@@ -56,12 +56,25 @@ export async function rejeitarInscricao(teamId: string, tournamentId: string, no
 export async function desfazerCheckin(inscricaoId: string) {
   try {
     const { supabase, adminId: _adminId } = await requireAdmin();
+
+    // Busca tournament_id antes do update para revalidar o path correto
+    const { data: insc } = await supabase
+      .from('inscricoes')
+      .select('tournament_id')
+      .eq('id', inscricaoId)
+      .single();
+
     const { error } = await supabase
       .from('inscricoes')
       .update({ checked_in: false, checked_in_at: null, checked_in_by: null })
       .eq('id', inscricaoId);
+
     if (error) return { error: error.message };
-    revalidatePath('/admin/tournaments');
+
+    if (insc?.tournament_id) {
+      revalidatePath(`/admin/tournaments/${insc.tournament_id}/checkin`);
+      revalidatePath(`/admin/tournaments/${insc.tournament_id}`);
+    }
     return { success: true };
   } catch (e: any) {
     return { error: e.message };
