@@ -52,10 +52,10 @@ export default async function AdminDashboard() {
   ]);
 
   const stats = [
-    { label: "Invocadores",        value: totalPlayers   ?? 0, icon: "&#128100;", color: "text-blue-400",  href: "/admin/jogadores" },
-    { label: "Times inscritos",    value: totalTeams     ?? 0, icon: "&#128737;", color: "text-green-400", href: "/admin/torneios"  },
-    { label: "Em andamento",       value: activeT        ?? 0, icon: "&#9876;",   color: "text-[#C8A84B]", href: "/admin/torneios"  },
-    { label: "Partidas pendentes", value: pendingMatches ?? 0, icon: "&#9888;",   color: "text-red-400",   href: "/admin/torneios"  },
+    { label: "Invocadores",        value: totalPlayers   ?? 0, icon: "&#128100;", color: "text-blue-400",  href: "/admin/jogadores"   },
+    { label: "Times inscritos",    value: totalTeams     ?? 0, icon: "&#128737;", color: "text-green-400", href: "/admin/tournaments" },
+    { label: "Em andamento",       value: activeT        ?? 0, icon: "&#9876;",   color: "text-[#C8A84B]", href: "/admin/tournaments" },
+    { label: "Partidas pendentes", value: pendingMatches ?? 0, icon: "&#9888;",   color: "text-red-400",   href: "/admin/tournaments" },
   ];
 
   return (
@@ -79,7 +79,7 @@ export default async function AdminDashboard() {
       <div className="card-lol">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold text-white">Torneios Recentes</h2>
-          <Link href="/admin/torneios/criar" className="btn-gold text-sm px-3 py-1.5">
+          <Link href="/admin/tournaments/criar" className="btn-gold text-sm px-3 py-1.5">
             + Novo Torneio
           </Link>
         </div>
@@ -91,7 +91,10 @@ export default async function AdminDashboard() {
                 <span className={`text-xs ${STATUS_COLOR[t.status] ?? "text-gray-400"}`}>
                   {STATUS_LABEL[t.status] ?? t.status}
                 </span>
-                <Link href={`/admin/torneios/${t.slug}`} className="text-xs text-[#C8A84B] hover:underline">
+                <Link
+                  href={`/admin/tournaments/${t.id}`}
+                  className="text-xs text-[#C8A84B] hover:underline"
+                >
                   Gerenciar →
                 </Link>
               </div>
