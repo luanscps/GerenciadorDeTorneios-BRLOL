@@ -81,7 +81,7 @@ export default async function AdminTorneios() {
             Ver página
           </Link>
           <Link
-            href={`/admin/torneios/${t.slug}`}
+            href={`/admin/tournaments/${t.id}`}
             className="text-xs text-[#C8A84B] hover:text-white border border-[#C8A84B]/30 hover:border-[#C8A84B] rounded px-3 py-1.5 transition-colors"
           >
             Gerenciar →
@@ -108,7 +108,7 @@ export default async function AdminTorneios() {
           <h1 className="text-2xl font-bold text-white">Gerenciar Torneios</h1>
           <p className="text-gray-400 text-sm mt-1">Total: {list.length} torneios</p>
         </div>
-        <Link href="/admin/torneios/criar" className="btn-gold text-sm px-4 py-2">
+        <Link href="/admin/tournaments/criar" className="btn-gold text-sm px-4 py-2">
           + Novo Torneio
         </Link>
       </div>
@@ -131,7 +131,7 @@ export default async function AdminTorneios() {
         <div className="card-lol text-center py-16">
           <p className="text-4xl mb-4">🏆</p>
           <p className="text-white font-semibold mb-2">Nenhum torneio criado ainda</p>
-          <Link href="/admin/torneios/criar" className="btn-gold mt-4 inline-block">Criar primeiro torneio</Link>
+          <Link href="/admin/tournaments/criar" className="btn-gold mt-4 inline-block">Criar primeiro torneio</Link>
         </div>
       ) : (
         <div className="space-y-8">
