@@ -1,6 +1,8 @@
-import { createClient } from "@/lib/supabase/server";
+// FORCE-DYNAMIC: nunca cachear — dados de torneios devem ser sempre frescos
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 import { createAdminClient } from "@/lib/supabase/admin";
-import { redirect } from "next/navigation";
 import Link from "next/link";
 
 const STATUS_COLOR: Record<string, string> = {
@@ -23,19 +25,12 @@ const STATUS_LABEL: Record<string, string> = {
   CHECKIN:      "Check-in",
 };
 
+// Auth guard já está no app/admin/layout.tsx (usa service_role).
+// Este page.tsx NÃO repete verificação de auth para evitar:
+//   1. Duplo round-trip ao banco
+//   2. Risco de redirect silencioso antes da query de torneios
 export default async function AdminTorneios() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("is_admin")
-    .eq("id", user.id)
-    .single();
-  if (!profile?.is_admin) redirect("/dashboard");
-
-  // adminClient (service_role) bypassa RLS — igual ao /admin/page.tsx que funciona
+  // adminClient com service_role — bypassa RLS completamente
   const adminClient = createAdminClient();
 
   const [
@@ -51,8 +46,12 @@ export default async function AdminTorneios() {
       .select("tournament_id"),
   ]);
 
-  if (torneiosError) console.error("[admin/tournaments] torneios:", torneiosError);
-  if (regError)      console.error("[admin/tournaments] inscricoes:", regError);
+  // Log de diagnóstico — aparece nos Function Logs da Vercel
+  console.log('[admin/tournaments] torneios:', torneios?.length ?? 0, '| error:', torneiosError?.message ?? 'none');
+  console.log('[admin/tournaments] inscricoes error:', regError?.message ?? 'none');
+
+  if (torneiosError) console.error("[admin/tournaments] ERRO torneios:", torneiosError);
+  if (regError)      console.error("[admin/tournaments] ERRO inscricoes:", regError);
 
   const countMap: Record<string, number> = {};
   for (const r of regRows ?? []) {
@@ -142,6 +141,7 @@ export default async function AdminTorneios() {
         <div className="card-lol text-center py-16">
           <p className="text-4xl mb-4">🏆</p>
           <p className="text-white font-semibold mb-2">Nenhum torneio criado ainda</p>
+          <p className="text-gray-400 text-sm mb-4">Verifique os logs da Vercel se esperava ver torneios aqui.</p>
           <Link href="/admin/tournaments/criar" className="btn-gold mt-4 inline-block">Criar primeiro torneio</Link>
         </div>
       ) : (
