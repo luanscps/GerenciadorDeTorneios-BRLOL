@@ -6,6 +6,8 @@ import { StandingsTable } from "@/components/tournament/StandingsTable";
 import { TeamsList } from "@/components/tournament/TeamsList";
 import { getQueueLabel } from "@/lib/utils";
 
+export const revalidate = 60;
+
 export default async function TournamentPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const supabase = await createClient();
@@ -18,28 +20,52 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
 
   if (!tournament) notFound();
 
-  const [{ data: teams }, { data: matches }, { data: standings }, { data: { user: userData } }] =
-    await Promise.all([
-      supabase
-        .from("teams")
-        .select("*, team_members(count)")
-        .eq("tournament_id", tournament.id)
-        .order("created_at"),
-      supabase
-        .from("matches")
-        .select(
-          "*, team_a:teams!team_a_id(name,tag,logo_url), team_b:teams!team_b_id(name,tag,logo_url), winner:teams!winner_id(name,tag)"
-        )
-        .eq("tournament_id", tournament.id)
-        .order("round")
-        .order("match_number"),
-      supabase
-        .from("v_tournament_standings")
-        .select("*")
-        .eq("tournament_id", tournament.id)
-        .order("position"),
-      supabase.auth.getUser(),
-    ]);
+  const [
+    { data: teams },
+    { data: matches },
+    { data: standings },
+    { data: { user: userData } },
+    { data: inscricoesCheckin },
+  ] = await Promise.all([
+    supabase
+      .from("teams")
+      .select("*, team_members(count)")
+      .eq("tournament_id", tournament.id)
+      .order("created_at"),
+    supabase
+      .from("matches")
+      .select(
+        "*, team_a:teams!team_a_id(name,tag,logo_url), team_b:teams!team_b_id(name,tag,logo_url), winner:teams!winner_id(name,tag)"
+      )
+      .eq("tournament_id", tournament.id)
+      .order("round")
+      .order("match_number"),
+    supabase
+      .from("v_tournament_standings")
+      .select("*")
+      .eq("tournament_id", tournament.id)
+      .order("position"),
+    supabase.auth.getUser(),
+    supabase
+      .from("inscricoes")
+      .select("team_id, checked_in_at")
+      .eq("tournament_id", tournament.id)
+      .eq("status", "APPROVED"),
+  ]);
+
+  const checkinMap = new Map(
+    (inscricoesCheckin ?? []).map(
+      (i: { team_id: string; checked_in_at: string | null }) => [
+        i.team_id,
+        !!i.checked_in_at,
+      ]
+    )
+  );
+
+  const teamsWithCheckin = (teams ?? []).map((t) => ({
+    ...t,
+    checked_in: checkinMap.get(t.id) ?? false,
+  }));
 
   // Conta apenas times com inscrição APROVADA para o contador público
   const { count: approvedCount } = await supabase
@@ -69,6 +95,10 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
     }
   }
 
+  const recentMatches = (matches ?? [])
+    .filter((m) => m.status === "finished")
+    .slice(-5);
+
   const statusColor: Record<string, string> = {
     open: "text-green-400",
     checkin: "text-blue-400",
@@ -88,6 +118,33 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
 
   return (
     <div className="space-y-8">
+      {/* Hero Banner */}
+      {tournament.banner_url && (
+        <div
+          className="relative h-56 overflow-hidden rounded-xl"
+          style={{
+            backgroundImage: `url(${tournament.banner_url})`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+          }}
+        >
+          <div className="absolute inset-0 bg-gradient-to-t from-[#030D1A] via-[#030D1A]/60 to-transparent" />
+          <div className="relative z-10 flex flex-col justify-end h-full px-6 pb-5 gap-1">
+            {tournament.starts_at && (
+              <p className="text-gray-300 text-sm">
+                🗓{" "}
+                {new Date(tournament.starts_at).toLocaleDateString("pt-BR")}
+              </p>
+            )}
+            {tournament.prize_pool && (
+              <p className="text-[#C8A84B] font-semibold text-sm">
+                🏆 {tournament.prize_pool}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="card-lol">
         <div className="flex items-start justify-between flex-wrap gap-4">
           <div>
@@ -117,7 +174,6 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
         {/* Stats bar */}
         <div className="grid grid-cols-3 gap-4 mt-6 pt-6 border-t border-[#1E3A5F]">
           <div className="text-center">
-            {/* Conta apenas inscrições APROVADAS */}
             <p className="text-2xl font-bold text-white">{approvedCount ?? 0}</p>
             <p className="text-gray-400 text-xs">Times inscritos</p>
           </div>
@@ -133,7 +189,7 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
           </div>
         </div>
 
-        {/* Botão / status de inscrição */}
+        {/* Botão / status de inscrição — usuário logado */}
         {tournament.status === "open" && userData && (
           <div className="mt-4 pt-4 border-t border-[#1E3A5F]">
             {userInscricao?.status === "APPROVED" ? (
@@ -161,6 +217,15 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
             )}
           </div>
         )}
+
+        {/* CTA para usuário não logado */}
+        {tournament.status === "open" && !userData && (
+          <div className="mt-4 pt-4 border-t border-[#1E3A5F]">
+            <Link href="/login" className="btn-gold inline-block">
+              Entrar para Inscrever Meu Time
+            </Link>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -171,9 +236,37 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
               <BracketView
                 initialMatches={(matches ?? []) as any}
                 tournamentId={tournament.id}
+                readonly={true}
               />
             </div>
           )}
+
+          {recentMatches.length > 0 && (
+            <div className="card-lol">
+              <h2 className="text-lg font-bold text-white mb-4">
+                📊 Últimos Resultados
+              </h2>
+              <div className="space-y-2">
+                {recentMatches.map((m: any) => (
+                  <div
+                    key={m.id}
+                    className="bg-[#030D1A] border border-[#1E3A5F] rounded-lg px-4 py-3 flex items-center justify-between"
+                  >
+                    <span className="text-white font-medium text-sm">
+                      {m.team_a?.name ?? "TBD"}
+                    </span>
+                    <span className="text-[#C8A84B] font-bold text-base mx-4 tabular-nums">
+                      {m.score_a} × {m.score_b}
+                    </span>
+                    <span className="text-white font-medium text-sm text-right">
+                      {m.team_b?.name ?? "TBD"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {standings && standings.length > 0 && (
             <div className="card-lol">
               <h2 className="text-lg font-bold text-white mb-4">📊 Classificação</h2>
@@ -187,7 +280,7 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
               <h2 className="text-lg font-bold text-white mb-4">
                 🛡️ Times ({teams.length}/{tournament.max_teams})
               </h2>
-              <TeamsList teams={teams} />
+              <TeamsList teams={teamsWithCheckin} />
             </div>
           )}
         </div>
