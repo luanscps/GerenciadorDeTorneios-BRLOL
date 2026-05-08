@@ -18,8 +18,6 @@ const nextConfig = {
   async redirects() {
     return [
       // Rota legada /jogadores/:puuid → redireciona para lista
-      // (puuid é um hash longo, diferente de gameName que é texto legível)
-      // O redirect correto para o perfil é feito via botão na lista
       {
         source: '/jogadores/:puuid',
         destination: '/jogadores',
@@ -30,6 +28,12 @@ const nextConfig = {
             key: '__legacy',
           },
         ],
+      },
+      // Rota legada /t/:slug → rota canônica /torneios/:slug
+      {
+        source: '/t/:slug',
+        destination: '/torneios/:slug',
+        permanent: true,
       },
     ];
   },
