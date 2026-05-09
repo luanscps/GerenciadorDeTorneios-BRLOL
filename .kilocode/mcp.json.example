@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "supabase": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@supabase/mcp-server-supabase@latest",
+        "--supabase-url",
+        "https://XXXieglXXXfavxlghXXX.supabase.co",
+        "--supabase-service-role-key",
+        "SUPABASE_SERVICE_ROLE_KEY"
+      ]
+    },
+    "next": {
+      "url": "http://localhost:3000/_next/mcp"
+    }
+  }
+}
