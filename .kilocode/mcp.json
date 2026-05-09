@@ -5,14 +5,13 @@
       "args": [
         "-y",
         "@supabase/mcp-server-supabase@latest",
-        "--supabase-url",
-        "https://awbieglbwhfavxlghuvy.supabase.co",
-        "--supabase-service-role-key",
-        "sb_publishable_8WI264yCOcQTO1EXSl_9PQ_LGncK1Ij"
+        "--supabase-url", "https://awbieglbwhfavxlghuvy.supabase.co",
+        "--supabase-service-role-key", "sbp_2a673fe30ff5a4aec1b534ff909a8f01200181e1"
       ]
     },
     "next": {
-      "url": "http://localhost:3000/_next/mcp"
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "http://localhost:3000/api/mcp/sse"]
     }
   }
 }
