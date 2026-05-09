@@ -3,13 +3,12 @@ const nextConfig = {
   // Externaliza o @vercel/mcp-adapter do bundle do servidor (webpack)
   serverExternalPackages: ['@vercel/mcp-adapter'],
 
-  experimental: {
-    // Turbopack: resolve o módulo diretamente do node_modules,
-    // evitando o erro "Module not found" ao usar --turbopack
-    turbo: {
-      resolveAlias: {
-        '@vercel/mcp-adapter': '@vercel/mcp-adapter',
-      },
+  // Turbopack: resolve o módulo diretamente do node_modules,
+  // evitando o erro "Module not found" ao usar --turbopack
+  // (Next.js 16: 'turbo' saiu de experimental e virou chave de primeiro nível)
+  turbo: {
+    resolveAlias: {
+      '@vercel/mcp-adapter': '@vercel/mcp-adapter',
     },
   },
 
