@@ -8,3 +8,4 @@ out/
 /.idea
 .env.local
 .kilocode/mcp.json
+/.kilocode
