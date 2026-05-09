@@ -4,17 +4,14 @@
       "command": "npx",
       "args": [
         "-y",
-        "@supabase/mcp-server-supabase@0.4.0",
-        "--access-token",
-        "sbp_XXX992a15XXX576XaeXXXf2a3X6d0XXXf7d0XXX"
-      ],
-      "disabled": false,
-      "alwaysAllow": []
+        "@supabase/mcp-server-supabase@latest",
+        "--supabase-url", "https://XXXieglbXXXaXXXghXXX.supabase.co",
+        "--supabase-service-role-key", "sb_publishable_XXXkXBXXX4XXX_XXXpZXXX_-XvQXXX"
+      ]
     },
     "next": {
-      "url": "http://localhost:3000/_next/mcp",
-      "disabled": false,
-      "alwaysAllow": []
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "http://localhost:3000/api/mcp/sse"]
     }
   }
 }
