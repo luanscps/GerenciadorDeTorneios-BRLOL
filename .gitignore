@@ -1,13 +1,25 @@
-.env.local
+# Ambiente
 .env
+.env.local
+.env*.local
+
+# Dependencias
 node_modules/
+
+# Build
 .next/
 out/
+
+# Logs
 *.log
+
+# Sistema
 .DS_Store
 /.idea
-.env.local
+
+# Kilo Code - contém chaves, não versionar
 .kilocode/mcp.json
-/.kilocode
-.env.local
+.kilocode/
+
+# Superpowers
 .superpowers/
