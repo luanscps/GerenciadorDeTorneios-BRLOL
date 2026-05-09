@@ -37,13 +37,6 @@ const nextConfig = {
       },
     ];
   },
-  import type { NextConfig } from 'next'
-
-  const nextConfig: NextConfig = {
-    experimental: {
-      mcp: true,
-    },
-
 };
 
 module.exports = nextConfig;

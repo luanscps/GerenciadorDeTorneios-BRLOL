@@ -4,15 +4,17 @@
       "command": "npx",
       "args": [
         "-y",
-        "@supabase/mcp-server-supabase@latest",
-        "--supabase-url",
-        "https://XXXieglXXXfavxlghXXX.supabase.co",
-        "--supabase-service-role-key",
-        "SUPABASE_SERVICE_ROLE_KEY"
-      ]
+        "@supabase/mcp-server-supabase@0.4.0",
+        "--access-token",
+        "sbp_XXX992a15XXX576XaeXXXf2a3X6d0XXXf7d0XXX"
+      ],
+      "disabled": false,
+      "alwaysAllow": []
     },
     "next": {
-      "url": "http://localhost:3000/_next/mcp"
+      "url": "http://localhost:3000/_next/mcp",
+      "disabled": false,
+      "alwaysAllow": []
     }
   }
 }
