@@ -1,5 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Necessário para o @vercel/mcp-adapter funcionar corretamente no servidor
+  serverExternalPackages: ['@vercel/mcp-adapter'],
+
   images: {
     remotePatterns: [
       {
