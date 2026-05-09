@@ -10,3 +10,4 @@ out/
 .kilocode/mcp.json
 /.kilocode
 .env.local
+.superpowers/
