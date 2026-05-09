@@ -9,3 +9,4 @@ out/
 .env.local
 .kilocode/mcp.json
 /.kilocode
+.env.local
