@@ -61,9 +61,19 @@ function TierBadge({ tier, rank, lp }: { tier?: string | null; rank?: string | n
   );
 }
 
-function PlayerAvatar({ iconId, name, size = 44 }: { iconId?: number | null; name: string; size?: number }) {
+function PlayerAvatar({
+  iconId,
+  name,
+  size = 44,
+  ddVersion,
+}: {
+  iconId?: number | null;
+  name: string;
+  size?: number;
+  ddVersion: string;
+}) {
   const url = iconId
-    ? `https://ddragon.leagueoflegends.com/cdn/${DDRAGON}/img/profileicon/${iconId}.png`
+    ? `https://ddragon.leagueoflegends.com/cdn/${ddVersion}/img/profileicon/${iconId}.png`
     : null;
   return url ? (
     <img src={url} alt={name} width={size} height={size} loading="lazy"
@@ -343,7 +353,7 @@ export default async function TimeDetailPage({
                       )}
                     </div>
 
-                    <PlayerAvatar iconId={p.profile_icon_id} name={p.summoner_name} size={44} />
+                    <PlayerAvatar iconId={p.profile_icon_id} name={p.summoner_name} size={44} ddVersion={DDRAGON} />
 
                     <div className="flex-1 min-w-0">
                       <p className="text-white font-semibold text-sm truncate">
