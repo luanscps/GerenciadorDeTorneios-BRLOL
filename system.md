@@ -1,5 +1,52 @@
 ﻿# SUPERPOWERS ATIVO
 
+## CONTEXTO DO PROJETO
+
+**Nome:** GerenciadorDeTorneios-BRLOL
+**Versão:** 0.2.0
+**Stack:** Next.js 16.2.6 + React 19 + TypeScript 5.9 + Supabase + Riot Games API
+**OS de desenvolvimento:** Windows 10 — usar `cmd` no MCP, nunca `sh` ou `bash`
+
+### Rotas do App Router
+- `/` — página inicial
+- `/torneios` — listagem e criação de torneios
+- `/torneios/[slug]` — detalhes do torneio
+- `/times` — gestão de times
+- `/jogadores` — perfis e rankings
+- `/partidas` — bracket e resultados
+- `/ranking` — ranking geral por LP
+- `/dashboard` — painel de dados
+- `/admin` — painel administrativo
+- `/organizador` — área do organizador
+
+### Banco de dados (Supabase)
+Tabelas principais: `tournaments`, `teams`, `players`, `matches`
+- `tournaments`: id, name, slug, status (DRAFT|OPEN|IN_PROGRESS|FINISHED|CANCELLED), bracket_type, max_teams, start_date, end_date
+- `teams`: id, tournament_id, name, tag, logo_url
+- `players`: id, team_id, summoner_name, tag_line, role, tier, rank, lp, wins, losses, puuid
+- `matches`: id, tournament_id, team_a_id, team_b_id, winner_id, round, status (SCHEDULED|IN_PROGRESS|FINISHED), score_a, score_b
+
+### APIs externas
+- **Riot Games API** — região `br1`, host regional `americas`
+- **Supabase** — auth, database, storage
+
+### MCPs ativos (`.kilocode/mcp.json`)
+- `supabase` — acesso direto ao banco via MCP Supabase
+- `next-devtools` — acesso a rotas, erros e logs do dev server Next.js 16
+
+### Dependências principais
+react-hook-form + zod (forms), recharts (gráficos), lucide-react (ícones),
+date-fns (datas), @supabase/ssr + @supabase/supabase-js, tailwindcss + clsx + cva
+
+### Regras de desenvolvimento
+- Sempre usar `async/await` com Supabase, nunca `.then()`
+- Server Components por padrão, `'use client'` apenas quando necessário
+- Validação de formulários com `zod` + `react-hook-form`
+- Sem `mcp-handler`, sem Redis — MCPs são externos ao projeto
+- Migrations SQL ficam em `supabase/migrations/`
+- Documentação do projeto em `docs/`
+
+---
 
 ## SKILL: brainstorming
 ---
@@ -41,27 +88,27 @@ You MUST create a task for each of these items and complete them in order:
 digraph brainstorming {
     "Explore project context" [shape=box];
     "Visual questions ahead?" [shape=diamond];
-    "Offer Visual Companion\n(own message, no other content)" [shape=box];
+    "Offer Visual Companion\\n(own message, no other content)" [shape=box];
     "Ask clarifying questions" [shape=box];
     "Propose 2-3 approaches" [shape=box];
     "Present design sections" [shape=box];
     "User approves design?" [shape=diamond];
     "Write design doc" [shape=box];
-    "Spec self-review\n(fix inline)" [shape=box];
+    "Spec self-review\\n(fix inline)" [shape=box];
     "User reviews spec?" [shape=diamond];
     "Invoke writing-plans skill" [shape=doublecircle];
 
     "Explore project context" -> "Visual questions ahead?";
-    "Visual questions ahead?" -> "Offer Visual Companion\n(own message, no other content)" [label="yes"];
+    "Visual questions ahead?" -> "Offer Visual Companion\\n(own message, no other content)" [label="yes"];
     "Visual questions ahead?" -> "Ask clarifying questions" [label="no"];
-    "Offer Visual Companion\n(own message, no other content)" -> "Ask clarifying questions";
+    "Offer Visual Companion\\n(own message, no other content)" -> "Ask clarifying questions";
     "Ask clarifying questions" -> "Propose 2-3 approaches";
     "Propose 2-3 approaches" -> "Present design sections";
     "Present design sections" -> "User approves design?";
     "User approves design?" -> "Present design sections" [label="no, revise"];
     "User approves design?" -> "Write design doc" [label="yes"];
-    "Write design doc" -> "Spec self-review\n(fix inline)";
-    "Spec self-review\n(fix inline)" -> "User reviews spec?";
+    "Write design doc" -> "Spec self-review\\n(fix inline)";
+    "Spec self-review\\n(fix inline)" -> "User reviews spec?";
     "User reviews spec?" -> "Write design doc" [label="changes requested"];
     "User reviews spec?" -> "Invoke writing-plans skill" [label="approved"];
 }
@@ -203,7 +250,7 @@ Before defining tasks, map out which files will be created or modified and what 
 - Files that change together should live together. Split by responsibility, not by technical layer.
 - In existing codebases, follow established patterns. If the codebase uses large files, don't unilaterally restructure - but if a file you're modifying has grown unwieldy, including a split in the plan is reasonable.
 
-This structure informs the task decomposition. Each task should produce self-contained changes that make sense independently.
+This structure informs the task decomposition. Each task should produce self-contained changes that make sense independent.
 
 ## Bite-Sized Task Granularity
 
@@ -229,7 +276,7 @@ This structure informs the task decomposition. Each task should produce self-con
 
 **Tech Stack:** [Key technologies/libraries]
 
----
+***
 ```
 
 ## Task Structure
@@ -321,9 +368,9 @@ After saving the plan, offer execution choice:
 
 **If Inline Execution chosen:**
 - **REQUIRED SUB-SKILL:** Use superpowers:executing-plans
-- Batch execution with checkpoints for review
+- Batch execution with checkpoints
 
-
+---
 
 ## SKILL: systematic-debugging
 ---
@@ -343,9 +390,7 @@ Random fixes waste time and create new bugs. Quick patches mask underlying issue
 
 ## The Iron Law
 
-```
-NO FIXES WITHOUT ROOT CAUSE INVESTIGATION FIRST
-```
+    NO FIXES WITHOUT ROOT CAUSE INVESTIGATION FIRST
 
 If you haven't completed Phase 1, you cannot propose fixes.
 
@@ -402,46 +447,18 @@ You MUST complete each phase before proceeding to the next.
    **WHEN system has multiple components (CI → build → signing, API → service → database):**
 
    **BEFORE proposing fixes, add diagnostic instrumentation:**
-   ```
+
    For EACH component boundary:
-     - Log what data enters component
-     - Log what data exits component
-     - Verify environment/config propagation
-     - Check state at each layer
+   - Log what data enters component
+   - Log what data exits component
+   - Verify environment/config propagation
+   - Check state at each layer
 
    Run once to gather evidence showing WHERE it breaks
    THEN analyze evidence to identify failing component
    THEN investigate that specific component
-   ```
-
-   **Example (multi-layer system):**
-   ```bash
-   # Layer 1: Workflow
-   echo "=== Secrets available in workflow: ==="
-   echo "IDENTITY: ${IDENTITY:+SET}${IDENTITY:-UNSET}"
-
-   # Layer 2: Build script
-   echo "=== Env vars in build script: ==="
-   env | grep IDENTITY || echo "IDENTITY not in environment"
-
-   # Layer 3: Signing script
-   echo "=== Keychain state: ==="
-   security list-keychains
-   security find-identity -v
-
-   # Layer 4: Actual signing
-   codesign --sign "$IDENTITY" --verbose=4 "$APP"
-   ```
-
-   **This reveals:** Which layer fails (secrets → workflow ✓, workflow → build ✗)
 
 5. **Trace Data Flow**
-
-   **WHEN error is deep in call stack:**
-
-   See `root-cause-tracing.md` in this directory for the complete backward tracing technique.
-
-   **Quick version:**
    - Where does bad value originate?
    - What called this with bad value?
    - Keep tracing up until you find the source
@@ -504,7 +521,6 @@ You MUST complete each phase before proceeding to the next.
    - Automated test if possible
    - One-off test script if no framework
    - MUST have before fixing
-   - Use the `superpowers:test-driven-development` skill for writing proper failing tests
 
 2. **Implement Single Fix**
    - Address the root cause identified
@@ -521,8 +537,7 @@ You MUST complete each phase before proceeding to the next.
    - STOP
    - Count: How many fixes have you tried?
    - If < 3: Return to Phase 1, re-analyze with new information
-   - **If ≥ 3: STOP and question the architecture (step 5 below)**
-   - DON'T attempt Fix #4 without architectural discussion
+   - **If ≥ 3: STOP and question the architecture**
 
 5. **If 3+ Fixes Failed: Question Architecture**
 
@@ -538,9 +553,7 @@ You MUST complete each phase before proceeding to the next.
 
    **Discuss with your human partner before attempting more fixes**
 
-   This is NOT a failed hypothesis - this is a wrong architecture.
-
-## Red Flags - STOP and Follow Process
+## Red Flags — STOP and Follow Process
 
 If you catch yourself thinking:
 - "Quick fix for now, investigate later"
@@ -556,19 +569,6 @@ If you catch yourself thinking:
 - **Each fix reveals new problem in different place**
 
 **ALL of these mean: STOP. Return to Phase 1.**
-
-**If 3+ fixes failed:** Question the architecture (see Phase 4.5)
-
-## your human partner's Signals You're Doing It Wrong
-
-**Watch for these redirections:**
-- "Is that not happening?" - You assumed without verifying
-- "Will it show us...?" - You should have added evidence gathering
-- "Stop guessing" - You're proposing fixes without understanding
-- "Ultrathink this" - Question fundamentals, not just symptoms
-- "We're stuck?" (frustrated) - Your approach isn't working
-
-**When you see these:** STOP. Return to Phase 1.
 
 ## Common Rationalizations
 
@@ -592,38 +592,7 @@ If you catch yourself thinking:
 | **3. Hypothesis** | Form theory, test minimally | Confirmed or new hypothesis |
 | **4. Implementation** | Create test, fix, verify | Bug resolved, tests pass |
 
-## When Process Reveals "No Root Cause"
-
-If systematic investigation reveals issue is truly environmental, timing-dependent, or external:
-
-1. You've completed the process
-2. Document what you investigated
-3. Implement appropriate handling (retry, timeout, error message)
-4. Add monitoring/logging for future investigation
-
-**But:** 95% of "no root cause" cases are incomplete investigation.
-
-## Supporting Techniques
-
-These techniques are part of systematic debugging and available in this directory:
-
-- **`root-cause-tracing.md`** - Trace bugs backward through call stack to find original trigger
-- **`defense-in-depth.md`** - Add validation at multiple layers after finding root cause
-- **`condition-based-waiting.md`** - Replace arbitrary timeouts with condition polling
-
-**Related skills:**
-- **superpowers:test-driven-development** - For creating failing test case (Phase 4, Step 1)
-- **superpowers:verification-before-completion** - Verify fix worked before claiming success
-
-## Real-World Impact
-
-From debugging sessions:
-- Systematic approach: 15-30 minutes to fix
-- Random fixes approach: 2-3 hours of thrashing
-- First-time fix rate: 95% vs 40%
-- New bugs introduced: Near zero vs common
-
-
+---
 
 ## SKILL: requesting-code-review
 ---
@@ -653,7 +622,7 @@ Dispatch superpowers:code-reviewer subagent to catch issues before they cascade.
 
 **1. Get git SHAs:**
 ```bash
-BASE_SHA=$(git rev-parse HEAD~1)  # or origin/main
+BASE_SHA=$(git rev-parse HEAD~1)
 HEAD_SHA=$(git rev-parse HEAD)
 ```
 
@@ -673,34 +642,6 @@ Use Task tool with superpowers:code-reviewer type, fill template at `code-review
 - Fix Important issues before proceeding
 - Note Minor issues for later
 - Push back if reviewer is wrong (with reasoning)
-
-## Example
-
-```
-[Just completed Task 2: Add verification function]
-
-You: Let me request code review before proceeding.
-
-BASE_SHA=$(git log --oneline | grep "Task 1" | head -1 | awk '{print $1}')
-HEAD_SHA=$(git rev-parse HEAD)
-
-[Dispatch superpowers:code-reviewer subagent]
-  WHAT_WAS_IMPLEMENTED: Verification and repair functions for conversation index
-  PLAN_OR_REQUIREMENTS: Task 2 from docs/superpowers/plans/deployment-plan.md
-  BASE_SHA: a7981ec
-  HEAD_SHA: 3df7661
-  DESCRIPTION: Added verifyIndex() and repairIndex() with 4 issue types
-
-[Subagent returns]:
-  Strengths: Clean architecture, real tests
-  Issues:
-    Important: Missing progress indicators
-    Minor: Magic number (100) for reporting interval
-  Assessment: Ready to proceed
-
-You: [Fix progress indicators]
-[Continue to Task 3]
-```
 
 ## Integration with Workflows
 
@@ -731,6 +672,3 @@ You: [Fix progress indicators]
 - Request clarification
 
 See template at: requesting-code-review/code-reviewer.md
-
-
-
