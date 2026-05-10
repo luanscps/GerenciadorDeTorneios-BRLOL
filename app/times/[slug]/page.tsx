@@ -141,7 +141,7 @@ export default async function TimeDetailPage({
         id, game_name, tag_line, summoner_level, profile_icon_id,
         rank_snapshots ( queue_type, tier, rank, lp )
       ),
-      players ( role, tier, rank, lp, summoner_name )
+      players:players!team_members_riot_account_id_fkey ( role, tier, rank, lp, summoner_name ) // Adicionado join explícito
     `)
     .eq("team_id", team.id)
     .eq("status", "accepted");
@@ -177,17 +177,23 @@ export default async function TimeDetailPage({
   const players: PlayerRow[] = (rawMembers ?? []).map((member: any) => {
     const ra   = member.riot_account ?? null;
     const snap = ra?.id ? (rankMap[ra.id] ?? null) : null;
+    const playerRole = member.players?.[0]?.role; // Obter a role do player
+    const playerTier = member.players?.[0]?.tier; // Obter o tier do player
+    const playerRank = member.players?.[0]?.rank; // Obter o rank do player
+    const playerLp   = member.players?.[0]?.lp;   // Obter o lp do player
+    const playerSummonerName = member.players?.[0]?.summoner_name; // Obter o summoner_name do player
+
     return {
       id:              member.id,
-      lane:            member.lane ?? member.players?.[0]?.role ?? null, // Usar players.role como fallback
+      lane:            member.lane ?? playerRole ?? null, // Usar players.role como fallback
       team_role:       member.team_role ?? "member",
-      summoner_name:   ra?.game_name  ?? member.profile?.full_name ?? member.players?.[0]?.summoner_name ?? "Jogador", // Adicionado players.summoner_name
+      summoner_name:   ra?.game_name  ?? member.profile?.full_name ?? playerSummonerName ?? "Jogador", // Adicionado players.summoner_name
       tag_line:        ra?.tag_line   ?? "BR1",
       profile_icon_id: ra?.profile_icon_id ?? null,
       summoner_level:  ra?.summoner_level  ?? null,
-      tier:            snap?.tier   ?? member.players?.[0]?.tier ?? null, // Adicionado players.tier
-      rank:            snap?.rank   ?? member.players?.[0]?.rank ?? null, // Adicionado players.rank
-      lp:              snap?.lp     ?? member.players?.[0]?.lp ?? null, // Adicionado players.lp
+      tier:            snap?.tier   ?? playerTier ?? null, // Adicionado players.tier
+      rank:            snap?.rank   ?? playerRank ?? null, // Adicionado players.rank
+      lp:              snap?.lp     ?? playerLp ?? null, // Adicionado players.lp
       wins:            snap?.wins   ?? null,
       losses:          snap?.losses ?? null,
     };
