@@ -1,10 +1,11 @@
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server"; // Alterado de createAdminClient
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import { getDDVersion } from "@/lib/riot"; // Importar getDDVersion
 
 export const dynamic = "force-dynamic";
 
-const DDRAGON = "14.24.1";
+// const DDRAGON = "14.24.1"; // Removido
 
 const TIER_HEX: Record<string, string> = {
   CHALLENGER: "#F4C874", GRANDMASTER: "#CD4545", MASTER: "#9D48E0",
@@ -108,35 +109,32 @@ export default async function TimeDetailPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const admin = createAdminClient();
+  const supabase = await createClient(); // Alterado de admin para supabase e adicionado await
+
+  const DDRAGON = await getDDVersion(); // Obter a versão do DataDragon aqui
 
   const isUUID = UUID_REGEX.test(slug);
   const { data: team } = isUUID
-    ? await admin.from("teams").select("*").eq("id", slug).single()
-    : await admin.from("teams").select("*").eq("slug", slug).single();
+    ? await supabase.from("teams").select("*").eq("id", slug).single()
+    : await supabase.from("teams").select("*").eq("slug", slug).single();
 
   if (!team) notFound();
 
   // ── FONTE ÚNICA: team_members → riot_accounts → rank_snapshots ──
   // Migration 021 adicionou coluna lane (player_role) em team_members.
-  const { data: rawMembers } = await admin
+  const { data: rawMembers } = await supabase
     .from("team_members")
     .select(`
-      id,
-      team_role,
-      lane,
-      status,
-      profile_id,
-      riot_account:riot_accounts!team_members_riot_account_id_fkey(
-        id, game_name, tag_line, profile_icon_id, summoner_level, puuid
+      id, lane, team_role, status, profile_id,
+      profiles ( id, full_name, email ),
+      riot_accounts (
+        id, game_name, tag_line, summoner_level, profile_icon_id,
+        rank_snapshots ( queue_type, tier, rank, lp )
       ),
-      profile:profiles!team_members_profile_id_fkey(
-        id, full_name, avatar_url
-      )
+      players ( role, tier, rank, lp, summoner_name )
     `)
     .eq("team_id", team.id)
-    .eq("status", "accepted")
-    .order("invited_at");
+    .eq("status", "accepted");
 
   // Coleta riot_account_ids para buscar rank em lote
   const riotIds: string[] = [];
@@ -147,7 +145,7 @@ export default async function TimeDetailPage({
 
   const rankMap: Record<string, { tier: string; rank: string; lp: number; wins: number; losses: number }> = {};
   if (riotIds.length > 0) {
-    const { data: snapshots } = await admin
+    const { data: snapshots } = await supabase
       .from("rank_snapshots")
       .select("riot_account_id, tier, rank, lp, wins, losses, recorded_at")
       .in("riot_account_id", riotIds)
@@ -166,20 +164,20 @@ export default async function TimeDetailPage({
     }
   }
 
-  const players: PlayerRow[] = (rawMembers ?? []).map((m: any) => {
-    const ra   = m.riot_account ?? null;
+  const players: PlayerRow[] = (rawMembers ?? []).map((member: any) => {
+    const ra   = member.riot_account ?? null;
     const snap = ra?.id ? (rankMap[ra.id] ?? null) : null;
     return {
-      id:              m.id,
-      lane:            m.lane ?? null,
-      team_role:       m.team_role ?? "member",
-      summoner_name:   ra?.game_name  ?? m.profile?.full_name ?? "Jogador",
+      id:              member.id,
+      lane:            member.lane ?? member.players?.[0]?.role ?? null, // Usar players.role como fallback
+      team_role:       member.team_role ?? "member",
+      summoner_name:   ra?.game_name  ?? member.profile?.full_name ?? member.players?.[0]?.summoner_name ?? "Jogador", // Adicionado players.summoner_name
       tag_line:        ra?.tag_line   ?? "BR1",
       profile_icon_id: ra?.profile_icon_id ?? null,
       summoner_level:  ra?.summoner_level  ?? null,
-      tier:            snap?.tier   ?? null,
-      rank:            snap?.rank   ?? null,
-      lp:              snap?.lp     ?? null,
+      tier:            snap?.tier   ?? member.players?.[0]?.tier ?? null, // Adicionado players.tier
+      rank:            snap?.rank   ?? member.players?.[0]?.rank ?? null, // Adicionado players.rank
+      lp:              snap?.lp     ?? member.players?.[0]?.lp ?? null, // Adicionado players.lp
       wins:            snap?.wins   ?? null,
       losses:          snap?.losses ?? null,
     };
@@ -192,7 +190,7 @@ export default async function TimeDetailPage({
 
   // ── Partidas ──
   const [{ data: matchesA }, { data: matchesB }] = await Promise.all([
-    admin
+    supabase
       .from("matches")
       .select(`id,round,status,score_a,score_b,scheduled_at,played_at,winner_id,team_a_id,team_b_id,
         team_b:teams!matches_team_b_id_fkey(id,name,tag,logo_url),
@@ -201,7 +199,7 @@ export default async function TimeDetailPage({
       .in("status", ["FINISHED", "IN_PROGRESS", "SCHEDULED"])
       .order("scheduled_at", { ascending: false })
       .limit(30),
-    admin
+    supabase
       .from("matches")
       .select(`id,round,status,score_a,score_b,scheduled_at,played_at,winner_id,team_a_id,team_b_id,
         team_a:teams!matches_team_a_id_fkey(id,name,tag,logo_url),

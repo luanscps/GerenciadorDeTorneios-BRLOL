@@ -97,7 +97,12 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
 
   const recentMatches = (matches ?? [])
     .filter((m) => m.status === "finished")
-    .slice(-5);
+    .sort((a, b) => {
+      const dateA = new Date(a.played_at ?? a.scheduled_at ?? 0).getTime();
+      const dateB = new Date(b.played_at ?? b.scheduled_at ?? 0).getTime();
+      return dateB - dateA;
+    })
+    .slice(0, 5);
 
   const statusColor: Record<string, string> = {
     open: "text-green-400",

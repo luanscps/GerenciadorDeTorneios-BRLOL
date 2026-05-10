@@ -97,19 +97,21 @@ export default async function DashboardPage({
 
   const ownedIds = (myOwnedTeams ?? []).map((t: any) => t.id);
   
-  let memberTeamsQuery = supabase
-    .from("inscricoes")
+  const { data: myMemberTeams } = await supabase
+    .from("team_members")
     .select(
-      "id, status, team_id, tournament_id, teams:team_id(id, name, tag), tournaments:tournament_id(id, name, slug, status)"
+      `
+      id,
+      teams ( id, name, tag ),
+      inscricoes ( id, status, checked_in, checked_in_at, tournament_id,
+        tournaments ( id, name, slug, status )
+      )
+      `
     )
-    .eq("requested_by", user.id)
+    .eq("profile_id", user.id)
+    .eq("status", "accepted") // Apenas membros aceitos
+    .not("team_id", "in", `(${ownedIds.join(",")})`) // Exclui times que o usuário é owner
     .limit(5);
-
-  if (ownedIds.length > 0) {
-    memberTeamsQuery = memberTeamsQuery.not("team_id", "in", `(${ownedIds.join(",")})`);
-  }
-
-  const { data: myMemberTeams } = await memberTeamsQuery;
 
   const rankSolo = (riotAccount?.rank_snapshots as any[])?.find(
     (r: any) => r.queue_type === "RANKED_SOLO_5x5"
@@ -476,12 +478,12 @@ export default async function DashboardPage({
           <div className="mt-4 pt-4 border-t border-[#1E3A5F]">
             <p className="text-gray-500 text-xs uppercase tracking-wider mb-2">Participando como membro</p>
             <div className="space-y-2">
-              {myMemberTeams.map((ins: any) => (
-                <div key={ins.id} className="flex items-center justify-between text-sm">
+              {myMemberTeams.map((member: any) => (
+                <div key={member.id} className="flex items-center justify-between text-sm">
                   <span className="text-gray-300">
-                    <span className="text-[#C8A84B]">[{ins.teams?.tag}]</span> {ins.teams?.name}
+                    <span className="text-[#C8A84B]">[{member.teams?.tag}]</span> {member.teams?.name}
                   </span>
-                  <span className="text-gray-500 text-xs">{ins.tournaments?.name}</span>
+                  <span className="text-gray-500 text-xs">{member.inscricoes?.[0]?.tournaments?.name}</span>
                 </div>
               ))}
             </div>

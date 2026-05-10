@@ -13,11 +13,17 @@ export async function createClient() {
           return cookieStore.getAll();
         },
         setAll(cookiesToSet: { name: string; value: string; options: CookieOptions }[]) {
-          // SEM try/catch - a Server Action de login precisa gravar o cookie de sessao
-          // O try/catch silenciava o erro e impedia o token de ser salvo
-          cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
-          );
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            );
+          } catch (e: any) {
+            // Ignora erro de "cookies can only be modified in Server Action/Route Handler"
+            // pois ocorre em Server Components onde a leitura ainda funciona corretamente
+            if (!e?.message?.includes('Cookies can only be modified')) {
+              throw e;
+            }
+          }
         },
       },
     }
