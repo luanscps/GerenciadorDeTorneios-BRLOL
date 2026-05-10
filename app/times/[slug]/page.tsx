@@ -164,7 +164,8 @@ export default async function TimeDetailPage({
     .eq("team_id", team.id)
     .in("riot_account_id", riotAccountIds);
 
-  const playerMap: Record<string, typeof teamPlayers[0]> = {};
+type PlayerData = NonNullable<typeof teamPlayers>[number];
+  const playerMap: Record<string, PlayerData> = {};
   for (const p of teamPlayers ?? []) {
     if (p.riot_account_id) {
       playerMap[p.riot_account_id] = p;
