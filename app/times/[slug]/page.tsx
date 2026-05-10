@@ -149,8 +149,8 @@ export default async function TimeDetailPage({
   // Coleta riot_account_ids para buscar rank em lote
   const riotIds: string[] = [];
   for (const m of rawMembers ?? []) {
-    const rid = (m as any).riot_account?.id;
-    if (rid && !riotIds.includes(rid)) riotIds.push(rid);
+    const ra = (m as any).riot_accounts?.[0]; // Bug 1: Usar riot_accounts (plural)
+    if (ra?.id && !riotIds.includes(ra.id)) riotIds.push(ra.id);
   }
 
   const rankMap: Record<string, { tier: string; rank: string; lp: number; wins: number; losses: number }> = {};
@@ -175,7 +175,8 @@ export default async function TimeDetailPage({
   }
 
   const players: PlayerRow[] = (rawMembers ?? []).map((member: any) => {
-    const ra   = member.riot_account ?? null;
+    const ra   = (member.riot_accounts as any[])?.[0] ?? null; // Bug 1: Usar riot_accounts (plural)
+    const prof = (member.profiles as any[])?.[0] ?? null;     // Bug 2: Usar profiles (plural)
     const snap = ra?.id ? (rankMap[ra.id] ?? null) : null;
     const playerRole = member.players?.[0]?.role; // Obter a role do player
     const playerTier = member.players?.[0]?.tier; // Obter o tier do player
@@ -187,7 +188,7 @@ export default async function TimeDetailPage({
       id:              member.id,
       lane:            member.lane ?? playerRole ?? null, // Usar players.role como fallback
       team_role:       member.team_role ?? "member",
-      summoner_name:   ra?.game_name  ?? member.profile?.full_name ?? playerSummonerName ?? "Jogador", // Adicionado players.summoner_name
+      summoner_name:   ra?.game_name  ?? prof?.full_name ?? playerSummonerName ?? "Jogador", // Bug 2: Usar prof.full_name
       tag_line:        ra?.tag_line   ?? "BR1",
       profile_icon_id: ra?.profile_icon_id ?? null,
       summoner_level:  ra?.summoner_level  ?? null,
