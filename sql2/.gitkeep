@@ -1,3 +1,0 @@
-# O arquivo 2026-04-26_134812.sql foi gerado via pg_dump e é grande demais para o GitHub API.
-# Faça upload manual via: git add sql2/2026-04-26_134812.sql && git commit && git push
-# Ou use GitHub CLI: gh api repos/luanscps/GerenciadorDeTorneios-BRLOL/contents/sql2/2026-04-26_134812.sql
