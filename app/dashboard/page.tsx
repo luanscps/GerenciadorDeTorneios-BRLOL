@@ -55,52 +55,61 @@ export default async function DashboardPage({
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: profile }, { data: openTournaments }] = await Promise.all([
+  const [
+    { data: profile },
+    { data: openTournaments },
+    { data: riotAccount },
+    { data: myOwnedTeams },
+  ] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", user.id).single(),
     supabase
       .from("tournaments")
       .select("id, name, slug, status, max_teams, starts_at")
       .eq("status", "open")
       .limit(3),
-  ]);
-
-  const { data: riotAccount } = await supabase
-    .from("riot_accounts")
-    .select(`
+    supabase
+      .from("riot_accounts")
+      .select(
+        `
       id, game_name, tag_line, summoner_level, profile_icon_id,
       rank_snapshots ( queue_type, tier, rank, lp, wins, losses ),
       champion_masteries ( champion_id, champion_name, mastery_level, mastery_points )
-    `)
-    .eq("profile_id", user.id)
-    .eq("is_primary", true)
-    .order("updated_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const { data: myOwnedTeams } = await supabase
-    .from("teams")
-    .select(`
+    `
+      )
+      .eq("profile_id", user.id)
+      .eq("is_primary", true)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("teams")
+      .select(
+        `
       id, name, tag,
       inscricoes ( id, status, checked_in, checked_in_at, tournament_id,
         tournaments ( id, name, slug, status )
       )
-    `)
-    .eq("owner_id", user.id)
-    .limit(10);
+    `
+      )
+      .eq("owner_id", user.id)
+      .limit(10),
+  ]);
 
   const ownedIds = (myOwnedTeams ?? []).map((t: any) => t.id);
-  const { data: myMemberTeams } = ownedIds.length > 0
-    ? await supabase
-        .from("inscricoes")
-        .select("id, status, team_id, tournament_id, teams:team_id(id, name, tag), tournaments:tournament_id(id, name, slug, status)")
-        .eq("requested_by", user.id)
-        .not("team_id", "in", `(${ownedIds.join(',')})`)
-        .limit(5)
-    : await supabase
-        .from("inscricoes")
-        .select("id, status, team_id, tournament_id, teams:team_id(id, name, tag), tournaments:tournament_id(id, name, slug, status)")
-        .eq("requested_by", user.id)
-        .limit(5);
+  
+  let memberTeamsQuery = supabase
+    .from("inscricoes")
+    .select(
+      "id, status, team_id, tournament_id, teams:team_id(id, name, tag), tournaments:tournament_id(id, name, slug, status)"
+    )
+    .eq("requested_by", user.id)
+    .limit(5);
+
+  if (ownedIds.length > 0) {
+    memberTeamsQuery = memberTeamsQuery.not("team_id", "in", `(${ownedIds.join(",")})`);
+  }
+
+  const { data: myMemberTeams } = await memberTeamsQuery;
 
   const rankSolo = (riotAccount?.rank_snapshots as any[])?.find(
     (r: any) => r.queue_type === "RANKED_SOLO_5x5"
