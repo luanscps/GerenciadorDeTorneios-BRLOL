@@ -32,38 +32,22 @@ const ROLE_LABELS: Record<string, string> = {
   top: 'Top', jungle: 'Jungle', mid: 'Mid', adc: 'ADC', support: 'Support',
 };
 
-/**
- * Separa summoner_name que pode vir de duas formas do banco:
- *   1. summoner_name = "Gilius #93",  tag_line = "0001"  → usa tag_line
- *   2. summoner_name = "Gilius #93",  tag_line = null     → split no '#'
- *   3. summoner_name = "Gilius",      tag_line = "BR1"    → formato correto
- *
- * Retorna { gameName, tagLine } prontos para a URL e para a Riot API.
- */
 function splitRiotId(
   summoner_name: string | null | undefined,
   tag_line: string | null | undefined,
 ): { gameName: string; tagLine: string } | null {
   if (!summoner_name) return null;
-
-  // Remove espaços extras
   const raw = summoner_name.trim();
-
-  // Caso: summoner_name contém '#' (legado "Nick #TAG" ou "Nick#TAG")
   const hashIdx = raw.indexOf('#');
   if (hashIdx !== -1) {
     const namePart = raw.slice(0, hashIdx).trim();
-    // Prefere tag_line do banco, mas usa o que vem depois do '#' como fallback
     const tagPart  = (tag_line ?? raw.slice(hashIdx + 1)).trim();
     if (!namePart || !tagPart) return null;
     return { gameName: namePart, tagLine: tagPart };
   }
-
-  // Caso normal: summoner_name limpo + tag_line separado
   if (tag_line?.trim()) {
     return { gameName: raw, tagLine: tag_line.trim() };
   }
-
   return null;
 }
 
@@ -75,9 +59,10 @@ export default async function JogadoresPage({
   const { role, tier, q } = await searchParams;
   const supabase = await createClient();
 
+  // Fix 3: removido team_id e teams(id, name, tag) — coluna team_id foi dropada na migration
   let query = supabase
     .from('players')
-    .select('id, summoner_name, tag_line, role, tier, rank, lp, wins, losses, puuid, team_id, teams(id, name, tag)')
+    .select('id, summoner_name, tag_line, role, tier, rank, lp, wins, losses, puuid')
     .order('lp', { ascending: false });
 
   if (role) query = query.eq('role', role);
@@ -163,13 +148,11 @@ export default async function JogadoresPage({
               const winrate = total > 0 ? Math.round(((player.wins ?? 0) / total) * 100) : null;
               const emblem  = TIER_EMBLEMS[player.tier ?? ''] ?? null;
 
-              // Resolve gameName/tagLine considerando dados legados
               const riotId  = splitRiotId(player.summoner_name, player.tag_line);
               const href    = riotId
                 ? `/jogadores/${encodeURIComponent(riotId.gameName)}/${encodeURIComponent(riotId.tagLine)}`
                 : null;
 
-              // Nome a exibir: sempre sem o '#TAG'
               const displayName = riotId?.gameName ?? player.summoner_name ?? '?';
               const displayTag  = riotId?.tagLine  ?? player.tag_line      ?? '';
 
@@ -201,11 +184,6 @@ export default async function JogadoresPage({
                         </span>
                       )}
                     </div>
-                    {(player.teams as any) && (
-                      <span className="text-xs text-blue-400 mt-0.5 block">
-                        [{(player.teams as any).tag}] {(player.teams as any).name}
-                      </span>
-                    )}
                   </div>
 
                   <div className="text-right flex-shrink-0">

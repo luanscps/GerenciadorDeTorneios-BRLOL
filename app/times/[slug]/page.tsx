@@ -54,7 +54,7 @@ function TierBadge({ tier, rank, lp }: { tier?: string | null; rank?: string | n
           style={{ filter: "drop-shadow(0 0 2px currentColor)" }} />
       )}
       {label}
-      {lp != null && lp > 0 && <span className="opacity-70 font-normal">· {lp} LP</span>}
+      {lp != null && lp > 0 && <span className="opacity-70 font-normal">&middot; {lp} LP</span>}
     </span>
   );
 }
@@ -121,45 +121,26 @@ export default async function TimeDetailPage({
 
   if (!team) notFound();
 
-  // Fix 2a: select limpo sem duplicatas de riot_accounts e profiles
+  // Fix 5a: busca team_members com select limpo
   const { data: rawMembers } = await supabase
     .from("team_members")
     .select(`
       id, lane, team_role, status, profile_id,
       profiles ( id, full_name, email ),
       riot_accounts (
-        id, game_name, tag_line, summoner_level, profile_icon_id,
-        rank_snapshots ( queue_type, tier, rank, lp, wins, losses, recorded_at )
+        id, game_name, tag_line, summoner_level, profile_icon_id
       )
     `)
     .eq("team_id", team.id)
     .eq("status", "accepted");
 
-  // Coleta riot_account_ids válidos
+  // Fix 5b: busca rank_snapshots em lote para os riot_accounts encontrados
   const riotAccountIds: string[] = [];
   for (const m of rawMembers ?? []) {
     const ra = (m as any).riot_accounts?.[0];
     if (ra?.id && !riotAccountIds.includes(ra.id)) riotAccountIds.push(ra.id);
   }
 
-  // Fix 2b: busca players pela tabela players diretamente via team_id (sem depender de riot_account_id)
-  // Isso garante que mesmo com riot_account_id = NULL os jogadores do time apareçam
-  const { data: teamPlayers } = await supabase
-    .from("players")
-    .select("id, summoner_name, tag_line, role, tier, rank, lp, wins, losses, profile_icon_id, summoner_level, riot_account_id")
-    .eq("team_id", team.id);
-
-  // Map por riot_account_id (quando disponível) e também por summoner_name+tag_line como fallback
-  type PlayerData = NonNullable<typeof teamPlayers>[number];
-  const playerMapById: Record<string, PlayerData> = {};
-  const playerMapByName: Record<string, PlayerData> = {};
-  for (const p of teamPlayers ?? []) {
-    if (p.riot_account_id) playerMapById[p.riot_account_id] = p;
-    const key = `${(p.summoner_name ?? "").toLowerCase()}#${(p.tag_line ?? "").toLowerCase()}`;
-    playerMapByName[key] = p;
-  }
-
-  // Rank via rank_snapshots em lote
   const rankMap: Record<string, { tier: string; rank: string; lp: number; wins: number; losses: number }> = {};
   if (riotAccountIds.length > 0) {
     const { data: snapshots } = await supabase
@@ -167,72 +148,105 @@ export default async function TimeDetailPage({
       .select("riot_account_id, tier, rank, lp, wins, losses, recorded_at")
       .in("riot_account_id", riotAccountIds)
       .order("recorded_at", { ascending: false });
-
     for (const snap of snapshots ?? []) {
       if (!rankMap[snap.riot_account_id]) {
         rankMap[snap.riot_account_id] = {
-          tier:   snap.tier   ?? "UNRANKED",
-          rank:   snap.rank   ?? "",
-          lp:     snap.lp     ?? 0,
-          wins:   snap.wins   ?? 0,
+          tier: snap.tier ?? "UNRANKED",
+          rank: snap.rank ?? "",
+          lp: snap.lp ?? 0,
+          wins: snap.wins ?? 0,
           losses: snap.losses ?? 0,
         };
       }
     }
   }
 
-  const players: PlayerRow[] = (rawMembers ?? []).map((member: any) => {
-    const ra   = (member.riot_accounts as any[])?.[0] ?? null;
-    const prof = (member.profiles as any[])?.[0] ?? null;
+  // Fix 5c: busca players da tabela players via profile_id dos membros
+  const profileIds = (rawMembers ?? [])
+    .map((m: any) => m.profile_id)
+    .filter(Boolean) as string[];
 
-    // Resolução de player: primeiro por riot_account_id, depois por nome+tag
-    const playerById = ra?.id ? playerMapById[ra.id] : null;
-    const nameKey = `${(ra?.game_name ?? "").toLowerCase()}#${(ra?.tag_line ?? "").toLowerCase()}`;
-    const playerByName = nameKey !== "#" ? playerMapByName[nameKey] : null;
-    const player = playerById ?? playerByName ?? null;
+  const playersByProfile: Record<string, any> = {};
+  if (profileIds.length > 0) {
+    const { data: pls } = await supabase
+      .from("players")
+      .select("id, summoner_name, tag_line, role, tier, rank, lp, wins, losses, profile_icon_id, summoner_level, profile_id")
+      .in("profile_id", profileIds);
+    for (const p of pls ?? []) {
+      if ((p as any).profile_id) playersByProfile[(p as any).profile_id] = p;
+    }
+  }
 
-    const snap = ra?.id ? (rankMap[ra.id] ?? null) : null;
-
-    // Rank: prioridade rank_snapshots > player.tier/rank/lp (vindo diretamente da tabela players)
-    const tier   = snap?.tier   ?? player?.tier   ?? null;
-    const rank   = snap?.rank   ?? player?.rank   ?? null;
-    const lp     = snap?.lp     ?? player?.lp     ?? null;
-    const wins   = snap?.wins   ?? player?.wins   ?? null;
-    const losses = snap?.losses ?? player?.losses ?? null;
+  // Monta PlayerRow a partir de team_members
+  const membersAsPlayers: PlayerRow[] = (rawMembers ?? []).map((member: any) => {
+    const ra   = member.riot_accounts?.[0] ?? null;
+    const prof = member.profiles?.[0] ?? null;
+    const player = member.profile_id ? playersByProfile[member.profile_id] : null;
+    const snap = ra?.id ? rankMap[ra.id] : null;
 
     return {
       id:              member.id,
       lane:            member.lane ?? player?.role ?? null,
       team_role:       member.team_role ?? "member",
-      summoner_name:   ra?.game_name  ?? prof?.full_name ?? player?.summoner_name ?? "Jogador",
+      summoner_name:   ra?.game_name  ?? player?.summoner_name ?? prof?.full_name ?? "Jogador",
       tag_line:        ra?.tag_line   ?? player?.tag_line ?? "BR1",
       profile_icon_id: ra?.profile_icon_id ?? player?.profile_icon_id ?? null,
       summoner_level:  ra?.summoner_level  ?? player?.summoner_level  ?? null,
-      tier,
-      rank,
-      lp,
-      wins,
-      losses,
+      tier:   snap?.tier   ?? player?.tier   ?? null,
+      rank:   snap?.rank   ?? player?.rank   ?? null,
+      lp:     snap?.lp     ?? player?.lp     ?? null,
+      wins:   snap?.wins   ?? player?.wins   ?? null,
+      losses: snap?.losses ?? player?.losses ?? null,
     };
   });
 
-  // Fix 2c: se team_members está vazio mas players existe via team_id, monta roster direto
-  let finalPlayers = players;
-  if (players.length === 0 && (teamPlayers ?? []).length > 0) {
-    finalPlayers = (teamPlayers ?? []).map((p) => ({
-      id:              p.id,
-      lane:            p.role ?? null,
-      team_role:       "member",
-      summoner_name:   p.summoner_name ?? "Jogador",
-      tag_line:        p.tag_line ?? "BR1",
-      profile_icon_id: (p as any).profile_icon_id ?? null,
-      summoner_level:  (p as any).summoner_level  ?? null,
-      tier:            p.tier   ?? null,
-      rank:            p.rank   ?? null,
-      lp:              p.lp     ?? null,
-      wins:            p.wins   ?? null,
-      losses:          p.losses ?? null,
-    }));
+  // Fix 5d: fallback — se team_members vazio, usa players diretos via team_members join
+  // Faz uma busca separada por player.summoner_name em team_members via profile_id
+  let finalPlayers = membersAsPlayers;
+
+  if (finalPlayers.length === 0) {
+    // Tenta buscar membros via players que tenham profile_id vinculado ao time
+    const { data: directPlayers } = await supabase
+      .from("players")
+      .select(`
+        id, summoner_name, tag_line, role, tier, rank, lp, wins, losses,
+        profile_icon_id, summoner_level,
+        profiles:profile_id ( id )
+      `);
+
+    // Filtra players cujo profile_id está em algum team_member deste time
+    // Como team_members está vazio, faz busca direta na view de members do time
+    const { data: allMembers } = await supabase
+      .from("team_members")
+      .select("id, lane, team_role, profile_id")
+      .eq("team_id", team.id);
+
+    if ((allMembers ?? []).length > 0) {
+      const memberProfileIds = (allMembers ?? []).map((m: any) => m.profile_id).filter(Boolean);
+      const matchedPlayers = (directPlayers ?? []).filter(
+        (p: any) => memberProfileIds.includes((p as any).profile_id)
+      );
+
+      if (matchedPlayers.length > 0) {
+        finalPlayers = matchedPlayers.map((p: any) => {
+          const memberRow = (allMembers ?? []).find((m: any) => m.profile_id === (p as any).profile_id);
+          return {
+            id:              p.id,
+            lane:            memberRow?.lane ?? p.role ?? null,
+            team_role:       memberRow?.team_role ?? "member",
+            summoner_name:   p.summoner_name ?? "Jogador",
+            tag_line:        p.tag_line ?? "BR1",
+            profile_icon_id: p.profile_icon_id ?? null,
+            summoner_level:  p.summoner_level  ?? null,
+            tier:   p.tier   ?? null,
+            rank:   p.rank   ?? null,
+            lp:     p.lp     ?? null,
+            wins:   p.wins   ?? null,
+            losses: p.losses ?? null,
+          };
+        });
+      }
+    }
   }
 
   const sortedPlayers = finalPlayers.sort(
@@ -344,10 +358,10 @@ export default async function TimeDetailPage({
         {total > 0 && (
           <div className="rounded-xl overflow-hidden" style={{ background: "#0D1B2E", border: "1px solid #1E3A5F" }}>
             <div className="grid grid-cols-3 divide-x divide-[#1E3A5F]">
-              <StatPill value={wins}   label="Vitórias" color="#2AC56F" />
+              <StatPill value={wins}   label="Vit\u00f3rias" color="#2AC56F" />
               <StatPill value={losses} label="Derrotas" color="#CD4545" />
               <StatPill
-                value={wr != null ? `${wr}%` : "—"}
+                value={wr != null ? `${wr}%` : "\u2014"}
                 label="Win Rate"
                 color={wr != null ? (wr >= 50 ? "#2AC56F" : "#CD4545") : "#4B5563"}
               />
@@ -370,8 +384,7 @@ export default async function TimeDetailPage({
           ) : (
             <div className="divide-y divide-[#1E3A5F]/50">
               {sortedPlayers.map((p) => {
-                const tierColor = TIER_HEX[(p.tier ?? "UNRANKED").toUpperCase()] ?? TIER_HEX.UNRANKED;
-                const lane      = (p.lane ?? "").toUpperCase();
+                const lane = (p.lane ?? "").toUpperCase();
                 return (
                   <div
                     key={p.id}
@@ -410,7 +423,7 @@ export default async function TimeDetailPage({
                         )}
                       </p>
                       {p.summoner_level && (
-                        <p className="text-gray-600 text-xs">Nível {p.summoner_level}</p>
+                        <p className="text-gray-600 text-xs">N\u00edvel {p.summoner_level}</p>
                       )}
                     </div>
 
@@ -433,16 +446,16 @@ export default async function TimeDetailPage({
         {allMatches.length > 0 && (
           <div className="rounded-xl overflow-hidden" style={{ background: "#0D1B2E", border: "1px solid #1E3A5F" }}>
             <div className="px-4 py-3" style={{ borderBottom: "1px solid #1E3A5F" }}>
-              <h2 className="text-white font-bold text-sm uppercase tracking-widest">Histórico de Partidas</h2>
+              <h2 className="text-white font-bold text-sm uppercase tracking-widest">Hist\u00f3rico de Partidas</h2>
             </div>
             <div className="divide-y divide-[#1E3A5F]/50">
               {allMatches.slice(0, 10).map((match) => {
-                const isA       = match.side === "A";
-                const opponent  = isA ? (match as any).team_b : (match as any).team_a;
+                const isA      = match.side === "A";
+                const opponent = isA ? (match as any).team_b : (match as any).team_a;
                 const scoreUs   = isA ? match.score_a : match.score_b;
                 const scoreThem = isA ? match.score_b : match.score_a;
-                const won       = match.winner_id === team.id;
-                const finished  = match.status === "FINISHED";
+                const won      = match.winner_id === team.id;
+                const finished = match.status === "FINISHED";
                 const tournament = (match as any).tournament;
 
                 return (
@@ -465,14 +478,14 @@ export default async function TimeDetailPage({
                         </p>
                       </div>
                       <p className="text-gray-600 text-xs mt-0.5">
-                        {tournament?.name ?? "Torneio"} · Rodada {match.round ?? "?"}
+                        {tournament?.name ?? "Torneio"} &middot; Rodada {match.round ?? "?"}
                       </p>
                     </div>
                     <div className="flex-shrink-0 text-right">
                       {finished ? (
                         <p className="font-black text-base tabular-nums" style={{ color: won ? "#2AC56F" : "#CD4545" }}>
                           {won ? "V" : "D"}{" "}
-                          <span className="text-white font-bold">{scoreUs ?? 0}–{scoreThem ?? 0}</span>
+                          <span className="text-white font-bold">{scoreUs ?? 0}&ndash;{scoreThem ?? 0}</span>
                         </p>
                       ) : match.status === "IN_PROGRESS" ? (
                         <span className="text-yellow-400 text-xs font-bold animate-pulse">AO VIVO</span>
@@ -492,7 +505,7 @@ export default async function TimeDetailPage({
         )}
 
         <Link href="/times" className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-400 text-sm transition-colors">
-          ← Todos os times
+          \u2190 Todos os times
         </Link>
       </div>
     </div>
