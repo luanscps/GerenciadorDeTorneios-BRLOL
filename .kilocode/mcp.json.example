@@ -1,17 +1,35 @@
 {
-  "mcpServers": {
-    "supabase": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@supabase/mcp-server-supabase@latest",
-        "--supabase-url", "https://XXXieglbXXXaXXXghXXX.supabase.co",
-        "--supabase-service-role-key", "sb_publishable_XXXkXBXXX4XXX_XXXpZXXX_-XvQXXX"
-      ]
-    },
-    "next": {
-      "command": "npx",
-      "args": ["-y", "mcp-remote", "http://localhost:3000/api/mcp/sse"]
-    }
-  }
+   "mcpServers":{
+      "supabase":{
+         "command":"cmd",
+         "args":[
+            "/c",
+            "npx",
+            "-y",
+            "@supabase/mcp-server-supabase@latest",
+            "--access-token",
+            "sbp_XXX"
+         ],
+         "disabled":false,
+         "alwaysAllow":[
+            "search_docs"
+         ]
+      },
+      "next-devtools":{
+         "command":"cmd",
+         "args":[
+            "/c",
+            "npx",
+            "-y",
+            "next-devtools-mcp@latest"
+         ],
+         "env":{
+            "NEXT_DEV_SERVER_URL":"http://localhost:3000"
+         },
+         "disabled":false,
+         "alwaysAllow":[
+            "browser_eval"
+         ]
+      }
+   }
 }
