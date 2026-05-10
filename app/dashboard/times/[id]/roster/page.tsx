@@ -25,17 +25,27 @@ const INVITE_STATUS_LABEL: Record<string, string> = {
   PENDING: 'Aguardando', ACCEPTED: 'Aceito', REJECTED: 'Recusado', CANCELLED: 'Cancelado',
 };
 
-interface Player {
+interface RiotAccount {
   id: string;
-  summoner_name: string;
+  game_name: string;
   tag_line: string;
-  role: string;
-  tier: string;
-  rank: string;
-  lp: number;
-  wins: number;
-  losses: number;
-  puuid: string | null;
+  player: {
+    id: string;
+    tier: string;
+    rank: string;
+    lp: number;
+    wins: number;
+    losses: number;
+    puuid: string | null;
+  } | null;
+}
+
+// Fonte de verdade do roster — team_members
+interface TeamMember {
+  id: string;
+  team_role: string;
+  lane: string | null;
+  riot_account: RiotAccount | null;
 }
 
 interface Invite {
@@ -54,7 +64,7 @@ interface Team {
   tag: string;
   logo_url: string | null;
   owner_id: string;
-  players: Player[];
+  team_members: TeamMember[];
 }
 
 export default function RosterPage() {
@@ -67,18 +77,25 @@ export default function RosterPage() {
   const [invites, setInvites] = useState<Invite[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState('');
-  const [removing, setRemoving] = useState<string | null>(null);
+  const [removing, setRemoving]     = useState<string | null>(null);
   const [cancelling, setCancelling] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { router.push('/login'); return; }
 
+    // Roster via team_members → riot_accounts → players (stats de perfil)
     const { data, error: err } = await supabase
       .from('teams')
       .select(`
         id, name, tag, logo_url, owner_id,
-        players ( id, summoner_name, tag_line, role, tier, rank, lp, wins, losses, puuid )
+        team_members (
+          id, team_role, lane,
+          riot_account:riot_accounts (
+            id, game_name, tag_line,
+            player:players ( id, tier, rank, lp, wins, losses, puuid )
+          )
+        )
       `)
       .eq('id', teamId)
       .single();
@@ -88,7 +105,6 @@ export default function RosterPage() {
 
     setTeam(data as unknown as Team);
 
-    // Convites enviados
     const { data: invData } = await listarConvitesEnviados(teamId);
     setInvites((invData as Invite[]) ?? []);
     setLoading(false);
@@ -96,6 +112,7 @@ export default function RosterPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  // playerId aqui é players.id — removerJogador resolve o profile_id internamente
   async function handleRemove(playerId: string) {
     if (!confirm('Remover este jogador do time?')) return;
     setRemoving(playerId);
@@ -131,10 +148,10 @@ export default function RosterPage() {
 
   if (!team) return null;
 
-  const players = team.players;
+  const members        = team.team_members ?? [];
   const pendingInvites = invites.filter(i => i.status === 'PENDING');
   const historyInvites = invites.filter(i => i.status !== 'PENDING');
-  const slots = Array.from({ length: 5 }, (_, i) => players[i] ?? null);
+  const slots          = Array.from({ length: 5 }, (_, i) => members[i] ?? null);
 
   return (
     <main className="min-h-screen bg-[#050E1A] py-10 px-4">
@@ -148,7 +165,7 @@ export default function RosterPage() {
             </div>
             <div>
               <h1 className="text-white font-bold text-xl">Roster — [{team.tag}] {team.name}</h1>
-              <p className="text-gray-500 text-xs">{players.length}/5 jogadores</p>
+              <p className="text-gray-500 text-xs">{members.length}/5 jogadores</p>
             </div>
           </div>
           <Link
@@ -162,8 +179,8 @@ export default function RosterPage() {
         {/* Vagas visuais */}
         <div className="bg-[#0A1628] border border-[#1E3A5F] rounded-xl p-4 space-y-2">
           <h2 className="text-gray-400 text-xs uppercase tracking-wider font-semibold mb-3">Slots do Time</h2>
-          {slots.map((player, i) => {
-            if (!player) {
+          {slots.map((member, i) => {
+            if (!member) {
               return (
                 <div key={`empty-${i}`} className="flex items-center gap-3 bg-[#0D1E35]/60 border border-dashed border-[#1E3A5F] rounded-lg px-3 py-2">
                   <div className="w-8 h-8 rounded-full border border-dashed border-[#2A4060] flex items-center justify-center text-gray-600 text-sm">
@@ -173,29 +190,35 @@ export default function RosterPage() {
                 </div>
               );
             }
-            const tierColor = TIER_COLORS[player.tier?.toUpperCase()] ?? 'text-gray-400';
-            const total = player.wins + player.losses;
-            const wr = total > 0 ? Math.round((player.wins / total) * 100) : 0;
+            const ra    = member.riot_account;
+            const player = ra?.player;
+            const lane  = member.lane ?? '';
+            const tier  = player?.tier ?? 'UNRANKED';
+            const tierColor = TIER_COLORS[tier.toUpperCase()] ?? 'text-gray-400';
+            const total = (player?.wins ?? 0) + (player?.losses ?? 0);
+            const wr    = total > 0 ? Math.round(((player?.wins ?? 0) / total) * 100) : 0;
+            // ID para remoção: players.id (resolvido internamente em removerJogador)
+            const playerDbId = player?.id ?? '';
             return (
-              <div key={player.id} className="flex items-center gap-3 bg-[#0D1E35] border border-[#1E3A5F] rounded-lg px-3 py-2">
+              <div key={member.id} className="flex items-center gap-3 bg-[#0D1E35] border border-[#1E3A5F] rounded-lg px-3 py-2">
                 <div className="w-8 h-8 rounded-full bg-[#1E2A3A] border border-[#1E3A5F] flex items-center justify-center text-xs font-bold text-blue-400">
-                  {player.role?.slice(0, 1) || '?'}
+                  {lane?.slice(0, 1) || '?'}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-white text-sm font-semibold truncate">
-                    {player.summoner_name}
-                    <span className="text-gray-500 font-normal"> #{player.tag_line}</span>
+                    {ra?.game_name ?? '—'}
+                    <span className="text-gray-500 font-normal"> #{ra?.tag_line ?? ''}</span>
                   </p>
                   <p className={`text-xs ${tierColor}`}>
-                    {ROLE_LABELS[player.role] ?? player.role} · {player.tier} {player.rank} · {player.lp} LP · {wr}% WR
+                    {ROLE_LABELS[lane] ?? lane} · {tier} {player?.rank ?? ''} · {player?.lp ?? 0} LP · {wr}% WR
                   </p>
                 </div>
                 <button
-                  onClick={() => handleRemove(player.id)}
-                  disabled={removing === player.id}
+                  onClick={() => handleRemove(playerDbId)}
+                  disabled={removing === playerDbId}
                   className="text-xs text-red-400 hover:text-red-300 border border-red-400/30 hover:border-red-400/60 px-2 py-1 rounded transition-colors disabled:opacity-40"
                 >
-                  {removing === player.id ? '...' : 'Remover'}
+                  {removing === playerDbId ? '...' : 'Remover'}
                 </button>
               </div>
             );
@@ -205,7 +228,7 @@ export default function RosterPage() {
         {/* Formulário de convite */}
         <InvitePlayerForm
           teamId={teamId}
-          currentCount={players.length}
+          currentCount={members.length}
           onInviteSent={loadData}
         />
 

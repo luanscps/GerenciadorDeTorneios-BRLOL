@@ -57,7 +57,6 @@ export async function desfazerCheckin(inscricaoId: string) {
   try {
     const { supabase, adminId: _adminId } = await requireAdmin();
 
-    // Busca tournament_id antes do update para revalidar o path correto
     const { data: insc } = await supabase
       .from('inscricoes')
       .select('tournament_id')
@@ -113,7 +112,6 @@ export async function fazerCheckin(inscricaoId: string) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: 'Não autenticado' };
 
-  // Busca inscrição + team_id para revalidar a rota correta
   const { data: insc, error: fetchErr } = await supabase
     .from('inscricoes')
     .select('id, status, team_id, teams!inner(owner_id)')
@@ -137,7 +135,6 @@ export async function fazerCheckin(inscricaoId: string) {
 
   if (error) return { error: error.message };
 
-  // Revalida rotas corretas usando o team_id real
   revalidatePath('/dashboard');
   revalidatePath(`/dashboard/times/${insc.team_id}`);
   revalidatePath(`/dashboard/times/${insc.team_id}/checkin`);
@@ -145,6 +142,7 @@ export async function fazerCheckin(inscricaoId: string) {
 }
 
 // ─── Listar inscrições por torneio ─────────────────────────────────────────
+// Roster agora via team_members → riot_accounts → players (stats de perfil)
 export async function listarInscricoesPorTorneio(tournamentId: string) {
   const supabase = await createClient();
   const { data, error } = await supabase
@@ -153,7 +151,13 @@ export async function listarInscricoesPorTorneio(tournamentId: string) {
       id, status, checked_in, checked_in_at, created_at,
       team:teams (
         id, name, tag, logo_url, owner_id,
-        players ( id, summoner_name, role, tier, lp )
+        team_members (
+          id, team_role, lane,
+          riot_account:riot_accounts (
+            id, game_name, tag_line,
+            player:players ( id, tier, lp, wins, losses )
+          )
+        )
       )
     `)
     .eq('tournament_id', tournamentId)

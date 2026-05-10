@@ -20,6 +20,21 @@ export interface Tournament {
   };
 }
 
+// Vínculo time ↔ jogador — fonte de verdade do roster
+export interface TeamMember {
+  id: string;
+  team_role: string;          // 'captain' | 'member'
+  lane: string | null;        // lane de LoL: TOP | JUNGLE | MID | ADC | SUPPORT
+  riot_account?: RiotAccount;
+}
+
+export interface RiotAccount {
+  id: string;
+  game_name: string;
+  tag_line: string;
+  player?: Player;
+}
+
 export interface Team {
   id: string;
   name: string;
@@ -27,19 +42,20 @@ export interface Team {
   logoUrl: string | null;
   tournamentId: string;
   createdAt: string;
-  players?: Player[];
+  team_members?: TeamMember[];
   _count?: {
-    players: number;
+    team_members: number;
   };
 }
 
+// Player representa apenas perfil/stats do invocador — sem vínculo de time
 export interface Player {
   id: string;
   summonerName: string;
   tagLine: string;
   puuid: string | null;
-  teamId: string | null;
-  role: string;
+  // teamId removido — vínculo agora é exclusivo de team_members
+  role: string | null;         // lane preferida no perfil (opcional)
   tier: string;
   rank: string;
   lp: number;

@@ -7,8 +7,8 @@ import { revalidatePath } from "next/cache";
 // ─────────────────────────────────────────────
 export async function enviarConvite(params: {
   teamId: string;
-  summonerName: string;  // riot game name sem tag
-  tagline: string;       // ex: "BR1"
+  summonerName: string;
+  tagline: string;
   role: string;
 }) {
   try {
@@ -16,7 +16,6 @@ export async function enviarConvite(params: {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { error: "Não autenticado" };
 
-    // Garante que o usuário é capitão (owner) do time
     const { data: team, error: teamErr } = await supabase
       .from("teams")
       .select("id, owner_id")
@@ -26,15 +25,15 @@ export async function enviarConvite(params: {
     if (teamErr || !team) return { error: "Time não encontrado" };
     if (team.owner_id !== user.id) return { error: "Apenas o capitão pode convidar jogadores" };
 
-    // Valida vagas: max 5 players
+    // Valida vagas: max 5 membros aceitos em team_members
     const { count } = await supabase
-      .from("players")
+      .from("team_members")
       .select("id", { count: "exact", head: true })
-      .eq("team_id", params.teamId);
+      .eq("team_id", params.teamId)
+      .eq("status", "accepted");
 
     if ((count ?? 0) >= 5) return { error: "Time já possui 5 jogadores" };
 
-    // Verifica se já existe convite PENDING para este nick no time
     const { data: existing } = await supabase
       .from("team_invites")
       .select("id")
@@ -46,19 +45,18 @@ export async function enviarConvite(params: {
 
     if (existing) return { error: "Já existe um convite pendente para este jogador" };
 
-    // Expira em 48h
     const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
 
     const { data: invite, error: insertErr } = await supabase
       .from("team_invites")
       .insert({
-        team_id:      params.teamId,
-        invited_by:   user.id,
+        team_id:       params.teamId,
+        invited_by:    user.id,
         summoner_name: params.summonerName,
-        tagline:      params.tagline,
-        role:         params.role,
-        status:       "PENDING",
-        expires_at:   expiresAt,
+        tagline:       params.tagline,
+        role:          params.role,
+        status:        "PENDING",
+        expires_at:    expiresAt,
       })
       .select("id")
       .single();
@@ -106,6 +104,8 @@ export async function cancelarConvite(inviteId: string, teamId: string) {
 
 // ─────────────────────────────────────────────
 // Remover jogador do time (capitão)
+// Remove o registro em team_members via profile_id
+// lookup: players.id → riot_accounts → profile_id
 // ─────────────────────────────────────────────
 export async function removerJogador(playerId: string, teamId: string) {
   try {
@@ -113,7 +113,6 @@ export async function removerJogador(playerId: string, teamId: string) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { error: "Não autenticado" };
 
-    // Apenas o capitão pode remover
     const { data: team } = await supabase
       .from("teams")
       .select("owner_id")
@@ -122,11 +121,30 @@ export async function removerJogador(playerId: string, teamId: string) {
 
     if (team?.owner_id !== user.id) return { error: "Apenas o capitão pode remover jogadores" };
 
-    // Desvincula o jogador do time (não deleta o player)
-    const { error } = await supabase
+    // Resolve profile_id: players.id → riot_accounts.id → riot_accounts.profile_id
+    const { data: player, error: playerErr } = await supabase
       .from("players")
-      .update({ team_id: null })
+      .select("riot_account_id")
       .eq("id", playerId)
+      .single();
+
+    if (playerErr || !player?.riot_account_id)
+      return { error: "Jogador não encontrado" };
+
+    const { data: riotAccount, error: raErr } = await supabase
+      .from("riot_accounts")
+      .select("profile_id")
+      .eq("id", player.riot_account_id)
+      .single();
+
+    if (raErr || !riotAccount?.profile_id)
+      return { error: "Conta Riot não vinculada a um perfil" };
+
+    // Deleta o vínculo em team_members
+    const { error } = await supabase
+      .from("team_members")
+      .delete()
+      .eq("profile_id", riotAccount.profile_id)
       .eq("team_id", teamId);
 
     if (error) return { error: error.message };

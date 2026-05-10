@@ -15,17 +15,29 @@ const TIER_COLORS: Record<string, string> = {
   CHALLENGER: 'text-yellow-300', UNRANKED: 'text-gray-500',
 };
 
-interface Player {
+// Perfil do invocador vindo de riot_accounts + players (stats)
+interface RiotAccount {
   id: string;
-  summoner_name: string;
+  game_name: string;
   tag_line: string;
-  role: string;
-  tier: string;
-  rank: string;
-  lp: number;
-  wins: number;
-  losses: number;
-  puuid: string | null;
+  player: {
+    id: string;
+    tier: string;
+    rank: string;
+    lp: number;
+    wins: number;
+    losses: number;
+    role: string | null;
+    puuid: string | null;
+  } | null;
+}
+
+// Vínculo time ↔ jogador — fonte de verdade do roster
+interface TeamMember {
+  id: string;
+  team_role: string;
+  lane: string | null;
+  riot_account: RiotAccount | null;
 }
 
 interface Inscricao {
@@ -43,7 +55,7 @@ interface Team {
   tag: string;
   logo_url: string | null;
   owner_id: string;
-  players: Player[];
+  team_members: TeamMember[];
   inscricoes: Inscricao[];
 }
 
@@ -53,22 +65,29 @@ export default function PainelCapitaoPage() {
   const router   = useRouter();
   const supabase = useMemo(() => createClient(), []);
 
-  const [team, setTeam]         = useState<Team | null>(null);
-  const [loading, setLoading]   = useState(true);
-  const [error, setError]       = useState('');
-  const [savingRole, setSavingRole]   = useState<string | null>(null);
-  const [savedRole, setSavedRole]     = useState<string | null>(null); // feedback visual
+  const [team, setTeam]       = useState<Team | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState('');
+  const [savingLane, setSavingLane]   = useState<string | null>(null);
+  const [savedLane, setSavedLane]     = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.push('/login'); return; }
 
+      // Roster via team_members → riot_accounts → players
       const { data, error: err } = await supabase
         .from('teams')
         .select(`
           id, name, tag, logo_url, owner_id,
-          players ( id, summoner_name, tag_line, role, tier, rank, lp, wins, losses, puuid ),
+          team_members (
+            id, team_role, lane,
+            riot_account:riot_accounts (
+              id, game_name, tag_line,
+              player:players ( id, tier, rank, lp, wins, losses, role, puuid )
+            )
+          ),
           inscricoes (
             id, status, checked_in, checked_in_at, tournament_id,
             tournaments ( name, status )
@@ -78,7 +97,6 @@ export default function PainelCapitaoPage() {
         .single();
 
       if (err || !data) { setError('Time não encontrado.'); setLoading(false); return; }
-      // RLS garante no banco, mas mantemos a guarda no client para UX imediata
       if (data.owner_id !== user.id) { setError('Apenas o capitão pode acessar este painel.'); setLoading(false); return; }
 
       setTeam(data as unknown as Team);
@@ -87,24 +105,26 @@ export default function PainelCapitaoPage() {
     load();
   }, [supabase, router, teamId]);
 
-  async function handleRoleChange(playerId: string, newRole: string) {
-    setSavingRole(playerId);
-    setSavedRole(null);
+  // Atualiza lane do jogador via team_members (lane de LoL)
+  async function handleLaneChange(memberId: string, newLane: string) {
+    setSavingLane(memberId);
+    setSavedLane(null);
     const { error: updateErr } = await supabase
-      .from('players')
-      .update({ role: newRole })
-      .eq('id', playerId);
+      .from('team_members')
+      .update({ lane: newLane })
+      .eq('id', memberId);
 
     if (!updateErr) {
       setTeam(prev => prev ? {
         ...prev,
-        players: prev.players.map(p => p.id === playerId ? { ...p, role: newRole } : p),
+        team_members: prev.team_members.map(m =>
+          m.id === memberId ? { ...m, lane: newLane } : m
+        ),
       } : prev);
-      setSavedRole(playerId);
-      // Apaga o feedback após 2s
-      setTimeout(() => setSavedRole(null), 2000);
+      setSavedLane(memberId);
+      setTimeout(() => setSavedLane(null), 2000);
     }
-    setSavingRole(null);
+    setSavingLane(null);
   }
 
   if (loading) return (
@@ -125,7 +145,9 @@ export default function PainelCapitaoPage() {
 
   if (!team) return null;
 
-  const insc = team.inscricoes[0] as Inscricao | undefined;
+  const members = team.team_members ?? [];
+  const insc    = team.inscricoes[0] as Inscricao | undefined;
+
   const statusColor: Record<string, string> = {
     PENDING:  'text-yellow-400 bg-yellow-400/10 border-yellow-400/30',
     APPROVED: 'text-green-400 bg-green-400/10 border-green-400/30',
@@ -177,33 +199,37 @@ export default function PainelCapitaoPage() {
 
         {/* Jogadores */}
         <div className="card-lol space-y-3">
-          <h2 className="text-white font-bold mb-2">👥 Jogadores ({team.players.length}/5)</h2>
+          <h2 className="text-white font-bold mb-2">👥 Jogadores ({members.length}/5)</h2>
 
-          {team.players.length === 0 && (
+          {members.length === 0 && (
             <p className="text-gray-500 text-sm text-center py-4">Nenhum jogador no time ainda.</p>
           )}
 
-          {team.players.map(p => {
-            const total = p.wins + p.losses;
-            const wr = total > 0 ? Math.round((p.wins / total) * 100) : 0;
-            const tierColor = TIER_COLORS[p.tier?.toUpperCase()] ?? 'text-gray-400';
-            const justSaved = savedRole === p.id;
+          {members.map(m => {
+            const ra      = m.riot_account;
+            const player  = ra?.player;
+            const lane    = m.lane ?? '';
+            const tier    = player?.tier ?? 'UNRANKED';
+            const tierColor = TIER_COLORS[tier.toUpperCase()] ?? 'text-gray-400';
+            const total   = (player?.wins ?? 0) + (player?.losses ?? 0);
+            const wr      = total > 0 ? Math.round(((player?.wins ?? 0) / total) * 100) : 0;
+            const justSaved = savedLane === m.id;
 
             return (
               <div
-                key={p.id}
+                key={m.id}
                 className="flex items-center gap-3 bg-[#0D1E35] border border-[#1E3A5F] rounded-lg p-3"
               >
                 <div className="w-9 h-9 rounded-full bg-[#1E2A3A] border border-[#1E3A5F] flex items-center justify-center text-xs font-bold text-gray-400">
-                  {p.role?.slice(0, 1) || '?'}
+                  {lane?.slice(0, 1) || '?'}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-white text-sm font-semibold truncate">
-                    {p.summoner_name}
-                    <span className="text-gray-500 font-normal"> #{p.tag_line}</span>
+                    {ra?.game_name ?? '—'}
+                    <span className="text-gray-500 font-normal"> #{ra?.tag_line ?? ''}</span>
                   </p>
                   <p className={`text-xs ${tierColor}`}>
-                    {p.tier} {p.rank} · {p.lp} LP · {p.wins}W/{p.losses}L · {wr}% WR
+                    {tier} {player?.rank ?? ''} · {player?.lp ?? 0} LP · {player?.wins ?? 0}W/{player?.losses ?? 0}L · {wr}% WR
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -211,9 +237,9 @@ export default function PainelCapitaoPage() {
                     <span className="text-green-400 text-xs">✓ Salvo</span>
                   )}
                   <select
-                    value={p.role}
-                    onChange={e => handleRoleChange(p.id, e.target.value)}
-                    disabled={savingRole === p.id}
+                    value={lane}
+                    onChange={e => handleLaneChange(m.id, e.target.value)}
+                    disabled={savingLane === m.id}
                     className={`bg-[#1E2A3A] border text-gray-300 text-xs rounded px-2 py-1 transition-colors ${
                       justSaved ? 'border-green-500/50' : 'border-[#1E3A5F]'
                     }`}
