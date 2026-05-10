@@ -141,24 +141,42 @@ export default async function TimeDetailPage({
         id, game_name, tag_line, summoner_level, profile_icon_id,
         rank_snapshots ( queue_type, tier, rank, lp )
       ),
-      players:players!team_members_riot_account_id_fkey ( role, tier, rank, lp, summoner_name ) // Adicionado join explícito
+      riot_accounts (
+        id, game_name, tag_line, summoner_level, profile_icon_id,
+        rank_snapshots ( queue_type, tier, rank, lp )
+      ),
+      profiles ( id, full_name, email )
     `)
     .eq("team_id", team.id)
     .eq("status", "accepted");
 
   // Coleta riot_account_ids para buscar rank em lote
-  const riotIds: string[] = [];
+  const riotAccountIds: string[] = [];
   for (const m of rawMembers ?? []) {
-    const ra = (m as any).riot_accounts?.[0]; // Bug 1: Usar riot_accounts (plural)
-    if (ra?.id && !riotIds.includes(ra.id)) riotIds.push(ra.id);
+    const ra = (m as any).riot_accounts?.[0];
+    if (ra?.id && !riotAccountIds.includes(ra.id)) riotAccountIds.push(ra.id);
+  }
+
+  // Buscar players separadamente
+  const { data: teamPlayers } = await supabase
+    .from("players")
+    .select("id, summoner_name, tag_line, role, tier, rank, lp, riot_account_id") // Incluir riot_account_id
+    .eq("team_id", team.id)
+    .in("riot_account_id", riotAccountIds);
+
+  const playerMap: Record<string, typeof teamPlayers[0]> = {};
+  for (const p of teamPlayers ?? []) {
+    if (p.riot_account_id) {
+      playerMap[p.riot_account_id] = p;
+    }
   }
 
   const rankMap: Record<string, { tier: string; rank: string; lp: number; wins: number; losses: number }> = {};
-  if (riotIds.length > 0) {
+  if (riotAccountIds.length > 0) {
     const { data: snapshots } = await supabase
       .from("rank_snapshots")
       .select("riot_account_id, tier, rank, lp, wins, losses, recorded_at")
-      .in("riot_account_id", riotIds)
+      .in("riot_account_id", riotAccountIds)
       .order("recorded_at", { ascending: false });
 
     for (const snap of snapshots ?? []) {
@@ -175,26 +193,22 @@ export default async function TimeDetailPage({
   }
 
   const players: PlayerRow[] = (rawMembers ?? []).map((member: any) => {
-    const ra   = (member.riot_accounts as any[])?.[0] ?? null; // Bug 1: Usar riot_accounts (plural)
-    const prof = (member.profiles as any[])?.[0] ?? null;     // Bug 2: Usar profiles (plural)
+    const ra   = (member.riot_accounts as any[])?.[0] ?? null;
+    const prof = (member.profiles as any[])?.[0] ?? null;
+    const player = ra?.id ? (playerMap[ra.id] ?? null) : null; // Obter o player correspondente
     const snap = ra?.id ? (rankMap[ra.id] ?? null) : null;
-    const playerRole = member.players?.[0]?.role; // Obter a role do player
-    const playerTier = member.players?.[0]?.tier; // Obter o tier do player
-    const playerRank = member.players?.[0]?.rank; // Obter o rank do player
-    const playerLp   = member.players?.[0]?.lp;   // Obter o lp do player
-    const playerSummonerName = member.players?.[0]?.summoner_name; // Obter o summoner_name do player
 
     return {
       id:              member.id,
-      lane:            member.lane ?? playerRole ?? null, // Usar players.role como fallback
+      lane:            member.lane ?? player?.role ?? null, // Usar player.role como fallback
       team_role:       member.team_role ?? "member",
-      summoner_name:   ra?.game_name  ?? prof?.full_name ?? playerSummonerName ?? "Jogador", // Bug 2: Usar prof.full_name
+      summoner_name:   ra?.game_name  ?? prof?.full_name ?? player?.summoner_name ?? "Jogador",
       tag_line:        ra?.tag_line   ?? "BR1",
       profile_icon_id: ra?.profile_icon_id ?? null,
       summoner_level:  ra?.summoner_level  ?? null,
-      tier:            snap?.tier   ?? playerTier ?? null, // Adicionado players.tier
-      rank:            snap?.rank   ?? playerRank ?? null, // Adicionado players.rank
-      lp:              snap?.lp     ?? playerLp ?? null, // Adicionado players.lp
+      tier:            snap?.tier   ?? player?.tier ?? null, // Usar player.tier como fallback
+      rank:            snap?.rank   ?? player?.rank ?? null, // Usar player.rank como fallback
+      lp:              snap?.lp     ?? player?.lp ?? null, // Usar player.lp como fallback
       wins:            snap?.wins   ?? null,
       losses:          snap?.losses ?? null,
     };
