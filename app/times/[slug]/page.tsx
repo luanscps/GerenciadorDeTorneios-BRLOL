@@ -1,11 +1,9 @@
-import { createClient } from "@/lib/supabase/server"; // Alterado de createAdminClient
+import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { getDDVersion } from "@/lib/riot"; // Importar getDDVersion
+import { getDDVersion } from "@/lib/riot";
 
 export const dynamic = "force-dynamic";
-
-// const DDRAGON = "14.24.1"; // Removido
 
 const TIER_HEX: Record<string, string> = {
   CHALLENGER: "#F4C874", GRANDMASTER: "#CD4545", MASTER: "#9D48E0",
@@ -62,15 +60,9 @@ function TierBadge({ tier, rank, lp }: { tier?: string | null; rank?: string | n
 }
 
 function PlayerAvatar({
-  iconId,
-  name,
-  size = 44,
-  ddVersion,
+  iconId, name, size = 44, ddVersion,
 }: {
-  iconId?: number | null;
-  name: string;
-  size?: number;
-  ddVersion: string;
+  iconId?: number | null; name: string; size?: number; ddVersion: string;
 }) {
   const url = iconId
     ? `https://ddragon.leagueoflegends.com/cdn/${ddVersion}/img/profileicon/${iconId}.png`
@@ -119,9 +111,8 @@ export default async function TimeDetailPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const supabase = await createClient(); // Alterado de admin para supabase e adicionado await
-
-  const DDRAGON = await getDDVersion(); // Obter a versão do DataDragon aqui
+  const supabase = await createClient();
+  const DDRAGON = await getDDVersion();
 
   const isUUID = UUID_REGEX.test(slug);
   const { data: team } = isUUID
@@ -130,8 +121,7 @@ export default async function TimeDetailPage({
 
   if (!team) notFound();
 
-  // ── FONTE ÚNICA: team_members → riot_accounts → rank_snapshots ──
-  // Migration 021 adicionou coluna lane (player_role) em team_members.
+  // Fix 2a: select limpo sem duplicatas de riot_accounts e profiles
   const { data: rawMembers } = await supabase
     .from("team_members")
     .select(`
@@ -139,39 +129,37 @@ export default async function TimeDetailPage({
       profiles ( id, full_name, email ),
       riot_accounts (
         id, game_name, tag_line, summoner_level, profile_icon_id,
-        rank_snapshots ( queue_type, tier, rank, lp )
-      ),
-      riot_accounts (
-        id, game_name, tag_line, summoner_level, profile_icon_id,
-        rank_snapshots ( queue_type, tier, rank, lp )
-      ),
-      profiles ( id, full_name, email )
+        rank_snapshots ( queue_type, tier, rank, lp, wins, losses, recorded_at )
+      )
     `)
     .eq("team_id", team.id)
     .eq("status", "accepted");
 
-  // Coleta riot_account_ids para buscar rank em lote
+  // Coleta riot_account_ids válidos
   const riotAccountIds: string[] = [];
   for (const m of rawMembers ?? []) {
     const ra = (m as any).riot_accounts?.[0];
     if (ra?.id && !riotAccountIds.includes(ra.id)) riotAccountIds.push(ra.id);
   }
 
-  // Buscar players separadamente
+  // Fix 2b: busca players pela tabela players diretamente via team_id (sem depender de riot_account_id)
+  // Isso garante que mesmo com riot_account_id = NULL os jogadores do time apareçam
   const { data: teamPlayers } = await supabase
     .from("players")
-    .select("id, summoner_name, tag_line, role, tier, rank, lp, riot_account_id") // Incluir riot_account_id
-    .eq("team_id", team.id)
-    .in("riot_account_id", riotAccountIds);
+    .select("id, summoner_name, tag_line, role, tier, rank, lp, wins, losses, profile_icon_id, summoner_level, riot_account_id")
+    .eq("team_id", team.id);
 
-type PlayerData = NonNullable<typeof teamPlayers>[number];
-  const playerMap: Record<string, PlayerData> = {};
+  // Map por riot_account_id (quando disponível) e também por summoner_name+tag_line como fallback
+  type PlayerData = NonNullable<typeof teamPlayers>[number];
+  const playerMapById: Record<string, PlayerData> = {};
+  const playerMapByName: Record<string, PlayerData> = {};
   for (const p of teamPlayers ?? []) {
-    if (p.riot_account_id) {
-      playerMap[p.riot_account_id] = p;
-    }
+    if (p.riot_account_id) playerMapById[p.riot_account_id] = p;
+    const key = `${(p.summoner_name ?? "").toLowerCase()}#${(p.tag_line ?? "").toLowerCase()}`;
+    playerMapByName[key] = p;
   }
 
+  // Rank via rank_snapshots em lote
   const rankMap: Record<string, { tier: string; rank: string; lp: number; wins: number; losses: number }> = {};
   if (riotAccountIds.length > 0) {
     const { data: snapshots } = await supabase
@@ -196,31 +184,62 @@ type PlayerData = NonNullable<typeof teamPlayers>[number];
   const players: PlayerRow[] = (rawMembers ?? []).map((member: any) => {
     const ra   = (member.riot_accounts as any[])?.[0] ?? null;
     const prof = (member.profiles as any[])?.[0] ?? null;
-    const player = ra?.id ? (playerMap[ra.id] ?? null) : null; // Obter o player correspondente
+
+    // Resolução de player: primeiro por riot_account_id, depois por nome+tag
+    const playerById = ra?.id ? playerMapById[ra.id] : null;
+    const nameKey = `${(ra?.game_name ?? "").toLowerCase()}#${(ra?.tag_line ?? "").toLowerCase()}`;
+    const playerByName = nameKey !== "#" ? playerMapByName[nameKey] : null;
+    const player = playerById ?? playerByName ?? null;
+
     const snap = ra?.id ? (rankMap[ra.id] ?? null) : null;
+
+    // Rank: prioridade rank_snapshots > player.tier/rank/lp (vindo diretamente da tabela players)
+    const tier   = snap?.tier   ?? player?.tier   ?? null;
+    const rank   = snap?.rank   ?? player?.rank   ?? null;
+    const lp     = snap?.lp     ?? player?.lp     ?? null;
+    const wins   = snap?.wins   ?? player?.wins   ?? null;
+    const losses = snap?.losses ?? player?.losses ?? null;
 
     return {
       id:              member.id,
-      lane:            member.lane ?? player?.role ?? null, // Usar player.role como fallback
+      lane:            member.lane ?? player?.role ?? null,
       team_role:       member.team_role ?? "member",
       summoner_name:   ra?.game_name  ?? prof?.full_name ?? player?.summoner_name ?? "Jogador",
-      tag_line:        ra?.tag_line   ?? "BR1",
-      profile_icon_id: ra?.profile_icon_id ?? null,
-      summoner_level:  ra?.summoner_level  ?? null,
-      tier:            snap?.tier   ?? player?.tier ?? null, // Usar player.tier como fallback
-      rank:            snap?.rank   ?? player?.rank ?? null, // Usar player.rank como fallback
-      lp:              snap?.lp     ?? player?.lp ?? null, // Usar player.lp como fallback
-      wins:            snap?.wins   ?? null,
-      losses:          snap?.losses ?? null,
+      tag_line:        ra?.tag_line   ?? player?.tag_line ?? "BR1",
+      profile_icon_id: ra?.profile_icon_id ?? player?.profile_icon_id ?? null,
+      summoner_level:  ra?.summoner_level  ?? player?.summoner_level  ?? null,
+      tier,
+      rank,
+      lp,
+      wins,
+      losses,
     };
   });
 
-  // Ordena por lane (posição de jogo)
-  const sortedPlayers = players.sort(
+  // Fix 2c: se team_members está vazio mas players existe via team_id, monta roster direto
+  let finalPlayers = players;
+  if (players.length === 0 && (teamPlayers ?? []).length > 0) {
+    finalPlayers = (teamPlayers ?? []).map((p) => ({
+      id:              p.id,
+      lane:            p.role ?? null,
+      team_role:       "member",
+      summoner_name:   p.summoner_name ?? "Jogador",
+      tag_line:        p.tag_line ?? "BR1",
+      profile_icon_id: (p as any).profile_icon_id ?? null,
+      summoner_level:  (p as any).summoner_level  ?? null,
+      tier:            p.tier   ?? null,
+      rank:            p.rank   ?? null,
+      lp:              p.lp     ?? null,
+      wins:            p.wins   ?? null,
+      losses:          p.losses ?? null,
+    }));
+  }
+
+  const sortedPlayers = finalPlayers.sort(
     (a, b) => (ROLE_ORDER[a.lane ?? ""] ?? 99) - (ROLE_ORDER[b.lane ?? ""] ?? 99),
   );
 
-  // ── Partidas ──
+  // Partidas
   const [{ data: matchesA }, { data: matchesB }] = await Promise.all([
     supabase
       .from("matches")
