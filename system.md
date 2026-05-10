@@ -20,11 +20,45 @@
 - `/organizador` — área do organizador
 
 ### Banco de dados (Supabase)
-Tabelas principais: `tournaments`, `teams`, `players`, `matches`
-- `tournaments`: id, name, slug, status (DRAFT|OPEN|IN_PROGRESS|FINISHED|CANCELLED), bracket_type, max_teams, start_date, end_date
-- `teams`: id, tournament_id, name, tag, logo_url
-- `players`: id, team_id, summoner_name, tag_line, role, tier, rank, lp, wins, losses, puuid
-- `matches`: id, tournament_id, team_a_id, team_b_id, winner_id, round, status (SCHEDULED|IN_PROGRESS|FINISHED), score_a, score_b
+Fonte da verdade: `lib/database.types.ts` — nunca editar manualmente.
+
+**Tabelas principais:**
+- `profiles` — usuários autenticados (id, email, is_admin, role, riot_game_name, riot_tag_line)
+- `tournaments` — torneios (slug, status string, bracket_type, max_teams, organizer_id, discord_webhook_url)
+- `teams` — times (name, tag, slug, owner_id, tournament_id, is_active, is_eliminated)
+- `players` — jogadores vinculados a times (summoner_name, tag_line, puuid, tier, rank, lp, riot_account_id)
+- `riot_accounts` — contas Riot vinculadas a profiles (puuid, game_name, tag_line, is_primary)
+- `matches` — partidas (team_a_id, team_b_id, winner_id, score_a, score_b, status, stage_id, tournament_code, best_of)
+- `match_games` — games individuais dentro de uma partida (game_number, riot_game_id, picks_bans, winner_id)
+- `tournament_stages` — fases do torneio (name, bracket_type, stage_order, best_of)
+- `inscricoes` — inscrições de times (team_id, tournament_id, status, checked_in)
+- `team_members` — membros de times (profile_id, team_id, lane, team_role, status)
+- `team_invites` — convites para times (summoner_name, tag_line, role, status, expires_at)
+- `player_stats` — estatísticas por game (kills, deaths, assists, cs, champion, is_mvp)
+- `champion_masteries` — maestrias vinculadas a riot_accounts
+- `rank_snapshots` — histórico de rank por riot_account
+- `notifications` — notificações de usuários
+- `disputes` — disputas de partidas
+- `audit_log` — log de ações admin
+- `seedings` — seedings de times por torneio
+- `prize_distribution` — premiações por torneio
+- `site_terms_acceptance` — aceite de termos
+- `tournament_match_results` — resultados recebidos via callback Riot
+- `tournament_rules` — regras por torneio
+- `active_team` — time ativo do perfil
+
+**Views:**
+- `v_player_leaderboard` — ranking geral com KDA, MVP, tier
+- `v_stage_standings` — standings por fase (wins, losses, points)
+- `v_player_tournament_kda` — KDA médio por torneio
+
+**Enums importantes:**
+- `bracket_type`: SINGLE_ELIMINATION | DOUBLE_ELIMINATION | ROUND_ROBIN | SWISS
+- `match_status`: SCHEDULED | IN_PROGRESS | FINISHED
+- `inscricao_status`: PENDING | APPROVED | REJECTED
+- `player_role`: TOP | JUNGLE | MID | ADC | SUPPORT
+- `team_member_role`: captain | member | substitute
+- `user_role`: player | organizer | admin
 
 ### APIs externas
 - **Riot Games API** — região `br1`, host regional `americas`
