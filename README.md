@@ -1,10 +1,10 @@
 # ⚔️ GerenciadorDeTorneios-BRLOL
 
-
-> Plataforma completa para torneios casuais de **League of Legends 5v5**  
+> Plataforma completa para torneios casuais de **League of Legends 5v5**
 > com integração real à **Riot Games API v5**, backend em **Supabase** e frontend em **Next.js**.
 
-[![Next.js](https://img.shields.io/badge/Next.js-14-black)](https://nextjs.org)
+[![Next.js](https://img.shields.io/badge/Next.js-16-black)](https://nextjs.org)
+[![React](https://img.shields.io/badge/React-19-blue)](https://react.dev/)
 [![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-green)](https://supabase.com)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue)](https://typescriptlang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -19,13 +19,15 @@ Toda a documentação técnica do projeto foi unificada em:
 
 Lá você encontra:
 
-- visão geral da arquitetura (Next.js + Supabase + Riot API + Edge Functions);
-- modelo de dados completo do Supabase (tabelas, enums, FKs, RLS);
-- integrações com a Riot Games API (endpoints usados, Data Dragon, fluxos);
-- Edge Functions (`bracket-generator`, `send-email`, `riot-api-sync`, `discord-webhook`);
-- fluxos principais de negócio (inscrição, seedings, geração de chave, resultados, leaderboards).
+- Visão geral da arquitetura (Next.js + Supabase + Riot API + Edge Functions);
+- Modelo de dados completo do Supabase (tabelas, enums, FKs, RLS);
+- Integrações com a Riot Games API (endpoints usados, Data Dragon, fluxos);
+- Edge Functions (detalhes sobre `bracket-generator`, `send-email`, `riot-api-sync`, `discord-webhook`);
+- Fluxos principais de negócio (inscrição, seedings, geração de chave, resultados, leaderboards).
 
-A pasta [`docs/api`](docs/api) traz detalhes específicos da camada de API (rotas internas, cron, rate limiting, Supabase client).
+Para detalhes sobre as Server Actions, consulte:
+
+- [`docs/SERVER-ACTIONS.md`](docs/SERVER-ACTIONS.md)
 
 ---
 
@@ -39,25 +41,31 @@ Principais capacidades:
 - Gerenciar **times, inscrições, check-in, seedings** e chaves (single elim, double elim, round robin, swiss).
 - Registrar resultados por jogo (KDA, CS, dano, visão, MVP) e gerar **leaderboards** por torneio e globais.
 - Notificar jogadores via e‑mail (Resend) e canais Discord via webhooks.
-- Aplicar **RLS forte** no Supabase, com trilha de auditoria (`audit_log`) para ações administrativas.[cite:13]
+- Aplicar **RLS forte** no Supabase, com trilha de auditoria (`audit_log`) para ações administrativas.
 
 ---
 
 ## 🛠️ Stack tecnológica
 
-| Camada | Tecnologia |
-|---|---|
-| Framework web | Next.js 14 (App Router) |
-| Linguagem | TypeScript 5.x |
-| Estilização | Tailwind CSS 3.x |
-| Backend / DB | Supabase (PostgreSQL + Auth + RLS) |
-| Auth | Supabase Auth (JWT + cookies) |
-| API externa | Riot Games API v5 (Account, Summoner, League, Match, Mastery, Status) |
-| E‑mail | Resend (Edge Function `send-email`) |
-| Notificações externas | Discord Webhooks (Edge Function `discord-webhook`) |
-| Deploy | Vercel (Edge Network + cron jobs) |
+| Camada | Tecnologia | Versão |
+|---|---|---|
+| Framework web | Next.js (App Router) | 16.2.6 |
+| UI | React / React DOM | 19.0.1 |
+| Linguagem | TypeScript | ^5 |
+| Backend / DB | Supabase (PostgreSQL + Auth + RLS) | @supabase/supabase-js ^2.43.1 |
+| Auth SSR | @supabase/ssr | ^0.6.1 |
+| Estilização | Tailwind CSS | ^3.4.1 |
+| Formulários | React Hook Form + Zod | ^7.51.4 / ^3.23.8 |
+| Validação | @hookform/resolvers | ^3.4.0 |
+| Ícones | lucide-react | ^0.511.0 |
+| Gráficos | Recharts | ^2.12.7 |
+| Datas | date-fns | ^3.6.0 |
+| API externa | Riot Games API v5 (Account, Summoner, League, Match, Mastery, Status) | — |
+| E‑mail | Resend (via Edge Function) | — |
+| Notificações externas | Discord Webhooks (via Edge Function) | — |
+| Deploy | Vercel (Edge Network + cron jobs) | — |
 
-Detalhes de arquitetura, diagramas e relacionamentos de tabelas estão em `BRLOL-DOCS-UNIFICADO.md`.[cite:13]
+Detalhes de arquitetura, diagramas e relacionamentos de tabelas estão em [`docs/BRLOL-DOCS-UNIFICADO.md`](docs/BRLOL-DOCS-UNIFICADO.md).
 
 ---
 
@@ -84,30 +92,30 @@ Next.js (App Router, Vercel)
               riot-api-sync, discord-webhook
 ```
 
-A visão detalhada (incluindo RLS, views de leaderboard e triggers) está documentada em `BRLOL-DOCS-UNIFICADO.md`.[cite:13]
+A visão detalhada (incluindo RLS, views de leaderboard e triggers) está documentada em [`docs/BRLOL-DOCS-UNIFICADO.md`](docs/BRLOL-DOCS-UNIFICADO.md).
 
 ---
 
 ## 🗄️ Banco de dados (Supabase)
 
-O banco roda em um projeto Supabase, usando apenas o schema `public` com RLS habilitado.[cite:13]
+O banco roda em um projeto Supabase, usando apenas o schema `public` com RLS habilitado.
 
 Entidades principais:
 
-- **profiles** — espelha `auth.users`, guarda `is_admin`, dados básicos e Riot ID padrão.[cite:13]
-- **tournaments** — torneios (slug, status, bracket_type, max_teams, datas, regras, webhook Discord).[cite:13]
-- **teams / players / inscricoes** — times, jogadores e pedidos de inscrição em torneios.[cite:13]
-- **matches / match_games / player_stats** — partidas (séries), jogos individuais e estatísticas detalhadas (KDA, CS, dano, visão, MVP).[cite:13]
-- **riot_accounts / rank_snapshots / champion_masteries** — camada de persistência da Riot API.[cite:13]
-- **prize_distribution / seedings / team_invites / disputes / tournament_rules** — premiação, seedings, convites de time, disputas e regras específicas do torneio.[cite:13]
+- **profiles** — espelha `auth.users`, guarda `is_admin`, dados básicos e Riot ID padrão.
+- **tournaments** — torneios (slug, status, bracket_type, max_teams, datas, regras, webhook Discord).
+- **teams / players / inscricoes** — times, jogadores e pedidos de inscrição em torneios.
+- **matches / match_games / player_stats** — partidas (séries), jogos individuais e estatísticas detalhadas (KDA, CS, dano, visão, MVP).
+- **riot_accounts / rank_snapshots / champion_masteries** — camada de persistência da Riot API.
+- **prize_distribution / seedings / team_invites / disputes / tournament_rules** — premiação, seedings, convites de time, disputas e regras específicas do torneio.
 
-Para o schema completo (coluna por coluna, FKs e views), consulte a seção **“Modelo de dados — schema público Supabase”** em `BRLOL-DOCS-UNIFICADO.md`.[cite:13]
+Para o schema completo (coluna por coluna, FKs e views), consulte [`docs/sql/SCHEMA-CORE-ATUAL.md`](docs/sql/SCHEMA-CORE-ATUAL.md) e a seção **“Modelo de dados — schema público Supabase”** em [`docs/BRLOL-DOCS-UNIFICADO.md`](docs/BRLOL-DOCS-UNIFICADO.md).
 
 ---
 
 ## 🎮 Riot Games API
 
-A integração com a Riot API é feita via Next.js Route Handlers e helpers em `lib/riot.ts` + `lib/riot-cache.ts` + `lib/rate-limit.ts`.[cite:14]
+A integração com a Riot API é feita via Next.js Route Handlers e helpers em `lib/riot.ts` + `lib/riot-cache.ts` + `lib/rate-limit.ts`.
 
 Endpoints usados (resumo):
 
@@ -116,28 +124,15 @@ Endpoints usados (resumo):
 - **League-V4 (PLATFORM)** — elo Solo/Flex (tier, rank, LP, wins, losses).
 - **Match-V5 (REGIONAL)** — histórico de partidas e detalhes completos de cada jogo.
 - **Champion-Mastery-V4 (PLATFORM)** — campeões mais jogados (maestria).
-- **Status-V4 (PLATFORM)** — usado pelo cron de monitoramento.[cite:14][cite:24]
+- **Status-V4 (PLATFORM)** — usado pelo cron de monitoramento.
 
-Para detalhes finos (tabelas de endpoints, TTL de cache, exemplos de uso de Data Dragon/CommunityDragon), use:
-
-- [`docs/api/riot-api.md`](docs/api/riot-api.md)[cite:21]
-
----
-
-## 📂 Documentação por tópico
-
-- **Arquitetura geral e banco Supabase**: `docs/BRLOL-DOCS-UNIFICADO.md`.[cite:13]
-- **Camada de API (Next.js routes)**: `docs/api/README.md` e `docs/api/visao-geral.md`.[cite:18][cite:19]
-- **Riot API (conceitos, endpoints, assets)**: `docs/api/riot-api.md`.[cite:21]
-- **Rate limiting (clientes + Riot)**: `docs/api/rate-limiting.md`.[cite:25]
-- **Cron de monitoramento da Riot**: `docs/api/cron-monitoramento.md`.[cite:24]
-- **Supabase na API (clients, service role, webhooks)**: `docs/api/supabase.md`.[cite:20]
+Para detalhes finos (tabelas de endpoints, TTL de cache, exemplos de uso de Data Dragon/CommunityDragon), consulte [`docs/BRLOL-DOCS-UNIFICADO.md`](docs/BRLOL-DOCS-UNIFICADO.md).
 
 ---
 
 ## 🔐 Variáveis de ambiente (resumo)
 
-Veja `docs/api/README.md` e `docs/api/supabase.md` para a tabela completa.[cite:18][cite:20]
+Veja [`docs/BRLOL-DOCS-UNIFICADO.md`](docs/BRLOL-DOCS-UNIFICADO.md) para a tabela completa.
 
 Principais variáveis:
 
@@ -160,8 +155,8 @@ CRON_SECRET=string-aleatoria-grande
 
 Regras importantes:
 
-- **Nunca** expor `SUPABASE_SERVICE_ROLE_KEY` ou `RIOT_API_KEY` no frontend (não usar `NEXT_PUBLIC_`).[cite:18][cite:20]
-- Definir as mesmas variáveis na Vercel (`Project Settings → Environment Variables`).[cite:18]
+- **Nunca** expor `SUPABASE_SERVICE_ROLE_KEY` ou `RIOT_API_KEY` no frontend (não usar `NEXT_PUBLIC_`).
+- Definir as mesmas variáveis na Vercel (`Project Settings → Environment Variables`).
 
 ---
 
@@ -182,7 +177,7 @@ cp .env.example .env.local
 # Preencher .env.local com as chaves do Supabase e da Riot
 
 # 4. Aplicar schema/migrations no Supabase
-# (ver docs/BRLOL-DOCS-UNIFICADO.md e supabase/migrations)
+# (ver docs/sql/README.md e supabase/migrations)
 
 # 5. Rodar em desenvolvimento
 npm run dev
@@ -200,11 +195,11 @@ Scripts principais (padrão Next.js):
 
 ## ☁️ Deploy na Vercel
 
-1. Importar o repositório em [`https://vercel.com/new`](https://vercel.com/new).  
-2. Configurar as variáveis de ambiente (Supabase, Riot, app) no painel da Vercel.[cite:18]  
+1. Importar o repositório em [`https://vercel.com/new`](https://vercel.com/new).
+2. Configurar as variáveis de ambiente (Supabase, Riot, app) no painel da Vercel.
 3. Cada push na `main` gera um **Production Deploy**. Pull Requests geram **Preview Deployments**.
 
-Crons (`/api/cron/check-riot-status`) são configurados em `vercel.json` e rodados pela própria Vercel.[cite:24]
+Crons (`/api/cron/check-riot-status`) são configurados em `vercel.json` e rodados pela própria Vercel.
 
 ---
 
