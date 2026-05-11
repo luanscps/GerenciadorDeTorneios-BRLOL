@@ -6,22 +6,21 @@ import { revalidatePath } from 'next/cache';
  * vincularRiotAccount — Server Action principal
  *
  * Centraliza TODO o fluxo de vinculação server-side:
- * 1. upsert riot_accounts  (summoner_id salvo corretamente, sem RLS bloqueando)
+ * 1. upsert riot_accounts  (identificado por PUUID — summonerId removido)
  * 2. insert rank_snapshots
  * 3. upsert champion_masteries
- * 4. upsert players        (puuid + riot_account_id — UNIQUE constraint adicionado via migration)
+ * 4. upsert players        (puuid + riot_account_id — UNIQUE constraint)
  *
  * Fluxo seguro de INSERT/UPDATE:
  *   - Tenta INSERT direto.
  *   - Se 23505 (puuid duplicado): busca o registro existente, verifica ownership.
  *     Se profile_id ≠ user.id → rejeita (conta já vinculada a outro perfil).
- *     Se profile_id = user.id  → UPDATE pelo id direto (garante summoner_id salvo).
+ *     Se profile_id = user.id  → UPDATE pelo id direto.
  */
 export async function vincularRiotAccount(params: {
   puuid:          string;
   gameName:       string;
   tagLine:        string;
-  summonerId:     string;
   summonerLevel:  number;
   profileIconId:  number;
   entries: Array<{
@@ -55,7 +54,6 @@ export async function vincularRiotAccount(params: {
     puuid:           params.puuid,
     game_name:       params.gameName,
     tag_line:        params.tagLine,
-    summoner_id:     params.summonerId,
     summoner_level:  params.summonerLevel,
     profile_icon_id: params.profileIconId,
     is_primary:      false,
@@ -92,19 +90,18 @@ export async function vincularRiotAccount(params: {
         return { error: 'PUUID_ALREADY_CLAIMED' };
       }
 
-      // Ownership confirmado — atualiza pelo id direto (não depende de profile_id no .eq)
+      // Ownership confirmado — atualiza pelo id direto
       const { data: updated, error: updateErr } = await supabase
         .from('riot_accounts')
         .update({
           game_name:       params.gameName,
           tag_line:        params.tagLine,
-          summoner_id:     params.summonerId,
           summoner_level:  params.summonerLevel,
           profile_icon_id: params.profileIconId,
           updated_at:      now,
         })
         .eq('id', existing.id)
-        .eq('profile_id', user.id)   // mantém restrição RLS explícita
+        .eq('profile_id', user.id)
         .select('id')
         .single();
 

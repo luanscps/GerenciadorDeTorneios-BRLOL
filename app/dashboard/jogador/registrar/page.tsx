@@ -6,11 +6,10 @@ import Image from "next/image";
 
 interface SummonerResult {
   account:  { puuid: string; gameName: string; tagLine: string };
-  summoner: { profileIconId: number; summonerLevel: number; id: string };
+  summoner: { profileIconId: number; summonerLevel: number };
   entries:  Array<{
     queueType: string; tier: string; rank: string;
     leaguePoints: number; wins: number; losses: number;
-    summonerId: string; // exposto para uso como fonte primária de summonerId
   }>;
   masteries: Array<{
     championId: number; championName: string;
@@ -72,18 +71,10 @@ export default function RegistrarRiotPage() {
     setError("");
 
     try {
-      // Fonte primária: summonerId vindo do LeagueEntry (mais confiável na Riot API v5).
-      // O campo summoner.id pode retornar vazio com chave de desenvolvimento.
-      // Fallback: summoner.id → string vazia.
-      const summonerIdFromEntry =
-        result.entries.find(e => !!e.summonerId)?.summonerId ?? "";
-      const resolvedSummonerId = summonerIdFromEntry || result.summoner.id || "";
-
       const res = await vincularRiotAccount({
         puuid:         result.account.puuid,
         gameName:      result.account.gameName,
         tagLine:       result.account.tagLine,
-        summonerId:    resolvedSummonerId,
         summonerLevel: result.summoner.summonerLevel,
         profileIconId: result.summoner.profileIconId,
         entries: result.entries.map(e => ({

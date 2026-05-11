@@ -201,7 +201,7 @@ export async function summonerSpellIconUrl(spellId: string): Promise<string> {
  */
 export function rankEmblemUrl(tier: string): string {
   const t = tier.toLowerCase();
-  return `https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/ranked-emblem/emblem-${t}.png`;
+  return `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/ranked-emblem/emblem-${t}.png`;
 }
 
 /**
@@ -231,18 +231,17 @@ export function profileIconBorderStyle(level: number): {
  * também a cor correspondente ao nível.
  */
 export function masteryIconUrl(_level: number): string {
-  // CommunityDragon só tem o mark genérico; cor diferenciada via CSS overlay
   return `https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/champion-mastery/mastery-mark.png`;
 }
 
 /** Cor CSS do nível de maestria (para tint/filter no ícone) */
 export function masteryLevelColor(level: number): string {
-  if (level >= 10) return "#FFD700"; // Maestria Suprema
-  if (level >= 7)  return "#C8A84B"; // Mestria dourada
-  if (level >= 6)  return "#9B59B6"; // Violeta
-  if (level >= 5)  return "#E74C3C"; // Vermelho
-  if (level >= 4)  return "#00E5CC"; // Teal
-  return "#8B7A6B"; // cinza
+  if (level >= 10) return "#FFD700";
+  if (level >= 7)  return "#C8A84B";
+  if (level >= 6)  return "#9B59B6";
+  if (level >= 5)  return "#E74C3C";
+  if (level >= 4)  return "#00E5CC";
+  return "#8B7A6B";
 }
 
 // ─── Data Dragon: JSON estático ───────────────────────────────────────────────
@@ -271,7 +270,6 @@ export interface RiotAccount {
 }
 
 export interface Summoner {
-  id: string;
   accountId: string;
   puuid: string;
   profileIconId: number;
@@ -284,11 +282,6 @@ export interface LeagueEntry {
   queueType: string;
   tier: string;
   rank: string;
-  /**
-   * summonerId retornado diretamente pela Riot API em /lol/league/v4/entries/by-puuid.
-   * Fonte primária preferida ao summoner.id, que pode retornar vazio com chave de dev.
-   */
-  summonerId: string;
   leaguePoints: number;
   wins: number;
   losses: number;
