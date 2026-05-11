@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { salvarPlayerDeRiotAccount } from "@/lib/actions/riot-link";
 import Image from "next/image";
 
 interface SummonerResult {
@@ -174,6 +175,27 @@ export default function RegistrarRiotPage() {
           .upsert(masteries, { onConflict: "riot_account_id,champion_id" });
         if (e3) console.warn("champion_masteries:", e3.message);
       }
+
+      // 6) ─── FIX: cria/atualiza o registro em `players` ───────────
+      // Anteriormente ausente — causava players.riot_account_id = NULL
+      // e quebrava o roster público dos times e a página /jogadores.
+      const soloEntry = result.entries.find(e => e.queueType === "RANKED_SOLO_5x5");
+      const playerResult = await salvarPlayerDeRiotAccount({
+        riotAccountId: acctId,
+        gameName:      result.account.gameName,
+        tagLine:       result.account.tagLine,
+        tier:          soloEntry?.tier   ?? 'UNRANKED',
+        rank:          soloEntry?.rank   ?? '',
+        lp:            soloEntry?.leaguePoints ?? 0,
+        wins:          soloEntry?.wins   ?? 0,
+        losses:        soloEntry?.losses ?? 0,
+      });
+
+      if (playerResult.error) {
+        // Não bloqueia o fluxo — loga o erro mas segue
+        console.warn("[riot-link] player upsert:", playerResult.error);
+      }
+      // ─────────────────────────────────────────────────────────────
 
       setSaved(true);
       setTimeout(() => router.push("/dashboard"), 1500);
