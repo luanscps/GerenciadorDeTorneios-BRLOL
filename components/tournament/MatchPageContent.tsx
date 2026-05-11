@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { createClient } from '@/lib/supabase/client';
 import MatchLobbyCard from './MatchLobbyCard';
 import TournamentCodeBox from './TournamentCodeBox';
 
@@ -12,41 +13,70 @@ interface Props {
 }
 
 export default function MatchPageContent({ match, teamAPlayers, teamBPlayers, userInMatch }: Props) {
-  const [lobbyEvents, setLobbyEvents] = useState<any>(null);
-  const [loadingEvents, setLoadingEvents] = useState(false);
-
-  // Tournament Code (prioriza a nova coluna, com fallback para extração via regex em notes)
-  const tournamentCode = match.tournament_code ?? (match.notes?.includes('BR1_')
+  const initialCode = match.tournament_code ?? (match.notes?.includes('BR1_')
     ? match.notes.match(/BR1_[A-Z0-9-]+/)?.[0]
     : null);
 
+  const [liveCode, setLiveCode] = useState<string | null>(initialCode);
+  const [codeJustArrived, setCodeJustArrived] = useState(false);
+  const [lobbyEvents, setLobbyEvents] = useState<any>(null);
+  const [loadingEvents, setLoadingEvents] = useState(false);
+
+  // Realtime: escuta UPDATE na match — quando admin salvar o código, atualiza sem reload
   useEffect(() => {
-    if (!tournamentCode) return;
+    const supabase = createClient();
+    const channel = supabase
+      .channel(`match-code-${match.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'matches',
+          filter: `id=eq.${match.id}`,
+        },
+        (payload) => {
+          const updated = payload.new as any;
+          const newCode = updated.tournament_code ?? null;
+          if (newCode && newCode !== liveCode) {
+            setLiveCode(newCode);
+            setCodeJustArrived(true);
+            setTimeout(() => setCodeJustArrived(false), 6000);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [match.id, liveCode]);
+
+  // Polling dos eventos de lobby (30s)
+  useEffect(() => {
+    if (!liveCode) return;
 
     const fetchEvents = async () => {
       try {
         setLoadingEvents(true);
-        const res = await fetch(`/api/riot/tournament/events?code=${tournamentCode}`);
+        const res = await fetch(`/api/riot/tournament/events?code=${liveCode}`);
         if (res.ok) {
           const data = await res.json();
           setLobbyEvents(data);
         }
       } catch (err) {
-        console.error("Erro ao buscar eventos de lobby:", err);
+        console.error('Erro ao buscar eventos de lobby:', err);
       } finally {
         setLoadingEvents(false);
       }
     };
 
     fetchEvents();
-    const interval = setInterval(fetchEvents, 30000); // Polling a cada 30s
+    const interval = setInterval(fetchEvents, 30000);
     return () => clearInterval(interval);
-  }, [tournamentCode]);
+  }, [liveCode]);
 
   return (
     <main className="min-h-screen bg-[#0A0E17] text-white py-12 px-4">
       <div className="max-w-6xl mx-auto">
-        {/* Header da Partida */}
         <div className="text-center mb-12">
           <p className="text-[#C89B3C] text-xs font-black uppercase tracking-[0.3em] mb-3">
             {match.tournament.name} · Rodada {match.round}
@@ -70,10 +100,9 @@ export default function MatchPageContent({ match, teamAPlayers, teamBPlayers, us
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_350px] gap-8">
-          {/* Lado Esquerdo: Lobby e Jogadores */}
           <div className="space-y-6">
             <div className="flex items-center justify-between px-2">
-              <h3 className="text-lg font-black uppercase tracking-tighter italic italic flex items-center gap-2">
+              <h3 className="text-lg font-black uppercase tracking-tighter italic flex items-center gap-2">
                 <span className="w-2 h-6 bg-[#C89B3C]" />
                 Lobby da Partida
               </h3>
@@ -83,46 +112,35 @@ export default function MatchPageContent({ match, teamAPlayers, teamBPlayers, us
                 </span>
               )}
             </div>
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <MatchLobbyCard 
-                teamName={match.team_a.name} 
-                players={teamAPlayers} 
+              <MatchLobbyCard
+                teamName={match.team_a.name}
+                players={teamAPlayers}
                 side="blue"
                 playersInLobby={lobbyEvents?.playersInLobby || []}
               />
-              <MatchLobbyCard 
-                teamName={match.team_b.name} 
-                players={teamBPlayers} 
+              <MatchLobbyCard
+                teamName={match.team_b.name}
+                players={teamBPlayers}
                 side="red"
                 playersInLobby={lobbyEvents?.playersInLobby || []}
               />
             </div>
           </div>
 
-          {/* Lado Direito: Tournament Code e Info */}
           <div className="space-y-6">
-            <TournamentCodeBox 
-              code={tournamentCode} 
-              isAuthorized={userInMatch} 
+            <TournamentCodeBox
+              code={liveCode}
+              isAuthorized={userInMatch}
               matchStatus={match.status}
+              justArrived={codeJustArrived}
             />
-
             <div className="bg-[#0D1421] border border-[#1E2D45] rounded-2xl p-6">
               <h4 className="text-[#718096] text-[10px] font-black uppercase tracking-widest mb-4">Instruções</h4>
               <ul className="space-y-3 text-sm text-[#A0AEC0]">
-                <li className="flex gap-2">
-                  <span className="text-[#C89B3C] font-bold">1.</span>
-                  Abra o cliente do League of Legends.
-                </li>
-                <li className="flex gap-2">
-                  <span className="text-[#C89B3C] font-bold">2.</span>
-                  Clique em "Jogar" e selecione o ícone de troféu (Código de Torneio).
-                </li>
-                <li className="flex gap-2">
-                  <span className="text-[#C89B3C] font-bold">3.</span>
-                  Cole o código acima e clique em entrar.
-                </li>
+                <li className="flex gap-2"><span className="text-[#C89B3C] font-bold">1.</span> Abra o cliente do League of Legends.</li>
+                <li className="flex gap-2"><span className="text-[#C89B3C] font-bold">2.</span> Clique em "Jogar" e selecione o ícone de troféu (Código de Torneio).</li>
+                <li className="flex gap-2"><span className="text-[#C89B3C] font-bold">3.</span> Cole o código acima e clique em entrar.</li>
               </ul>
             </div>
           </div>

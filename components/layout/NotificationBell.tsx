@@ -1,33 +1,43 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 
 type Notification = {
   id: string;
   title: string;
-  message: string;
-  type: 'match' | 'inscricao' | 'torneio' | 'system';
+  body: string;
+  type: 'match' | 'inscricao' | 'torneio' | 'system' | 'inscricao_nova' | 'inscricao_status';
   read: boolean;
   created_at: string;
+  metadata?: {
+    match_id?: string;
+    tournament_id?: string;
+    team_id?: string;
+    status?: string;
+  };
 };
 
 const TYPE_ICONS: Record<string, string> = {
   match: '🎮',
   inscricao: '📝',
+  inscricao_nova: '📝',
+  inscricao_status: '📋',
   torneio: '🏆',
   system: '🔔',
 };
 
 export function NotificationBell({ userId }: { userId: string }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [justArrived, setJustArrived] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const supabase = createClient();
+  const router = useRouter();
 
   const unread = notifications.filter((n) => !n.read).length;
 
-  // Fechar ao clicar fora
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) {
@@ -38,12 +48,11 @@ export function NotificationBell({ userId }: { userId: string }) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Carregar notificacoes iniciais
   useEffect(() => {
     async function load() {
       const { data } = await supabase
         .from('notifications')
-        .select('*')
+        .select('id, title, body, type, read, created_at, metadata')
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
         .limit(20);
@@ -52,7 +61,6 @@ export function NotificationBell({ userId }: { userId: string }) {
     load();
   }, [userId]);
 
-  // Supabase Realtime - escutar novas notificacoes
   useEffect(() => {
     const channel = supabase
       .channel(`notifications-${userId}`)
@@ -67,35 +75,54 @@ export function NotificationBell({ userId }: { userId: string }) {
         (payload) => {
           const newNotif = payload.new as Notification;
           setNotifications((prev) => [newNotif, ...prev].slice(0, 20));
+          setJustArrived(newNotif.id);
+          setTimeout(() => setJustArrived(null), 4000);
         }
       )
       .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => { supabase.removeChannel(channel); };
   }, [userId]);
 
   async function markAllRead() {
     const unreadIds = notifications.filter((n) => !n.read).map((n) => n.id);
     if (unreadIds.length === 0) return;
-    await supabase
-      .from('notifications')
-      .update({ read: true })
-      .in('id', unreadIds);
+    await supabase.from('notifications').update({ read: true }).in('id', unreadIds);
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
   }
 
-  async function markRead(id: string) {
-    await supabase.from('notifications').update({ read: true }).eq('id', id);
+  async function markRead(notif: Notification) {
+    await supabase.from('notifications').update({ read: true }).eq('id', notif.id);
     setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
+      prev.map((n) => (n.id === notif.id ? { ...n, read: true } : n))
     );
+    setOpen(false);
+    if (notif.type === 'match' && notif.metadata?.match_id && notif.metadata?.tournament_id) {
+      const { data } = await supabase
+        .from('tournaments')
+        .select('slug')
+        .eq('id', notif.metadata.tournament_id)
+        .single();
+      if (data?.slug) {
+        router.push(`/torneios/${data.slug}/partidas/${notif.metadata.match_id}`);
+      }
+    } else if (
+      (notif.type === 'inscricao' || notif.type === 'inscricao_nova' || notif.type === 'inscricao_status') &&
+      notif.metadata?.tournament_id
+    ) {
+      const { data } = await supabase
+        .from('tournaments')
+        .select('slug')
+        .eq('id', notif.metadata.tournament_id)
+        .single();
+      if (data?.slug) {
+        router.push(`/torneios/${data.slug}`);
+      }
+    }
   }
 
   return (
     <div ref={ref} className="relative">
-      {/* Sino */}
       <button
         onClick={() => setOpen((v) => !v)}
         className="relative p-2 rounded-full hover:bg-[#1E3A5F] transition-colors"
@@ -112,14 +139,12 @@ export function NotificationBell({ userId }: { userId: string }) {
         )}
       </button>
 
-      {/* Dropdown */}
       {open && (
         <div className="absolute right-0 top-10 w-80 bg-[#0D1B2E] border border-[#1E3A5F] rounded-lg shadow-xl z-50 overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-[#1E3A5F]">
-            <h3 className="text-sm font-semibold text-white">Notificacoes</h3>
+            <h3 className="text-sm font-semibold text-white">Notificações</h3>
             {unread > 0 && (
-              <button onClick={markAllRead}
-                className="text-xs text-[#C8A84B] hover:underline">
+              <button onClick={markAllRead} className="text-xs text-[#C8A84B] hover:underline">
                 Marcar todas como lidas
               </button>
             )}
@@ -128,15 +153,19 @@ export function NotificationBell({ userId }: { userId: string }) {
           <div className="max-h-80 overflow-y-auto">
             {notifications.length === 0 ? (
               <div className="text-center py-8 text-gray-500 text-sm">
-                Nenhuma notificacao
+                Nenhuma notificação
               </div>
             ) : (
               notifications.map((n) => (
                 <div
                   key={n.id}
-                  onClick={() => markRead(n.id)}
-                  className={`px-4 py-3 border-b border-[#1E3A5F] cursor-pointer hover:bg-[#1E3A5F]/30 transition-colors ${
-                    !n.read ? 'bg-[#C8A84B]/5' : ''
+                  onClick={() => markRead(n)}
+                  className={`px-4 py-3 border-b border-[#1E3A5F] cursor-pointer hover:bg-[#1E3A5F]/30 transition-all ${
+                    justArrived === n.id
+                      ? 'bg-[#C8A84B]/15 animate-pulse'
+                      : !n.read
+                      ? 'bg-[#C8A84B]/5'
+                      : ''
                   }`}
                 >
                   <div className="flex items-start gap-2">
@@ -144,11 +173,16 @@ export function NotificationBell({ userId }: { userId: string }) {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-semibold text-white truncate">{n.title}</p>
-                        {!n.read && (
+                        {justArrived === n.id && (
+                          <span className="text-[9px] font-black bg-[#C8A84B] text-black px-1.5 py-0.5 rounded-full uppercase tracking-wide flex-shrink-0">
+                            NOVO
+                          </span>
+                        )}
+                        {!n.read && justArrived !== n.id && (
                           <span className="w-2 h-2 bg-[#C8A84B] rounded-full flex-shrink-0" />
                         )}
                       </div>
-                      <p className="text-xs text-gray-400 mt-0.5 line-clamp-2">{n.message}</p>
+                      <p className="text-xs text-gray-400 mt-0.5 line-clamp-2">{n.body}</p>
                       <p className="text-[10px] text-gray-600 mt-1">
                         {new Date(n.created_at).toLocaleString('pt-BR', {
                           day: '2-digit', month: '2-digit',
