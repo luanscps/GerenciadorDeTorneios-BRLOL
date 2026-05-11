@@ -67,14 +67,12 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
     checked_in: checkinMap.get(t.id) ?? false,
   }));
 
-  // Conta apenas times com inscrição APROVADA para o contador público
   const { count: approvedCount } = await supabase
     .from("inscricoes")
     .select("id", { count: "exact", head: true })
     .eq("tournament_id", tournament.id)
     .eq("status", "APPROVED");
 
-  // Verifica status da inscrição do usuário logado (qualquer status)
   let userInscricao: { status: string } | null = null;
   if (userData) {
     const { data: myTeam } = await supabase
@@ -104,21 +102,20 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
     })
     .slice(0, 5);
 
+  const matchTotal    = (matches ?? []).length;
+  const matchAoVivo   = (matches ?? []).filter(m => ['ongoing','IN_PROGRESS'].includes(m.status)).length;
+
   const statusColor: Record<string, string> = {
-    open: "text-green-400",
-    checkin: "text-blue-400",
-    ongoing: "text-yellow-400",
-    finished: "text-gray-400",
-    draft: "text-gray-500",
-    cancelled: "text-red-400",
+    open: "text-green-400", checkin: "text-blue-400", ongoing: "text-yellow-400",
+    finished: "text-gray-400", draft: "text-gray-500", cancelled: "text-red-400",
+    OPEN: "text-green-400", CHECKIN: "text-blue-400", ONGOING: "text-yellow-400",
+    FINISHED: "text-gray-400", DRAFT: "text-gray-500", CANCELLED: "text-red-400",
   };
   const statusLabel: Record<string, string> = {
-    open: "Inscrições Abertas",
-    checkin: "Check-in",
-    ongoing: "Em Andamento",
-    finished: "Encerrado",
-    draft: "Rascunho",
-    cancelled: "Cancelado",
+    open: "Inscrições Abertas", checkin: "Check-in", ongoing: "Em Andamento",
+    finished: "Encerrado", draft: "Rascunho", cancelled: "Cancelado",
+    OPEN: "Inscrições Abertas", CHECKIN: "Check-in", ONGOING: "Em Andamento",
+    FINISHED: "Encerrado", DRAFT: "Rascunho", CANCELLED: "Cancelado",
   };
 
   return (
@@ -137,19 +134,17 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
           <div className="relative z-10 flex flex-col justify-end h-full px-6 pb-5 gap-1">
             {tournament.starts_at && (
               <p className="text-gray-300 text-sm">
-                🗓{" "}
-                {new Date(tournament.starts_at).toLocaleDateString("pt-BR")}
+                🗓 {new Date(tournament.starts_at).toLocaleDateString("pt-BR")}
               </p>
             )}
             {tournament.prize_pool && (
-              <p className="text-[#C8A84B] font-semibold text-sm">
-                🏆 {tournament.prize_pool}
-              </p>
+              <p className="text-[#C8A84B] font-semibold text-sm">🏆 {tournament.prize_pool}</p>
             )}
           </div>
         </div>
       )}
 
+      {/* Info + stats */}
       <div className="card-lol">
         <div className="flex items-start justify-between flex-wrap gap-4">
           <div>
@@ -163,7 +158,7 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
           </div>
           <div className="text-right space-y-1">
             <p className={"font-bold " + (statusColor[tournament.status] ?? "text-white")}>
-              ● {statusLabel[tournament.status]}
+              ● {statusLabel[tournament.status] ?? tournament.status}
             </p>
             {tournament.prize_pool && (
               <p className="text-[#C8A84B] font-bold">🏆 {tournament.prize_pool}</p>
@@ -176,7 +171,7 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
           </div>
         </div>
 
-        {/* Stats bar */}
+        {/* Stats */}
         <div className="grid grid-cols-3 gap-4 mt-6 pt-6 border-t border-[#1E3A5F]">
           <div className="text-center">
             <p className="text-2xl font-bold text-white">{approvedCount ?? 0}</p>
@@ -188,56 +183,85 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
           </div>
           <div className="text-center">
             <p className="text-2xl font-bold text-white">
-              {matches?.filter((m) => m.status === "finished").length ?? 0}
+              {matches?.filter((m) => m.status === "finished" || m.status === "FINISHED").length ?? 0}
             </p>
             <p className="text-gray-400 text-xs">Partidas jogadas</p>
           </div>
         </div>
 
-        {/* Botão / status de inscrição — usuário logado */}
+        {/* Nav rápida de seções */}
+        <div className="flex flex-wrap gap-2 mt-6 pt-4 border-t border-[#1E3A5F]">
+          <Link
+            href={`/torneios/${slug}/partidas`}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-[#1E3A5F] text-sm text-gray-300 hover:border-[#C8A84B]/50 hover:text-[#C8A84B] transition-colors"
+          >
+            ⚔️ Partidas
+            {matchTotal > 0 && (
+              <span className="text-[10px] font-bold bg-[#1E3A5F] px-1.5 py-0.5 rounded">{matchTotal}</span>
+            )}
+            {matchAoVivo > 0 && (
+              <span className="text-[10px] font-bold bg-yellow-900/40 text-yellow-400 border border-yellow-700/40 px-1.5 py-0.5 rounded animate-pulse">
+                {matchAoVivo} ao vivo
+              </span>
+            )}
+          </Link>
+          <Link
+            href={`/torneios/${slug}/times`}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-[#1E3A5F] text-sm text-gray-300 hover:border-[#C8A84B]/50 hover:text-[#C8A84B] transition-colors"
+          >
+            🛡️ Times
+            {(teams ?? []).length > 0 && (
+              <span className="text-[10px] font-bold bg-[#1E3A5F] px-1.5 py-0.5 rounded">{teams!.length}</span>
+            )}
+          </Link>
+          <Link
+            href={`/torneios/${slug}/bracket`}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-[#1E3A5F] text-sm text-gray-300 hover:border-[#C8A84B]/50 hover:text-[#C8A84B] transition-colors"
+          >
+            🏆 Chaveamento
+          </Link>
+        </div>
+
+        {/* Inscrição */}
         {tournament.status === "open" && userData && (
           <div className="mt-4 pt-4 border-t border-[#1E3A5F]">
             {userInscricao?.status === "APPROVED" ? (
               <div className="flex items-center gap-2 text-green-400 text-sm">
-                <span>✅</span>
-                <span>Seu time está inscrito e aprovado neste torneio.</span>
+                <span>✅</span><span>Seu time está inscrito e aprovado neste torneio.</span>
               </div>
             ) : userInscricao?.status === "PENDING" ? (
               <div className="flex items-center gap-2 text-yellow-400 text-sm">
-                <span>⏳</span>
-                <span>Inscrição enviada — aguardando aprovação do organizador.</span>
+                <span>⏳</span><span>Inscrição enviada — aguardando aprovação do organizador.</span>
               </div>
             ) : userInscricao?.status === "REJECTED" ? (
               <div className="flex items-center gap-2 text-red-400 text-sm">
-                <span>❌</span>
-                <span>Sua inscrição foi recusada. Entre em contato com o organizador.</span>
+                <span>❌</span><span>Sua inscrição foi recusada. Entre em contato com o organizador.</span>
               </div>
             ) : (
-              <Link
-                href={"/dashboard/times/criar?tournament=" + tournament.id}
-                className="btn-gold"
-              >
+              <Link href={"/dashboard/times/criar?tournament=" + tournament.id} className="btn-gold">
                 + Inscrever Meu Time
               </Link>
             )}
           </div>
         )}
-
-        {/* CTA para usuário não logado */}
         {tournament.status === "open" && !userData && (
           <div className="mt-4 pt-4 border-t border-[#1E3A5F]">
-            <Link href="/login" className="btn-gold inline-block">
-              Entrar para Inscrever Meu Time
-            </Link>
+            <Link href="/login" className="btn-gold inline-block">Entrar para Inscrever Meu Time</Link>
           </div>
         )}
       </div>
 
+      {/* Bracket + resultados + classificação + times */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">
           {matches && matches.length > 0 && (
             <div className="card-lol">
-              <h2 className="text-lg font-bold text-white mb-4">⚔️ Bracket</h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-bold text-white">⚔️ Bracket</h2>
+                <Link href={`/torneios/${slug}/partidas`} className="text-xs text-[#C8A84B] hover:underline">
+                  Ver todas as partidas →
+                </Link>
+              </div>
               <BracketView
                 initialMatches={(matches ?? []) as any}
                 tournamentId={tournament.id}
@@ -248,25 +272,18 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
 
           {recentMatches.length > 0 && (
             <div className="card-lol">
-              <h2 className="text-lg font-bold text-white mb-4">
-                📊 Últimos Resultados
-              </h2>
+              <h2 className="text-lg font-bold text-white mb-4">📊 Últimos Resultados</h2>
               <div className="space-y-2">
                 {recentMatches.map((m: any) => (
-                  <div
+                  <Link
                     key={m.id}
-                    className="bg-[#030D1A] border border-[#1E3A5F] rounded-lg px-4 py-3 flex items-center justify-between"
+                    href={`/torneios/${slug}/partidas/${m.id}`}
+                    className="bg-[#030D1A] border border-[#1E3A5F] rounded-lg px-4 py-3 flex items-center justify-between hover:border-[#C8A84B]/30 transition-colors"
                   >
-                    <span className="text-white font-medium text-sm">
-                      {m.team_a?.name ?? "TBD"}
-                    </span>
-                    <span className="text-[#C8A84B] font-bold text-base mx-4 tabular-nums">
-                      {m.score_a} × {m.score_b}
-                    </span>
-                    <span className="text-white font-medium text-sm text-right">
-                      {m.team_b?.name ?? "TBD"}
-                    </span>
-                  </div>
+                    <span className="text-white font-medium text-sm">{m.team_a?.name ?? 'TBD'}</span>
+                    <span className="text-[#C8A84B] font-bold text-base mx-4 tabular-nums">{m.score_a} × {m.score_b}</span>
+                    <span className="text-white font-medium text-sm text-right">{m.team_b?.name ?? 'TBD'}</span>
+                  </Link>
                 ))}
               </div>
             </div>
@@ -282,9 +299,7 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
         <div>
           {teams && teams.length > 0 && (
             <div className="card-lol">
-              <h2 className="text-lg font-bold text-white mb-4">
-                🛡️ Times ({teams.length}/{tournament.max_teams})
-              </h2>
+              <h2 className="text-lg font-bold text-white mb-4">🛡️ Times ({teams.length}/{tournament.max_teams})</h2>
               <TeamsList teams={teamsWithCheckin} />
             </div>
           )}

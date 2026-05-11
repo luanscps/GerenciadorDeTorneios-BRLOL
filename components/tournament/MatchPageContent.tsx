@@ -5,14 +5,25 @@ import { createClient } from '@/lib/supabase/client';
 import MatchLobbyCard from './MatchLobbyCard';
 import TournamentCodeBox from './TournamentCodeBox';
 
+type UserRole = 'admin' | 'organizer' | 'captain' | 'member' | 'public';
+
 interface Props {
   match: any;
   teamAPlayers: any[];
   teamBPlayers: any[];
   userInMatch: boolean;
+  userRole?: UserRole;
+  playersData?: any[];
 }
 
-export default function MatchPageContent({ match, teamAPlayers, teamBPlayers, userInMatch }: Props) {
+export default function MatchPageContent({
+  match,
+  teamAPlayers,
+  teamBPlayers,
+  userInMatch,
+  userRole = 'public',
+  playersData = [],
+}: Props) {
   const initialCode = match.tournament_code ?? (match.notes?.includes('BR1_')
     ? match.notes.match(/BR1_[A-Z0-9-]+/)?.[0]
     : null);
@@ -74,27 +85,60 @@ export default function MatchPageContent({ match, teamAPlayers, teamBPlayers, us
     return () => clearInterval(interval);
   }, [liveCode]);
 
+  const slug = match.tournament?.slug ?? '';
+
   return (
     <main className="min-h-screen bg-[#0A0E17] text-white py-12 px-4">
       <div className="max-w-6xl mx-auto">
+
+        {/* Breadcrumb */}
+        <div className="mb-8 text-sm text-gray-500 flex items-center gap-2">
+          <a href={`/torneios/${slug}`} className="hover:text-[#C8A84B] transition-colors">
+            {match.tournament?.name ?? 'Torneio'}
+          </a>
+          <span>/</span>
+          <a href={`/torneios/${slug}/partidas`} className="hover:text-[#C8A84B] transition-colors">
+            Partidas
+          </a>
+          <span>/</span>
+          <span className="text-gray-400">Rodada {match.round}</span>
+        </div>
+
+        {/* Role badge */}
+        {userRole !== 'public' && (
+          <div className="mb-6 flex gap-2">
+            <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full border ${
+              userRole === 'admin'     ? 'border-red-500/40 text-red-400 bg-red-900/20' :
+              userRole === 'organizer' ? 'border-[#C8A84B]/40 text-[#C8A84B] bg-[#C8A84B]/10' :
+              userRole === 'captain'   ? 'border-blue-500/40 text-blue-400 bg-blue-900/20' :
+                                         'border-gray-600/40 text-gray-400 bg-gray-800/20'
+            }`}>
+              {userRole === 'admin' ? '🔴 Admin' :
+               userRole === 'organizer' ? '🏆 Organizador' :
+               userRole === 'captain'   ? '⚔️ Capitão' : '🎮 Jogador'}
+            </span>
+          </div>
+        )}
+
+        {/* Header placar */}
         <div className="text-center mb-12">
           <p className="text-[#C89B3C] text-xs font-black uppercase tracking-[0.3em] mb-3">
-            {match.tournament.name} · Rodada {match.round}
+            {match.tournament?.name} · Rodada {match.round}
           </p>
           <div className="flex items-center justify-center gap-8 md:gap-16">
             <div className="text-right">
-              <h2 className="text-3xl md:text-5xl font-black italic uppercase tracking-tighter">{match.team_a.name}</h2>
-              <p className="text-[#718096] font-bold text-xl">[{match.team_a.tag}]</p>
+              <h2 className="text-3xl md:text-5xl font-black italic uppercase tracking-tighter">{match.team_a?.name}</h2>
+              <p className="text-[#718096] font-bold text-xl">[{match.team_a?.tag}]</p>
             </div>
             <div className="flex flex-col items-center">
               <div className="bg-[#1E2D45] px-6 py-2 rounded-2xl border-2 border-[#C89B3C]/30 shadow-[0_0_20px_rgba(200,155,60,0.1)]">
-                <span className="text-4xl font-black tabular-nums">{match.score_a || 0} - {match.score_b || 0}</span>
+                <span className="text-4xl font-black tabular-nums">{match.score_a ?? 0} - {match.score_b ?? 0}</span>
               </div>
               <p className="text-[10px] text-[#4A5568] font-black uppercase mt-3 tracking-widest italic">{match.format || 'BO1'}</p>
             </div>
             <div className="text-left">
-              <h2 className="text-3xl md:text-5xl font-black italic uppercase tracking-tighter">{match.team_b.name}</h2>
-              <p className="text-[#718096] font-bold text-xl">[{match.team_b.tag}]</p>
+              <h2 className="text-3xl md:text-5xl font-black italic uppercase tracking-tighter">{match.team_b?.name}</h2>
+              <p className="text-[#718096] font-bold text-xl">[{match.team_b?.tag}]</p>
             </div>
           </div>
         </div>
@@ -114,13 +158,13 @@ export default function MatchPageContent({ match, teamAPlayers, teamBPlayers, us
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <MatchLobbyCard
-                teamName={match.team_a.name}
+                teamName={match.team_a?.name}
                 players={teamAPlayers}
                 side="blue"
                 playersInLobby={lobbyEvents?.playersInLobby || []}
               />
               <MatchLobbyCard
-                teamName={match.team_b.name}
+                teamName={match.team_b?.name}
                 players={teamBPlayers}
                 side="red"
                 playersInLobby={lobbyEvents?.playersInLobby || []}
