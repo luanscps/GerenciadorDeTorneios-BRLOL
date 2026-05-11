@@ -3,18 +3,19 @@ import { createClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 
 /**
- * vincularRiotId — Server Action
+ * salvarPlayerDeRiotAccount — Server Action
  *
  * Chamada pelo formulário /dashboard/jogador/registrar após o
  * salvamento local do riot_accounts. Faz o upsert em `players`
  * vinculando o riot_account_id ao registro de stats do jogador.
  *
- * Esse INSERT em players estava completamente ausente no fluxo
- * anterior, causando players.riot_account_id = NULL em 100% dos
- * registros e quebrando o roster público dos times.
+ * Fix aplicado:
+ * - Recebe puuid e inclui no upsert (necessário para players.puuid)
+ * - onConflict em riot_account_id (requer UNIQUE constraint adicionado via migration)
  */
 export async function salvarPlayerDeRiotAccount(params: {
   riotAccountId: string;
+  puuid: string;
   gameName: string;
   tagLine: string;
   tier: string;
@@ -44,6 +45,7 @@ export async function salvarPlayerDeRiotAccount(params: {
     .upsert(
       {
         riot_account_id: params.riotAccountId,
+        puuid:           params.puuid,
         summoner_name:   params.gameName,
         tag_line:        params.tagLine,
         tier:            params.tier || 'UNRANKED',
