@@ -1,6 +1,5 @@
 import { createAdminClient } from "../supabase/admin";
 import { getMatchById, MatchDto } from "../riot";
-import { Database } from "../database.types";
 
 /**
  * Interface mínima esperada para o game_data vindo da Riot via Webhook.
@@ -24,18 +23,17 @@ interface NormalizedMatchData {
  * Estrutura enriquecida após busca na Riot e resolução interna.
  */
 interface ResolvedMatchData extends NormalizedMatchData {
-  matchId: string;              // Ex: BR1_123456
-  matchDetails: MatchDto;       // Dados completos da Riot
-  localMatchId: string;         // UUID interno da tabela 'matches'
+  matchId: string;        // Ex: BR1_123456
+  matchDetails: MatchDto; // Dados completos da Riot
+  localMatchId: string;   // UUID interno da tabela 'matches'
 }
 
 /**
  * Subtarefa 1: Processador de Resultados (Estrutura Básica)
- * Responsável por buscar e normalizar o dado bruto.
  */
 export async function processMatchResult(tournamentCode: string, gameId: number) {
   const supabase = createAdminClient();
-  
+
   const { data, error } = await supabase
     .from("tournament_match_results")
     .select("*")
@@ -44,12 +42,12 @@ export async function processMatchResult(tournamentCode: string, gameId: number)
     .single();
 
   if (error || !data) {
-    console.error(`[IngestMatch] Registro não encontrado para: ${tournamentCode} / ${gameId}`);
+    console.error(`[IngestMatch] Registro não encontrado: ${tournamentCode} / ${gameId}`);
     return { success: false, error: "Registro não encontrado" };
   }
 
   if (data.processed) {
-    console.warn(`[IngestMatch] Registro já processado: ${tournamentCode} / ${gameId}`);
+    console.warn(`[IngestMatch] Já processado: ${tournamentCode} / ${gameId}`);
     return { success: false, error: "Já processado" };
   }
 
@@ -77,13 +75,13 @@ export async function fetchAndResolveMatch(tournamentCode: string, gameId: numbe
 
   const normalized = result.data!;
   const matchId = `${normalized.platformId}_${normalized.gameId}`.toUpperCase();
-  console.log(`[IngestMatch] Buscando detalhes na Riot para: ${matchId}`);
+  console.log(`[IngestMatch] Buscando Riot API para: ${matchId}`);
 
   let matchDetails: MatchDto;
   try {
     matchDetails = await getMatchById(matchId);
   } catch (err) {
-    console.error(`[IngestMatch] Erro ao buscar Riot API para ${matchId}:`, err);
+    console.error(`[IngestMatch] Erro Riot API ${matchId}:`, err);
     return { success: false, error: "Erro ao buscar detalhes do match" };
   }
 
@@ -95,15 +93,13 @@ export async function fetchAndResolveMatch(tournamentCode: string, gameId: numbe
     .single();
 
   if (matchError || !matchInternal) {
-    console.error(`[IngestMatch] Match interno não encontrado para: ${tournamentCode}`);
+    console.error(`[IngestMatch] Match interno não encontrado: ${tournamentCode}`);
     return { success: false, error: "Match interno não encontrado" };
   }
 
-  console.log(`[IngestMatch] Match interno resolvido: ${matchInternal.id}`);
-
-  return { 
-    success: true, 
-    data: { ...normalized, matchId, matchDetails, localMatchId: matchInternal.id } as ResolvedMatchData 
+  return {
+    success: true,
+    data: { ...normalized, matchId, matchDetails, localMatchId: matchInternal.id } as ResolvedMatchData,
   };
 }
 
@@ -111,7 +107,7 @@ export async function fetchAndResolveMatch(tournamentCode: string, gameId: numbe
  * Subtarefa 3: Persistência em match_games
  */
 export async function persistMatchGame(tournamentCode: string, gameId: number) {
-  console.log(`[IngestMatch] Subtarefa 3 iniciada: Persistindo match_games para ${tournamentCode} / ${gameId}`);
+  console.log(`[IngestMatch] Subtarefa 3: Persistindo match_games para ${tournamentCode} / ${gameId}`);
 
   const resolved = await fetchAndResolveMatch(tournamentCode, gameId);
   if (!resolved.success) return { success: false, error: resolved.error };
@@ -127,7 +123,7 @@ export async function persistMatchGame(tournamentCode: string, gameId: number) {
     .maybeSingle();
 
   if (existing) {
-    console.log(`[IngestMatch] Registro match_games já existe (id: ${existing.id}). Pulando inserção.`);
+    console.log(`[IngestMatch] match_games já existe (id: ${existing.id}). Pulando.`);
     return { success: true, data: { matchGameId: existing.id } };
   }
 
@@ -135,10 +131,10 @@ export async function persistMatchGame(tournamentCode: string, gameId: number) {
     .from("match_games")
     .insert({
       match_id: localMatchId,
-      game_number: 1, 
+      game_number: 1,
       riot_game_id: matchDetails.info.gameId.toString(),
       duration_sec: Math.floor(matchDetails.info.gameDuration),
-      winner_id: null 
+      winner_id: null,
     })
     .select("id")
     .single();
@@ -148,17 +144,25 @@ export async function persistMatchGame(tournamentCode: string, gameId: number) {
     return { success: false, error: insertError.message };
   }
 
-  console.log(`[IngestMatch] Sucesso! match_games criado: ${inserted.id}`);
+  console.log(`[IngestMatch] match_games criado: ${inserted.id}`);
   return { success: true, data: { matchGameId: inserted.id } };
 }
 
 /**
  * Subtarefa 4: Persistência de Estatísticas em player_stats
+ *
+ * FIX (Nó 1): Cadeia de resolução corrigida:
+ *   Riot API → participant.puuid
+ *     → riot_accounts.puuid         (tabela correta, não players.puuid)
+ *     → players.riot_account_id     (FK que vincula as duas tabelas)
+ *     → team_members.riot_account_id (resolve time atual do jogador)
+ *
+ * Antes: buscava players.puuid diretamente → 0 resultados pois
+ * riot_account_id estava NULL em todos os registros.
  */
 export async function persistPlayerStats(tournamentCode: string, gameId: number) {
-  console.log(`[IngestMatch] Subtarefa 4 iniciada: Persistindo player_stats para ${tournamentCode} / ${gameId}`);
+  console.log(`[IngestMatch] Subtarefa 4: Persistindo player_stats para ${tournamentCode} / ${gameId}`);
 
-  // 1. Garantir que o match_game existe e obter detalhes da Riot
   const gameResult = await persistMatchGame(tournamentCode, gameId);
   if (!gameResult.success) return { success: false, error: gameResult.error };
 
@@ -173,25 +177,54 @@ export async function persistPlayerStats(tournamentCode: string, gameId: number)
   let skippedCount = 0;
   const unresolvedPlayers: string[] = [];
 
-  // 2. Processar cada participante da Riot
   for (const participant of matchDetails.info.participants) {
     const puuid = participant.puuid;
 
-    // A. Localizar jogador interno por puuid
-    const { data: player, error: playerError } = await supabase
-      .from("players")
-      .select("id, team_id")
+    // ── PASSO 1: Resolver riot_account pelo puuid ──────────────────────────────
+    // O puuid correto vive em riot_accounts, não em players
+    const { data: riotAccount, error: raError } = await supabase
+      .from("riot_accounts")
+      .select("id, profile_id")
       .eq("puuid", puuid)
       .maybeSingle();
 
-    if (playerError || !player) {
-      console.warn(`[IngestMatch] Jogador não resolvido internamente (puuid: ${puuid}). Pulando stats.`);
+    if (raError || !riotAccount) {
+      console.warn(`[IngestMatch] puuid não encontrado em riot_accounts (${puuid}). Pulando.`);
       unresolvedPlayers.push(puuid);
       skippedCount++;
       continue;
     }
 
-    // B. Verificar Idempotência para este player neste game
+    // ── PASSO 2: Resolver player pelo riot_account_id ──────────────────────────
+    // A FK players.riot_account_id aponta para riot_accounts.id
+    const { data: player, error: playerError } = await supabase
+      .from("players")
+      .select("id")
+      .eq("riot_account_id", riotAccount.id)
+      .maybeSingle();
+
+    if (playerError || !player) {
+      console.warn(
+        `[IngestMatch] riot_account ${riotAccount.id} não tem player vinculado. ` +
+        `profile_id=${riotAccount.profile_id}. Pulando stats.`
+      );
+      unresolvedPlayers.push(puuid);
+      skippedCount++;
+      continue;
+    }
+
+    // ── PASSO 3: Resolver team_id atual via team_members ───────────────────────
+    // Time do jogador vem de team_members, não de players.team_id (dropado)
+    const { data: membership } = await supabase
+      .from("team_members")
+      .select("team_id")
+      .eq("riot_account_id", riotAccount.id)
+      .eq("status", "ACCEPTED")
+      .maybeSingle();
+
+    const teamId = membership?.team_id ?? null;
+
+    // ── PASSO 4: Idempotência ──────────────────────────────────────────────────
     const { data: existingStat } = await supabase
       .from("player_stats")
       .select("id")
@@ -205,43 +238,47 @@ export async function persistPlayerStats(tournamentCode: string, gameId: number)
       continue;
     }
 
-    // C. Mapear e Inserir estatísticas suportadas
+    // ── PASSO 5: Inserir estatísticas ─────────────────────────────────────────
     const { error: insertError } = await supabase
       .from("player_stats")
       .insert({
-        game_id: matchGameId,
-        player_id: player.id,
-        team_id: player.team_id,
-        kills: participant.kills,
-        deaths: participant.deaths,
-        assists: participant.assists,
-        gold_earned: participant.goldEarned,
-        cs: participant.totalMinionsKilled + (participant.neutralMinionsKilled || 0),
-        vision_score: participant.visionScore,
-        damage_dealt: participant.totalDamageDealtToChampions,
-        win: participant.win,
-        champion: participant.championName,
-        game_duration: Math.floor(matchDetails.info.gameDuration)
+        game_id:       matchGameId,
+        player_id:     player.id,
+        team_id:       teamId,
+        kills:         participant.kills,
+        deaths:        participant.deaths,
+        assists:       participant.assists,
+        gold_earned:   participant.goldEarned,
+        cs:            participant.totalMinionsKilled + (participant.neutralMinionsKilled || 0),
+        vision_score:  participant.visionScore,
+        damage_dealt:  participant.totalDamageDealtToChampions,
+        win:           participant.win,
+        champion:      participant.championName,
+        game_duration: Math.floor(matchDetails.info.gameDuration),
       });
 
     if (insertError) {
-      console.error(`[IngestMatch] Erro ao inserir stats para player ${player.id}:`, insertError.message);
+      console.error(`[IngestMatch] Erro ao inserir stats player ${player.id}:`, insertError.message);
       skippedCount++;
     } else {
+      console.log(`[IngestMatch] Stats inseridos: player=${player.id} team=${teamId ?? 'sem time'}`);
       insertedCount++;
     }
   }
 
+  if (unresolvedPlayers.length > 0) {
+    console.warn(
+      `[IngestMatch] ${unresolvedPlayers.length} participante(s) não resolvido(s) — ` +
+      `puuids sem riot_account ou player vinculado:\n` +
+      unresolvedPlayers.map((p) => `  - ${p}`).join("\n")
+    );
+  }
 
-  console.log(`[IngestMatch] Subtarefa 4 concluída. Inseridos: ${insertedCount}, Pulados/Erros: ${skippedCount}`);
+  console.log(`[IngestMatch] Subtarefa 4 concluída. Inseridos: ${insertedCount}, Pulados: ${skippedCount}`);
 
   return {
     success: true,
-    data: {
-      inserted: insertedCount,
-      skipped: skippedCount,
-      unresolvedPlayers
-    }
+    data: { inserted: insertedCount, skipped: skippedCount, unresolvedPlayers },
   };
 }
 
@@ -249,23 +286,20 @@ export async function persistPlayerStats(tournamentCode: string, gameId: number)
  * Subtarefa 5: Finalização da Ingestão
  */
 export async function finalizeMatchIngestion(tournamentCode: string, gameId: number) {
-  console.log(`[IngestMatch] Subtarefa 5 iniciada: Finalizando ${tournamentCode} / ${gameId}`);
+  console.log(`[IngestMatch] Subtarefa 5: Finalizando ${tournamentCode} / ${gameId}`);
 
-  // 1. Persistência de dados
   const gameRes = await persistMatchGame(tournamentCode, gameId);
   if (!gameRes.success) return { success: false, error: gameRes.error };
 
   const statsRes = await persistPlayerStats(tournamentCode, gameId);
   if (!statsRes.success) return { success: false, error: statsRes.error };
 
-  // 2. Resolver dados necessários ANTES de marcar como processed
   const resolved = await fetchAndResolveMatch(tournamentCode, gameId);
   if (!resolved.success) return { success: false, error: resolved.error };
   const { localMatchId } = resolved.data!;
 
   const supabase = createAdminClient();
 
-  // 3. Marcar como processado
   const { error: procError } = await supabase
     .from("tournament_match_results")
     .update({ processed: true })
@@ -277,13 +311,9 @@ export async function finalizeMatchIngestion(tournamentCode: string, gameId: num
     return { success: false, error: "Falha ao marcar registro como processado" };
   }
 
-  // 4. Atualizar status da partida para FINISHED
   const { error: matchError } = await supabase
     .from("matches")
-    .update({
-      status: 'FINISHED',
-      finished_at: new Date().toISOString()
-    })
+    .update({ status: "FINISHED", finished_at: new Date().toISOString() })
     .eq("id", localMatchId);
 
   if (matchError) {
@@ -295,8 +325,9 @@ export async function finalizeMatchIngestion(tournamentCode: string, gameId: num
     success: true,
     data: {
       localMatchId,
-      matchGameId: gameRes.data!.matchGameId
-    }
+      matchGameId: gameRes.data!.matchGameId,
+      statsInserted: statsRes.data?.inserted ?? 0,
+      unresolvedPlayers: statsRes.data?.unresolvedPlayers ?? [],
+    },
   };
 }
-
