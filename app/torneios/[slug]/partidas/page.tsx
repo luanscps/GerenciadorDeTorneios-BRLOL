@@ -33,6 +33,9 @@ export default async function PartidasPublicaPage({ params }: { params: Promise<
 
   if (!torneio) notFound()
 
+  // Usuário logado
+  const { data: { user } } = await supabase.auth.getUser()
+
   const { data: raw } = await supabase
     .from('matches')
     .select(`
@@ -54,17 +57,37 @@ export default async function PartidasPublicaPage({ params }: { params: Promise<
     .eq('tournament_id', torneio.id)
     .order('order')
 
-  const STATUS_LABEL: Record<string, string> = {
-    pending: 'Agendada', ongoing: 'Ao Vivo 🔴', finished: 'Finalizada', cancelled: 'Cancelada'
-  }
-  const STATUS_COLOR: Record<string, string> = {
-    pending:   'text-gray-400 bg-gray-800/40 border-gray-700/40',
-    ongoing:   'text-yellow-400 bg-yellow-900/20 border-yellow-700/40',
-    finished:  'text-green-400 bg-green-900/20 border-green-700/40',
-    cancelled: 'text-red-400 bg-red-900/20 border-red-700/40',
+  // IDs dos times do usuário logado (para destacar suas partidas)
+  let userTeamIds: string[] = []
+  if (user) {
+    const { data: memberships } = await supabase
+      .from('team_members')
+      .select('team_id')
+      .eq('profile_id', user.id)
+      .eq('status', 'accepted')
+    userTeamIds = (memberships ?? []).map(m => m.team_id)
   }
 
-  // Agrupa por round
+  const STATUS_LABEL: Record<string, string> = {
+    SCHEDULED:   'Agendada',
+    IN_PROGRESS: 'Ao Vivo 🔴',
+    FINISHED:    'Finalizada',
+    // fallbacks minúsculos (legado)
+    pending:   'Agendada',
+    ongoing:   'Ao Vivo 🔴',
+    finished:  'Finalizada',
+    cancelled: 'Cancelada',
+  }
+  const STATUS_COLOR: Record<string, string> = {
+    SCHEDULED:   'text-gray-400 bg-gray-800/40 border-gray-700/40',
+    IN_PROGRESS: 'text-yellow-400 bg-yellow-900/20 border-yellow-700/40',
+    FINISHED:    'text-green-400 bg-green-900/20 border-green-700/40',
+    pending:     'text-gray-400 bg-gray-800/40 border-gray-700/40',
+    ongoing:     'text-yellow-400 bg-yellow-900/20 border-yellow-700/40',
+    finished:    'text-green-400 bg-green-900/20 border-green-700/40',
+    cancelled:   'text-red-400 bg-red-900/20 border-red-700/40',
+  }
+
   const porRound: Record<number, Partida[]> = {}
   partidas.forEach(p => {
     if (!porRound[p.round]) porRound[p.round] = []
@@ -72,8 +95,8 @@ export default async function PartidasPublicaPage({ params }: { params: Promise<
   })
 
   const total       = partidas.length
-  const finalizadas = partidas.filter(p => p.status === 'finished').length
-  const aoVivo      = partidas.filter(p => p.status === 'ongoing').length
+  const finalizadas = partidas.filter(p => ['finished', 'FINISHED'].includes(p.status)).length
+  const aoVivo      = partidas.filter(p => ['ongoing', 'IN_PROGRESS'].includes(p.status)).length
 
   return (
     <div className="space-y-6">
@@ -93,7 +116,6 @@ export default async function PartidasPublicaPage({ params }: { params: Promise<
           </div>
         </div>
 
-        {/* Indicadores de fase */}
         {(fases ?? []).length > 1 && (
           <div className="flex gap-2 mt-4 pt-4 border-t border-[#1E3A5F] flex-wrap">
             {fases!.map(f => (
@@ -105,7 +127,6 @@ export default async function PartidasPublicaPage({ params }: { params: Promise<
         )}
       </div>
 
-      {/* Vazio */}
       {total === 0 && (
         <div className="card-lol text-center py-16">
           <p className="text-4xl mb-3">⚔️</p>
@@ -114,17 +135,34 @@ export default async function PartidasPublicaPage({ params }: { params: Promise<
         </div>
       )}
 
-      {/* Por round */}
       {Object.entries(porRound).map(([round, matches]) => (
         <section key={round}>
           <h2 className="text-gray-400 font-semibold text-sm uppercase tracking-wider mb-3">Round {round}</h2>
           <div className="space-y-3">
             {matches.map((p) => {
               const fase = (fases ?? []).find(f => f.id === p.fase_id)
-              return (
-                <div key={p.id} className={`card-lol ${ p.status === 'ongoing' ? 'border border-yellow-700/40' : '' }`}>
-                  <div className="flex items-center gap-4 flex-wrap">
+              const isMyMatch = userTeamIds.includes(p.team_a?.id ?? '') || userTeamIds.includes(p.team_b?.id ?? '')
+              const isLive    = ['ongoing', 'IN_PROGRESS'].includes(p.status)
+              const isDone    = ['finished', 'FINISHED'].includes(p.status)
 
+              return (
+                <div
+                  key={p.id}
+                  className={`card-lol ${
+                    isLive    ? 'border border-yellow-700/40' :
+                    isMyMatch ? 'border border-[#C8A84B]/30' : ''
+                  }`}
+                >
+                  {/* Badge "Sua Partida" */}
+                  {isMyMatch && (
+                    <div className="mb-2">
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#C8A84B]/10 border border-[#C8A84B]/40 text-[#C8A84B]">
+                        ⭐ Sua Partida
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-4 flex-wrap">
                     {/* Time A */}
                     <div className="flex items-center gap-2 flex-1 justify-end min-w-0">
                       {p.team_a?.logo_url && (
@@ -138,7 +176,7 @@ export default async function PartidasPublicaPage({ params }: { params: Promise<
 
                     {/* Placar central */}
                     <div className="text-center flex-shrink-0 w-20">
-                      {p.status === 'finished' ? (
+                      {isDone ? (
                         <p className="text-white font-bold text-xl">{p.score_a} × {p.score_b}</p>
                       ) : (
                         <div>
@@ -162,17 +200,31 @@ export default async function PartidasPublicaPage({ params }: { params: Promise<
                       )}
                     </div>
 
-                    {/* Info extra */}
-                    <div className="text-right text-xs text-gray-500 flex-shrink-0">
-                      {fase && <p>{fase.name}</p>}
-                      {p.scheduled_at && p.status !== 'finished' && (
-                        <p>{new Date(p.scheduled_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</p>
-                      )}
-                      {p.finished_at && (
-                        <p>{new Date(p.finished_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</p>
-                      )}
+                    {/* Info + botão lobby */}
+                    <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                      <div className="text-right text-xs text-gray-500">
+                        {fase && <p>{fase.name}</p>}
+                        {p.scheduled_at && !isDone && (
+                          <p>{new Date(p.scheduled_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</p>
+                        )}
+                        {p.finished_at && (
+                          <p>{new Date(p.finished_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</p>
+                        )}
+                      </div>
+                      {/* Botão Lobby — sempre visível */}
+                      <Link
+                        href={`/torneios/${slug}/partidas/${p.id}`}
+                        className={`text-[11px] font-bold px-3 py-1 rounded border transition-colors whitespace-nowrap ${
+                          isLive
+                            ? 'border-yellow-600/60 text-yellow-400 bg-yellow-900/20 hover:bg-yellow-900/40'
+                            : isDone
+                              ? 'border-[#1E3A5F] text-gray-400 hover:text-white hover:border-gray-500'
+                              : 'border-[#C8A84B]/50 text-[#C8A84B] bg-[#C8A84B]/5 hover:bg-[#C8A84B]/15'
+                        }`}
+                      >
+                        {isLive ? '🔴 Ver Ao Vivo' : isDone ? 'Ver Resultado' : 'Acessar Lobby →'}
+                      </Link>
                     </div>
-
                   </div>
                 </div>
               )
