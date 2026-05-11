@@ -3,8 +3,10 @@ import { createClient } from '@/lib/supabase/server';
 
 export async function GET(_req: NextRequest) {
   try {
-            const supabase = await createClient();
+    const supabase = await createClient();
 
+    // Fix 1: removido team_id e teams(name) — coluna team_id foi dropada na migration
+    // O time do jogador agora é gerenciado via tabela team_members
     const { data, error } = await supabase
       .from('players')
       .select(`
@@ -17,9 +19,7 @@ export async function GET(_req: NextRequest) {
         lp,
         wins,
         losses,
-        created_at,
-        team_id,
-        teams ( name )
+        created_at
       `)
       .order('created_at', { ascending: false });
 
@@ -29,8 +29,6 @@ export async function GET(_req: NextRequest) {
       id: p.id,
       summonerName: p.summoner_name,
       tagLine: p.tag_line,
-      teamId: p.team_id,
-      teamName: p.teams?.name ?? null,
       role: p.role,
       tier: p.tier,
       rank: p.rank,
@@ -50,13 +48,18 @@ export async function GET(_req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   try {
     const body = await req.json();
-    const { id, teamId, role } = body as { id: string; teamId?: string; role?: string };
+    // Fix 1: removido teamId — team_id não existe mais na tabela players
+    // Associação de time agora é feita via team_members
+    const { id, role } = body as { id: string; role?: string };
     if (!id) return NextResponse.json({ error: 'ID obrigatorio' }, { status: 400 });
 
     const supabase = await createClient();
     const updates: Record<string, unknown> = {};
-    if (teamId !== undefined) updates.team_id = teamId;
     if (role !== undefined) updates.role = role;
+
+    if (Object.keys(updates).length === 0) {
+      return NextResponse.json({ success: true });
+    }
 
     const { error } = await supabase.from('players').update(updates).eq('id', id);
     if (error) throw error;

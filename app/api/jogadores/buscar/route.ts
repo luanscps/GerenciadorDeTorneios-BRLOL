@@ -33,9 +33,11 @@ export async function GET(req: NextRequest) {
       tagQuery = tag.trim();
     }
 
+    // Fix 1: removido team_id do select — coluna foi dropada na migration
+    // hasTeam agora é verificado via team_members se necessário
     let query = supabase
       .from("players")
-      .select("id, summoner_name, tag_line, role, tier, rank, lp, puuid, team_id")
+      .select("id, summoner_name, tag_line, role, tier, rank, lp, puuid")
       .ilike("summoner_name", `%${nameQuery}%`)
       .limit(10);
 
@@ -46,8 +48,6 @@ export async function GET(req: NextRequest) {
     const { data, error } = await query;
     if (error) throw error;
 
-    // Remove o próprio usuário dos resultados (não pode convidar a si mesmo)
-    // Filtra também jogadores que já têm time
     const results = (data ?? []).map((p) => ({
       id:           p.id,
       summonerName: p.summoner_name,
@@ -57,7 +57,6 @@ export async function GET(req: NextRequest) {
       rank:         p.rank,
       lp:           p.lp,
       puuid:        p.puuid,
-      hasTeam:      !!p.team_id,
     }));
 
     return NextResponse.json(results);
