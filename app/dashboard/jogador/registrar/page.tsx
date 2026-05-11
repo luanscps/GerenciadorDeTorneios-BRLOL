@@ -1,14 +1,13 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
-import { salvarPlayerDeRiotAccount } from "@/lib/actions/riot-link";
+import { vincularRiotAccount } from "@/lib/actions/riot-link";
 import Image from "next/image";
 
 interface SummonerResult {
-  account: { puuid: string; gameName: string; tagLine: string };
+  account:  { puuid: string; gameName: string; tagLine: string };
   summoner: { profileIconId: number; summonerLevel: number; id: string };
-  entries: Array<{
+  entries:  Array<{
     queueType: string; tier: string; rank: string;
     leaguePoints: number; wins: number; losses: number;
   }>;
@@ -33,8 +32,7 @@ export default function RegistrarRiotPage() {
   const [saved,     setSaved]     = useState(false);
   const [ddVersion, setDdVersion] = useState("16.8.1");
 
-  const router   = useRouter();
-  const supabase = createClient();
+  const router = useRouter();
 
   useEffect(() => {
     fetch("https://ddragon.leagueoflegends.com/api/versions.json")
@@ -73,129 +71,33 @@ export default function RegistrarRiotPage() {
     setError("");
 
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-      if (authError || !user) { router.push("/login"); return; }
-
-      // ---------------------------------------------------------------
-      // ESTRATÉGIA: INSERT → se conflito em puuid faz UPDATE manual.
-      // Evita o erro "ON CONFLICT DO UPDATE command cannot affect row a
-      // second time" causado pelo trigger ensure_single_primary_riot_account
-      // que também faz UPDATE na mesma transação do upsert is_primary=true.
-      // ---------------------------------------------------------------
-
-      // 1) Tenta INSERT sem is_primary (trigger não dispara UPDATE extra)
-      const payload = {
-        profile_id:      user.id,
-        puuid:           result.account.puuid,
-        game_name:       result.account.gameName,
-        tag_line:        result.account.tagLine,
-        summoner_id:     result.summoner.id,
-        summoner_level:  result.summoner.summonerLevel,
-        profile_icon_id: result.summoner.profileIconId,
-        is_primary:      false,           // será setado no passo 3
-        updated_at:      new Date().toISOString(),
-      };
-
-      let acctId: string | null = null;
-
-      const { data: inserted, error: insertErr } = await supabase
-        .from("riot_accounts")
-        .insert(payload)
-        .select("id")
-        .single();
-
-      if (insertErr) {
-        // Conflito de puuid → conta já existe, só atualiza campos
-        if (insertErr.code === "23505") {
-          const { data: updated, error: updateErr } = await supabase
-            .from("riot_accounts")
-            .update({
-              game_name:       result.account.gameName,
-              tag_line:        result.account.tagLine,
-              summoner_id:     result.summoner.id,
-              summoner_level:  result.summoner.summonerLevel,
-              profile_icon_id: result.summoner.profileIconId,
-              updated_at:      new Date().toISOString(),
-            })
-            .eq("puuid", result.account.puuid)
-            .eq("profile_id", user.id)
-            .select("id")
-            .single();
-
-          if (updateErr) throw new Error("Erro ao atualizar conta Riot: " + updateErr.message);
-          acctId = updated?.id ?? null;
-        } else {
-          throw new Error("Erro ao salvar conta Riot: " + insertErr.message);
-        }
-      } else {
-        acctId = inserted?.id ?? null;
-      }
-
-      if (!acctId) throw new Error("Não foi possível obter o ID da conta Riot.");
-
-      // 2) Desmarca is_primary das outras contas do perfil
-      await supabase
-        .from("riot_accounts")
-        .update({ is_primary: false })
-        .eq("profile_id", user.id)
-        .neq("id", acctId);
-
-      // 3) Marca esta conta como primária
-      await supabase
-        .from("riot_accounts")
-        .update({ is_primary: true })
-        .eq("id", acctId);
-
-      // 4) rank_snapshots em batch
-      if (result.entries.length > 0) {
-        const snapshots = result.entries.map(entry => ({
-          riot_account_id: acctId,
-          queue_type:      entry.queueType,
-          tier:            entry.tier,
-          rank:            entry.rank,
-          lp:              entry.leaguePoints,
-          wins:            entry.wins,
-          losses:          entry.losses,
-        }));
-        const { error: e2 } = await supabase.from("rank_snapshots").insert(snapshots);
-        if (e2) console.warn("rank_snapshots:", e2.message);
-      }
-
-      // 5) champion_masteries em batch
-      if (result.masteries.length > 0) {
-        const masteries = result.masteries.map(m => ({
-          riot_account_id: acctId,
-          champion_id:     m.championId,
-          champion_name:   m.championName,
-          mastery_level:   m.championLevel,
-          mastery_points:  m.championPoints,
-        }));
-        const { error: e3 } = await supabase
-          .from("champion_masteries")
-          .upsert(masteries, { onConflict: "riot_account_id,champion_id" });
-        if (e3) console.warn("champion_masteries:", e3.message);
-      }
-
-      // 6) ─── FIX: cria/atualiza o registro em `players` ───────────
-      // Anteriormente ausente — causava players.riot_account_id = NULL
-      // e quebrava o roster público dos times e a página /jogadores.
-      const soloEntry = result.entries.find(e => e.queueType === "RANKED_SOLO_5x5");
-      const playerResult = await salvarPlayerDeRiotAccount({
-        riotAccountId: acctId,
+      // Todo o fluxo de escrita (riot_accounts + rank_snapshots +
+      // champion_masteries + players) roda server-side via Server Action.
+      // Isso evita bloqueios de RLS que impediam summoner_id de ser salvo.
+      const res = await vincularRiotAccount({
+        puuid:         result.account.puuid,
         gameName:      result.account.gameName,
         tagLine:       result.account.tagLine,
-        tier:          soloEntry?.tier   ?? 'UNRANKED',
-        rank:          soloEntry?.rank   ?? '',
-        lp:            soloEntry?.leaguePoints ?? 0,
-        wins:          soloEntry?.wins   ?? 0,
-        losses:        soloEntry?.losses ?? 0,
+        summonerId:    result.summoner.id,
+        summonerLevel: result.summoner.summonerLevel,
+        profileIconId: result.summoner.profileIconId,
+        entries: result.entries.map(e => ({
+          queueType: e.queueType,
+          tier:      e.tier,
+          rank:      e.rank,
+          lp:        e.leaguePoints,
+          wins:      e.wins,
+          losses:    e.losses,
+        })),
+        masteries: result.masteries.map(m => ({
+          championId:     m.championId,
+          championName:   m.championName,
+          championLevel:  m.championLevel,
+          championPoints: m.championPoints,
+        })),
       });
 
-      if (playerResult.error) {
-        // Não bloqueia o fluxo — loga o erro mas segue
-        console.warn("[riot-link] player upsert:", playerResult.error);
-      }
-      // ─────────────────────────────────────────────────────────────
+      if (res.error) throw new Error(res.error);
 
       setSaved(true);
       setTimeout(() => router.push("/dashboard"), 1500);
