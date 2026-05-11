@@ -284,6 +284,10 @@ export interface LeagueEntry {
   queueType: string;
   tier: string;
   rank: string;
+  /**
+   * summonerId retornado diretamente pela Riot API em /lol/league/v4/entries/by-puuid.
+   * Fonte primária preferida ao summoner.id, que pode retornar vazio com chave de dev.
+   */
   summonerId: string;
   leaguePoints: number;
   wins: number;

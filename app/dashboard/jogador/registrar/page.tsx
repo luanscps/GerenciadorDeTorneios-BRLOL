@@ -10,6 +10,7 @@ interface SummonerResult {
   entries:  Array<{
     queueType: string; tier: string; rank: string;
     leaguePoints: number; wins: number; losses: number;
+    summonerId: string; // exposto para uso como fonte primária de summonerId
   }>;
   masteries: Array<{
     championId: number; championName: string;
@@ -71,14 +72,18 @@ export default function RegistrarRiotPage() {
     setError("");
 
     try {
-      // Todo o fluxo de escrita (riot_accounts + rank_snapshots +
-      // champion_masteries + players) roda server-side via Server Action.
-      // Isso evita bloqueios de RLS que impediam summoner_id de ser salvo.
+      // Fonte primária: summonerId vindo do LeagueEntry (mais confiável na Riot API v5).
+      // O campo summoner.id pode retornar vazio com chave de desenvolvimento.
+      // Fallback: summoner.id → string vazia.
+      const summonerIdFromEntry =
+        result.entries.find(e => !!e.summonerId)?.summonerId ?? "";
+      const resolvedSummonerId = summonerIdFromEntry || result.summoner.id || "";
+
       const res = await vincularRiotAccount({
         puuid:         result.account.puuid,
         gameName:      result.account.gameName,
         tagLine:       result.account.tagLine,
-        summonerId:    result.summoner.id,
+        summonerId:    resolvedSummonerId,
         summonerLevel: result.summoner.summonerLevel,
         profileIconId: result.summoner.profileIconId,
         entries: result.entries.map(e => ({
