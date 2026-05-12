@@ -19,6 +19,9 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import type { MatchParticipant } from "@/lib/riot";
 
+// Aumenta timeout desta rota para 60s (evita FUNCTION_INVOCATION_TIMEOUT na Riot API)
+export const maxDuration = 60;
+
 const TIER_COLORS: Record<string, string> = {
   IRON: "#8B7A6B", BRONZE: "#CD7F32", SILVER: "#A8A9AD", GOLD: "#FFD700",
   PLATINUM: "#00E5CC", EMERALD: "#50C878", DIAMOND: "#99CCFF",
@@ -104,7 +107,8 @@ export default async function PlayerProfilePage({
     getSummonerByPuuid(puuid),
     getLeagueEntriesByPuuid(puuid),
     getTopMasteriesByPuuid(puuid, 7),
-    getMatchIdsByPuuid(puuid, 10),
+    // Reduzido de 10 para 5 para diminuir tempo total de SSR e evitar timeout
+    getMatchIdsByPuuid(puuid, 5),
     getAllChampions(),
   ]);
 
@@ -117,9 +121,9 @@ export default async function PlayerProfilePage({
   const champById: Record<number, string> = {};
   for (const c of Object.values(champs)) champById[Number(c.key)] = c.name;
 
-  // ── 3. Matches (até 10) ────────────────────────────────────────────────────
+  // ── 3. Matches (até 5) ─────────────────────────────────────────────────────
   const matchResults = await Promise.allSettled(
-    mIds.slice(0, 10).map((id) => getMatchById(id))
+    mIds.slice(0, 5).map((id) => getMatchById(id))
   );
   const matches = matchResults
     .filter((r): r is PromiseFulfilledResult<Awaited<ReturnType<typeof getMatchById>>> => r.status === "fulfilled")

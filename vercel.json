@@ -4,5 +4,13 @@
       "path": "/api/cron/check-riot-status",
       "schedule": "0 12 * * 1"
     }
-  ]
+  ],
+  "functions": {
+    "app/jogadores/[gameName]/[tagLine]/page.tsx": {
+      "maxDuration": 60
+    },
+    "app/dashboard/page.tsx": {
+      "maxDuration": 60
+    }
+  }
 }
