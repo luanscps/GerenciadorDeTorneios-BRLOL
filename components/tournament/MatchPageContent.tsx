@@ -3,10 +3,27 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import TournamentCodeBox from './TournamentCodeBox';
+import {
+  initRiotAssets,
+  getDDVersion,
+  getChampionMap,
+  champCircleUrl,
+  champSquareUrl,
+  spellIconUrl,
+  profileIconUrl,
+  rankEmblemUrl,
+  laneIconUrl,
+  LANE_LABEL,
+  TIER_COLOR,
+  TIER_SHORT,
+} from '@/lib/riot/assets';
 
 type UserRole = 'admin' | 'organizer' | 'captain' | 'member' | 'public';
 
-// ── Tipos Riot Spectator API v5 ──────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Tipos Riot Spectator API v5
+// ─────────────────────────────────────────────────────────────────────────────
+
 interface RiotParticipant {
   puuid: string;
   summonerName: string;
@@ -31,61 +48,9 @@ interface LiveGameData {
   gameLength: number;
 }
 
-// ── Utilitários Data Dragon ──────────────────────────────────────────────────
-// Versão dinâmica — busca a versão mais recente na inicialização
-let DD_VERSION = '15.10.1'; // fallback; sobrescrito por fetchDDVersion()
-
-const championIdToKey: Record<number, string> = {};
-const spellIdToKey: Record<number, string> = {
-  1: 'SummonerBoost', 3: 'SummonerExhaust', 4: 'SummonerFlash', 6: 'SummonerHaste',
-  7: 'SummonerHeal', 11: 'SummonerSmite', 12: 'SummonerTeleport', 13: 'SummonerMana',
-  14: 'SummonerDot', 21: 'SummonerBarrier', 32: 'SummonerSnowball',
-};
-
-const champIconUrl = (id: number): string | null =>
-  id > 0 && championIdToKey[id]
-    ? `https://ddragon.leagueoflegends.com/cdn/${DD_VERSION}/img/champion/${championIdToKey[id]}.png`
-    : null;
-
-const spellIconUrl = (id: number): string =>
-  `https://ddragon.leagueoflegends.com/cdn/${DD_VERSION}/img/spell/${spellIdToKey[id] ?? 'SummonerFlash'}.png`;
-
-const profileIconUrl = (iconId: number | string): string =>
-  `https://ddragon.leagueoflegends.com/cdn/${DD_VERSION}/img/profileicon/${iconId}.png`;
-
-async function fetchDDVersion(): Promise<void> {
-  try {
-    const res = await fetch('https://ddragon.leagueoflegends.com/api/versions.json');
-    const versions: string[] = await res.json();
-    if (versions[0]) DD_VERSION = versions[0];
-  } catch (_) {}
-}
-
-async function fetchChampionMap(): Promise<void> {
-  if (Object.keys(championIdToKey).length > 0) return;
-  try {
-    const res = await fetch(
-      `https://ddragon.leagueoflegends.com/cdn/${DD_VERSION}/data/pt_BR/champion.json`
-    );
-    const json = await res.json();
-    for (const key of Object.keys(json.data)) {
-      championIdToKey[Number(json.data[key].key)] = key;
-    }
-  } catch (_) {}
-}
-
-// ── Constantes de estilo ─────────────────────────────────────────────────────
-const LANE_LABELS: Record<string, string> = {
-  top: 'Top', jungle: 'Jungle', mid: 'Mid', bot: 'Bot', support: 'Suporte',
-  TOP: 'Top', JUNGLE: 'Jungle', MID: 'Mid', BOTTOM: 'Bot', UTILITY: 'Suporte',
-};
-
-const TIER_COLORS: Record<string, string> = {
-  IRON: '#6B7280', BRONZE: '#92400E', SILVER: '#9CA3AF',
-  GOLD: '#C8A84B', PLATINUM: '#10B981', EMERALD: '#059669',
-  DIAMOND: '#60A5FA', MASTER: '#A78BFA', GRANDMASTER: '#F87171', CHALLENGER: '#FCD34D',
-  UNRANKED: '#4A5568',
-};
+// ─────────────────────────────────────────────────────────────────────────────
+// Constantes de status
+// ─────────────────────────────────────────────────────────────────────────────
 
 const STATUS_LABELS: Record<string, string> = {
   SCHEDULED: 'Agendada', PENDING: 'Agendada', pending: 'Agendada',
@@ -94,7 +59,187 @@ const STATUS_LABELS: Record<string, string> = {
   CANCELLED: 'Cancelada', cancelled: 'Cancelada',
 };
 
-// ── Componente principal ─────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Estado de assets resolvidos (versão + mapa de campeões)
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface AssetsState {
+  ready: boolean;
+  version: string;
+  champMap: Record<number, string>;
+}
+
+function useRiotAssets(): AssetsState {
+  const [state, setState] = useState<AssetsState>({
+    ready: false,
+    version: '15.10.1',
+    champMap: {},
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    initRiotAssets().then(([version, champMap]) => {
+      if (!cancelled) setState({ ready: true, version, champMap });
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  return state;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sub-componentes visuais
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Ícone de lane com fallback para texto label.
+ * Usa CDragon Clash latest para os PNGs oficiais.
+ */
+function LaneIcon({ lane }: { lane: string }) {
+  const label = LANE_LABEL[lane] ?? lane ?? '—';
+  const src   = laneIconUrl(lane);
+  const [failed, setFailed] = useState(false);
+
+  if (failed || !lane) {
+    return (
+      <span className="text-[10px] text-[#4A5568] uppercase font-bold">{label}</span>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={label}
+      title={label}
+      width={14}
+      height={14}
+      className="opacity-50 grayscale"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+/**
+ * Emblema de ranked com fallback para texto colorido.
+ * Imagem 18x18 do CDragon ranked crests.
+ */
+function RankEmblem({
+  tier, rank, lp,
+}: {
+  tier: string | null;
+  rank: string | null;
+  lp: number | null;
+}) {
+  const t = (tier ?? 'UNRANKED').toUpperCase();
+  const color = TIER_COLOR[t] ?? TIER_COLOR['UNRANKED'];
+  const short = TIER_SHORT[t] ?? '—';
+  const [imgFailed, setImgFailed] = useState(false);
+
+  if (t === 'UNRANKED') {
+    return <span className="text-[10px] text-[#4A5568] font-bold">Unranked</span>;
+  }
+
+  return (
+    <span className="flex items-center gap-1" style={{ color }}>
+      {!imgFailed ? (
+        <img
+          src={rankEmblemUrl(t)}
+          alt={t}
+          title={t}
+          width={16}
+          height={16}
+          className="object-contain"
+          onError={() => setImgFailed(true)}
+        />
+      ) : (
+        // fallback: texto abreviado colorido
+        <span className="text-[10px] font-black">{short}</span>
+      )}
+      <span className="text-[10px] font-black">
+        {short}{rank && rank !== 'I' && rank !== short ? rank : ''}
+        {lp != null ? ` ${lp}lp` : ''}
+      </span>
+    </span>
+  );
+}
+
+/**
+ * Avatar do jogador: tenta CDragon circle → DDragon square → profile icon → ◈
+ */
+function PlayerAvatar({
+  championId, champMap, version, profileIcon, isLive,
+}: {
+  championId?: number;
+  champMap: Record<number, string>;
+  version: string;
+  profileIcon?: number | string | null;
+  isLive: boolean;
+}) {
+  const [src, setSrc]         = useState<string | null>(null);
+  const [fallback, setFallback] = useState(0); // 0=circle, 1=square, 2=profile, 3=placeholder
+
+  useEffect(() => {
+    if (championId && championId > 0 && champMap[championId]) {
+      const key = champMap[championId];
+      setFallback(0);
+      setSrc(champCircleUrl(key));
+    } else if (profileIcon != null) {
+      setFallback(2);
+      setSrc(profileIconUrl(profileIcon, version));
+    } else {
+      setSrc(null);
+    }
+  }, [championId, champMap, version, profileIcon]);
+
+  const handleError = () => {
+    if (championId && championId > 0 && champMap[championId]) {
+      const key = champMap[championId];
+      if (fallback === 0) {
+        // CDragon circle falhou → tenta DDragon square
+        setFallback(1);
+        setSrc(champSquareUrl(key, version));
+        return;
+      }
+    }
+    if (fallback < 2 && profileIcon != null) {
+      // square também falhou → profile icon
+      setFallback(2);
+      setSrc(profileIconUrl(profileIcon, version));
+      return;
+    }
+    // tudo falhou → placeholder
+    setFallback(3);
+    setSrc(null);
+  };
+
+  return (
+    <div className="relative shrink-0 w-10 h-10">
+      <div className="w-10 h-10 rounded-lg bg-[#1A2535] border border-white/5 flex items-center justify-center overflow-hidden">
+        {src && fallback < 3 ? (
+          <img
+            src={src}
+            alt="champ"
+            width={40}
+            height={40}
+            className="rounded-lg object-cover w-10 h-10"
+            onError={handleError}
+          />
+        ) : (
+          <span className="text-[#4A5568] text-lg">◈</span>
+        )}
+      </div>
+      {/* Status dot */}
+      <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#0D1421] ${
+        isLive ? 'bg-green-500' : 'bg-[#2D3748]'
+      }`} />
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Componente principal
+// ─────────────────────────────────────────────────────────────────────────────
+
 interface Props {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   match: any;
@@ -125,36 +270,28 @@ export default function MatchPageContent({
   userRole = 'public',
   stageName,
 }: Props) {
-  // Extrai código de torneio inicial de forma defensiva
   const notesStr = typeof match.notes === 'string' ? match.notes : '';
   const initialCode: string | null =
     match.tournament_code ?? (notesStr.match(/BR1_[A-Z0-9-]+/)?.[0] ?? null);
 
-  const [liveCode, setLiveCode]           = useState<string | null>(initialCode);
-  const [codeJustArrived, setCodeJA]      = useState(false);
-  const [liveGame, setLiveGame]           = useState<LiveGameData | null>(null);
-  const [loadingLive, setLoadingLive]     = useState(false);
-  const [champMapReady, setChampMapReady] = useState(false);
-  const [matchStatus, setMatchStatus]     = useState<string>(match.status ?? 'PENDING');
-  const [scores, setScores]               = useState({ a: match.score_a ?? 0, b: match.score_b ?? 0 });
-  const [timer, setTimer]                 = useState(0);
+  const [liveCode, setLiveCode]       = useState<string | null>(initialCode);
+  const [codeJustArrived, setCodeJA]  = useState(false);
+  const [liveGame, setLiveGame]       = useState<LiveGameData | null>(null);
+  const [loadingLive, setLoadingLive] = useState(false);
+  const [matchStatus, setMatchStatus] = useState<string>(match.status ?? 'PENDING');
+  const [scores, setScores]           = useState({ a: match.score_a ?? 0, b: match.score_b ?? 0 });
+  const [timer, setTimer]             = useState(0);
+  const timerRef                      = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // FIX: tipo explícito `number` para setInterval no browser, com `| null`
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Hook que resolve versão DDragon + mapa de campeões (singletons de Promise)
+  const assets = useRiotAssets();
 
   const slug       = match.tournament?.slug ?? '';
   const isLive     = ['IN_PROGRESS', 'ONGOING', 'ongoing'].includes(matchStatus);
   const isFinished = ['FINISHED', 'finished'].includes(matchStatus);
   const bestOf     = match.best_of ?? 1;
 
-  // 1 ── Carrega versão DD + mapa de campeões
-  useEffect(() => {
-    fetchDDVersion()
-      .then(() => fetchChampionMap())
-      .then(() => setChampMapReady(true));
-  }, []);
-
-  // 2 ── Realtime: tournament_code + status + score
+  // 1 ─ Realtime: tournament_code + status + score
   useEffect(() => {
     const supabase = createClient();
     const ch = supabase
@@ -178,9 +315,9 @@ export default function MatchPageContent({
     return () => { supabase.removeChannel(ch); };
   }, [match.id, liveCode]);
 
-  // 3 ── Polling Spectator API — tenta todos os PUUIDs até achar a partida
+  // 2 ─ Polling Spectator API
   const fetchLiveGame = useCallback(async () => {
-    if (!champMapReady) return;
+    if (!assets.ready) return;
     const puuids = playersData
       .map((p) => p.riot_account_id)
       .filter((id): id is string => Boolean(id));
@@ -188,22 +325,17 @@ export default function MatchPageContent({
 
     setLoadingLive(true);
     let found: LiveGameData | null = null;
-
     for (const puuid of puuids) {
       try {
         const res = await fetch(`/api/riot/live-game?puuid=${encodeURIComponent(puuid)}`);
-        if (res.ok) {
-          found = (await res.json()) as LiveGameData;
-          break;
-        }
+        if (res.ok) { found = (await res.json()) as LiveGameData; break; }
       } catch (_) {}
     }
-
     setLiveGame(found);
     setLoadingLive(false);
-  }, [champMapReady, playersData]);
+  }, [assets.ready, playersData]);
 
-  // 4 ── Inicia polling quando partida está ao vivo
+  // 3 ─ Inicia polling quando partida está ao vivo
   useEffect(() => {
     if (!isLive) return;
     void fetchLiveGame();
@@ -211,7 +343,7 @@ export default function MatchPageContent({
     return () => clearInterval(interval);
   }, [isLive, fetchLiveGame]);
 
-  // 5 ── Timer ao vivo — reinicia somente quando gameLength muda
+  // 4 ─ Timer ao vivo
   useEffect(() => {
     if (liveGame) {
       setTimer(liveGame.gameLength);
@@ -220,9 +352,7 @@ export default function MatchPageContent({
     } else {
       if (timerRef.current) clearInterval(timerRef.current as ReturnType<typeof setInterval>);
     }
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current as ReturnType<typeof setInterval>);
-    };
+    return () => { if (timerRef.current) clearInterval(timerRef.current as ReturnType<typeof setInterval>); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveGame?.gameLength]);
 
@@ -232,7 +362,16 @@ export default function MatchPageContent({
   const fmtTimer = (s: number): string =>
     `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
-  // ── Render ───────────────────────────────────────────────────────────────
+  // helper: resolve ícone de campeão para bans (DDragon square — correto para ban row)
+  const banChampImg = (championId: number): string | null => {
+    const key = assets.champMap[championId];
+    return key ? champSquareUrl(key, assets.version) : null;
+  };
+
+  // helper: resolve ícone de spell para partida ao vivo
+  const spellImg = (spellId: number): string =>
+    spellIconUrl(spellId, assets.version);
+
   return (
     <main className="min-h-screen bg-[#0A0E17] text-white py-10 px-4">
       <div className="max-w-6xl mx-auto space-y-8">
@@ -268,9 +407,8 @@ export default function MatchPageContent({
           </div>
         )}
 
-        {/* ── Scoreboard Header ──────────────────────────────────────────── */}
+        {/* ── Scoreboard Header ─────────────────────────────────────────────────────── */}
         <div className="relative">
-          {/* Status pill centralizado no topo */}
           <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10">
             {isLive ? (
               <span className="flex items-center gap-1.5 bg-green-500/10 border border-green-500/30 text-green-400 text-[10px] font-black uppercase px-3 py-1 rounded-full">
@@ -278,19 +416,14 @@ export default function MatchPageContent({
                 {liveGame ? fmtTimer(timer) : 'Em Andamento'}
               </span>
             ) : isFinished ? (
-              <span className="bg-gray-700/50 border border-gray-600/30 text-gray-400 text-[10px] font-black uppercase px-3 py-1 rounded-full">
-                Finalizada
-              </span>
+              <span className="bg-gray-700/50 border border-gray-600/30 text-gray-400 text-[10px] font-black uppercase px-3 py-1 rounded-full">Finalizada</span>
             ) : (
-              <span className="bg-[#C8A84B]/10 border border-[#C8A84B]/30 text-[#C8A84B] text-[10px] font-black uppercase px-3 py-1 rounded-full">
-                Aguardando
-              </span>
+              <span className="bg-[#C8A84B]/10 border border-[#C8A84B]/30 text-[#C8A84B] text-[10px] font-black uppercase px-3 py-1 rounded-full">Aguardando</span>
             )}
           </div>
 
           <div className="bg-[#0D1421] border border-[#1E2D45] rounded-2xl px-6 py-8 pt-10">
             <div className="flex items-center justify-between gap-4">
-
               {/* Time A */}
               <div className="flex-1 flex flex-col items-end gap-1">
                 {match.team_a?.logo_url && (
@@ -328,13 +461,12 @@ export default function MatchPageContent({
                 </h2>
                 <p className="text-[#718096] font-bold text-sm">[{match.team_b?.tag}]</p>
               </div>
-
             </div>
           </div>
         </div>
 
-        {/* ── Picks/Bans ao vivo ─────────────────────────────────────────── */}
-        {liveGame && champMapReady && (
+        {/* ── Bans ao vivo ─────────────────────────────────────────────────────────── */}
+        {liveGame && assets.ready && (
           <div className="bg-[#0D1421] border border-[#1E2D45] rounded-2xl p-6 space-y-5">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-black uppercase tracking-widest text-[#718096]">Bans</h3>
@@ -343,20 +475,16 @@ export default function MatchPageContent({
                 AO VIVO · {fmtTimer(timer)}
               </span>
             </div>
-
-            {/* Bans linha */}
             <div className="flex items-center justify-between gap-4">
-              <BanRow bans={blueBans} side="blue" />
+              <BanRow bans={blueBans} side="blue" getImg={banChampImg} />
               <span className="text-[#4A5568] text-xs font-black uppercase shrink-0">vs</span>
-              <BanRow bans={redBans} side="red" />
+              <BanRow bans={redBans} side="red" getImg={banChampImg} />
             </div>
           </div>
         )}
 
-        {/* ── Grid principal ─────────────────────────────────────────────── */}
+        {/* ── Grid principal ─────────────────────────────────────────────────────────── */}
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-8">
-
-          {/* Times */}
           <div className="space-y-4">
             <div className="flex items-center gap-2 px-1">
               <span className="w-1 h-5 bg-[#C89B3C] rounded-full" />
@@ -373,7 +501,8 @@ export default function MatchPageContent({
                 members={teamAPlayers}
                 playersData={playersData}
                 liveParticipants={liveGame?.participants.filter((p) => p.teamId === 100) ?? []}
-                champMapReady={champMapReady}
+                assets={assets}
+                getSpell={spellImg}
               />
               <TeamPanel
                 teamName={match.team_b?.name ?? 'Time B'}
@@ -381,7 +510,8 @@ export default function MatchPageContent({
                 members={teamBPlayers}
                 playersData={playersData}
                 liveParticipants={liveGame?.participants.filter((p) => p.teamId === 200) ?? []}
-                champMapReady={champMapReady}
+                assets={assets}
+                getSpell={spellImg}
               />
             </div>
           </div>
@@ -394,7 +524,6 @@ export default function MatchPageContent({
               matchStatus={matchStatus}
               justArrived={codeJustArrived}
             />
-
             <div className="bg-[#0D1421] border border-[#1E2D45] rounded-2xl p-5 space-y-3">
               <h4 className="text-[#718096] text-[10px] font-black uppercase tracking-widest">Detalhes</h4>
               <InfoRow label="Rodada"  value={`#${match.round ?? '—'}`} />
@@ -410,7 +539,6 @@ export default function MatchPageContent({
                 />
               )}
             </div>
-
             <div className="bg-[#0D1421] border border-[#1E2D45] rounded-2xl p-5">
               <h4 className="text-[#718096] text-[10px] font-black uppercase tracking-widest mb-3">Como entrar</h4>
               <ol className="space-y-2 text-sm text-[#A0AEC0] list-none">
@@ -428,14 +556,22 @@ export default function MatchPageContent({
             </div>
           </div>
         </div>
-
       </div>
     </main>
   );
 }
 
-// ── BanRow ───────────────────────────────────────────────────────────────────
-function BanRow({ bans, side }: { bans: RiotBannedChampion[]; side: 'blue' | 'red' }) {
+// ─────────────────────────────────────────────────────────────────────────────
+// BanRow
+// ─────────────────────────────────────────────────────────────────────────────
+
+function BanRow({
+  bans, side, getImg,
+}: {
+  bans: RiotBannedChampion[];
+  side: 'blue' | 'red';
+  getImg: (id: number) => string | null;
+}) {
   const borderColor = side === 'blue' ? 'border-blue-500/30' : 'border-red-500/30';
   const emptyBorder = side === 'blue' ? 'border-blue-500/10' : 'border-red-500/10';
   return (
@@ -443,7 +579,7 @@ function BanRow({ bans, side }: { bans: RiotBannedChampion[]; side: 'blue' | 're
       {bans
         .sort((a, b) => a.pickTurn - b.pickTurn)
         .map((b, i) => {
-          const img = champIconUrl(b.championId);
+          const img = getImg(b.championId);
           return (
             <div key={i} className="relative w-9 h-9">
               {img ? (
@@ -460,25 +596,28 @@ function BanRow({ bans, side }: { bans: RiotBannedChampion[]; side: 'blue' | 're
           );
         })}
       {Array.from({ length: Math.max(0, 5 - bans.length) }).map((_, i) => (
-        <div key={i}
-          className={`w-9 h-9 rounded-md bg-[#1A2535] border ${emptyBorder} border-dashed opacity-25`} />
+        <div key={i} className={`w-9 h-9 rounded-md bg-[#1A2535] border ${emptyBorder} border-dashed opacity-25`} />
       ))}
     </div>
   );
 }
 
-// ── TeamPanel ────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// TeamPanel
+// ─────────────────────────────────────────────────────────────────────────────
+
 interface TeamPanelProps {
   teamName: string;
   side: 'blue' | 'red';
   members: Props['teamAPlayers'];
   playersData: NonNullable<Props['playersData']>;
   liveParticipants: RiotParticipant[];
-  champMapReady: boolean;
+  assets: AssetsState;
+  getSpell: (id: number) => string;
 }
 
 function TeamPanel({
-  teamName, side, members, playersData, liveParticipants, champMapReady,
+  teamName, side, members, playersData, liveParticipants, assets, getSpell,
 }: TeamPanelProps) {
   const isBlue = side === 'blue';
   return (
@@ -503,47 +642,23 @@ function TeamPanel({
           const pd = playersData.find(
             (p) => p.riot_account_id === member.profile_id || p.id === member.profile_id
           );
-          const live = liveParticipants.find((p) => p.puuid === pd?.riot_account_id);
-          const champImg = champMapReady && live ? champIconUrl(live.championId) : null;
-          const tier = pd?.tier ?? 'UNRANKED';
-          const tierColor = TIER_COLORS[tier] ?? TIER_COLORS['UNRANKED'];
+          const live     = liveParticipants.find((p) => p.puuid === pd?.riot_account_id);
           const isInLobby = !!live;
+          const lane     = member.lane ?? pd?.role ?? null;
 
           return (
-            <div key={String(member.profile_id)}
-              className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-white/5 transition-colors">
-
-              {/* Avatar/campeão */}
-              <div className="relative shrink-0">
-                {champImg ? (
-                  <img src={champImg} alt="champ" width={40} height={40}
-                    className="rounded-lg border border-white/10 object-cover w-10 h-10"
-                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                ) : (
-                  <div className="w-10 h-10 rounded-lg bg-[#1A2535] border border-white/5 flex items-center justify-center overflow-hidden">
-                    {pd?.profile_icon != null ? (
-                      <img
-                        src={profileIconUrl(pd.profile_icon)}
-                        alt="icon" width={40} height={40}
-                        className="rounded-lg object-cover w-10 h-10"
-                        onError={(e) => {
-                          const el = e.target as HTMLImageElement;
-                          el.style.display = 'none';
-                          // FIX: null-safety no parentElement
-                          if (el.parentElement) {
-                            el.parentElement.innerHTML = '<span class="text-[#4A5568] text-lg">◈</span>';
-                          }
-                        }}
-                      />
-                    ) : (
-                      <span className="text-[#4A5568] text-lg">◈</span>
-                    )}
-                  </div>
-                )}
-                <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#0D1421] ${
-                  isInLobby ? 'bg-green-500' : 'bg-[#2D3748]'
-                }`} />
-              </div>
+            <div
+              key={String(member.profile_id)}
+              className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-white/5 transition-colors"
+            >
+              {/* Avatar: CDragon circle → DDragon square → profile icon → ◈ */}
+              <PlayerAvatar
+                championId={live?.championId}
+                champMap={assets.champMap}
+                version={assets.version}
+                profileIcon={pd?.profile_icon}
+                isLive={isInLobby}
+              />
 
               {/* Info */}
               <div className="flex-1 min-w-0">
@@ -558,28 +673,21 @@ function TeamPanel({
                     <span className="text-[8px] font-black uppercase text-[#C8A84B] border border-[#C8A84B]/30 px-1 rounded shrink-0">C</span>
                   )}
                 </div>
+                {/* Rank + Lane */}
                 <div className="flex items-center gap-2 mt-0.5">
-                  {pd?.tier && pd.tier !== 'UNRANKED' && (
-                    <span className="text-[10px] font-black uppercase" style={{ color: tierColor }}>
-                      {pd.tier.slice(0, 1)}{pd.rank} {pd.lp}lp
-                    </span>
-                  )}
-                  {(member.lane ?? pd?.role) && (
-                    <span className="text-[10px] text-[#4A5568] uppercase">
-                      {LANE_LABELS[member.lane ?? pd?.role ?? ''] ?? member.lane ?? pd?.role}
-                    </span>
-                  )}
+                  <RankEmblem tier={pd?.tier ?? null} rank={pd?.rank ?? null} lp={pd?.lp ?? null} />
+                  {lane && <LaneIcon lane={lane} />}
                 </div>
               </div>
 
               {/* Summoner spells ao vivo */}
               {live && (
                 <div className="flex flex-col gap-0.5 shrink-0">
-                  <img src={spellIconUrl(live.spell1Id)} alt="D"
+                  <img src={getSpell(live.spell1Id)} alt="D"
                     width={18} height={18}
                     className="rounded border border-white/10"
                     onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                  <img src={spellIconUrl(live.spell2Id)} alt="F"
+                  <img src={getSpell(live.spell2Id)} alt="F"
                     width={18} height={18}
                     className="rounded border border-white/10"
                     onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
@@ -613,7 +721,10 @@ function TeamPanel({
   );
 }
 
-// ── InfoRow ──────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// InfoRow
+// ─────────────────────────────────────────────────────────────────────────────
+
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between text-xs">
