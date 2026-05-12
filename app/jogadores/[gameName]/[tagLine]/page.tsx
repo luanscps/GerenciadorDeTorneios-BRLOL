@@ -35,19 +35,6 @@ const POSITION_PT: Record<string, string> = {
   BOTTOM: "ADC", UTILITY: "Suporte", NONE: "—",
 };
 
-function levelBorderUrl(level: number): string {
-  const base = "https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/level-borders";
-  if (level >= 500) return `${base}/summoner-levelborder-500.png`;
-  if (level >= 400) return `${base}/summoner-levelborder-400.png`;
-  if (level >= 300) return `${base}/summoner-levelborder-300.png`;
-  if (level >= 200) return `${base}/summoner-levelborder-200.png`;
-  if (level >= 150) return `${base}/summoner-levelborder-150.png`;
-  if (level >= 100) return `${base}/summoner-levelborder-100.png`;
-  if (level >= 75)  return `${base}/summoner-levelborder-75.png`;
-  if (level >= 50)  return `${base}/summoner-levelborder-50.png`;
-  return                    `${base}/summoner-levelborder-0.png`;
-}
-
 function itemIconUrl(ddVersion: string, itemId: number): string {
   if (!itemId || itemId === 0) return "";
   return `https://ddragon.leagueoflegends.com/cdn/${ddVersion}/img/item/${itemId}.png`;
@@ -143,7 +130,6 @@ export default async function PlayerProfilePage({
   const iconUrl     = sum ? await profileIconUrl(sum.profileIconId) : null;
   const level       = sum?.summonerLevel ?? 0;
   const borderStyle = profileIconBorderStyle(level);
-  const borderUrl   = levelBorderUrl(level);
 
   const rankSolo = ranks.find((r) => r.queueType === "RANKED_SOLO_5x5") ?? null;
   const rankFlex = ranks.find((r) => r.queueType === "RANKED_FLEX_SR")  ?? null;
@@ -177,10 +163,10 @@ export default async function PlayerProfilePage({
     <div className="min-h-screen bg-[#050E1A]">
       <style>{`
         @keyframes glow-pulse {
-          0%, 100% { opacity:1; filter:drop-shadow(0 0 6px var(--glow)); }
-          50%       { opacity:.8; filter:drop-shadow(0 0 16px var(--glow)); }
+          0%, 100% { opacity:1; box-shadow: 0 0 0 3px var(--border-color), 0 0 12px 2px var(--border-glow); }
+          50%       { opacity:.9; box-shadow: 0 0 0 3px var(--border-color), 0 0 22px 6px var(--border-glow); }
         }
-        .border-anim { animation: glow-pulse 2.6s ease-in-out infinite; }
+        .icon-border-anim { animation: glow-pulse 2.6s ease-in-out infinite; border-radius: 50%; }
         .match-row:hover { background: rgba(30,58,95,0.5); }
         .stat-pill {
           display:inline-flex; align-items:center; gap:4px;
@@ -200,15 +186,36 @@ export default async function PlayerProfilePage({
         <div style={{ position:"absolute", inset:0, background:"linear-gradient(to bottom, transparent 40%, #050E1A 100%)" }} />
 
         <div className="relative max-w-6xl mx-auto px-4 pt-10 pb-8" style={{ display:"flex", alignItems:"flex-end", gap:24, flexWrap:"wrap" }}>
-          {/* Ícone com moldura */}
-          <div style={{ position:"relative", width:120, height:136, flexShrink:0 }}>
+          {/* Ícone com moldura CSS (sem depender de imagem externa) */}
+          <div style={{ position:"relative", width:110, height:126, flexShrink:0 }}>
             {iconUrl && (
               <>
-                <img src={iconUrl} width={86} height={86} alt="Ícone de perfil"
-                  style={{ position:"absolute", top:10, left:17, width:86, height:86, borderRadius:"50%", display:"block", zIndex:1 }} />
-                <img src={borderUrl} width={120} height={120} alt="" aria-hidden className="border-anim"
-                  style={{ position:"absolute", top:0, left:0, width:120, height:120, display:"block", zIndex:2, pointerEvents:"none", ["--glow" as string]: borderStyle.glow } as React.CSSProperties} />
-                <span style={{ position:"absolute", bottom:0, left:"50%", transform:"translateX(-50%)", zIndex:3, background:"#050E1A", border:`1.5px solid ${borderStyle.color}`, color:borderStyle.color, fontSize:11, fontWeight:700, padding:"2px 10px", borderRadius:9999, lineHeight:"16px", whiteSpace:"nowrap", boxShadow:`0 0 8px ${borderStyle.glow}` }}>
+                <img
+                  src={iconUrl}
+                  width={86} height={86}
+                  alt="Ícone de perfil"
+                  className="icon-border-anim"
+                  style={{
+                    position:"absolute", top:8, left:12,
+                    width:86, height:86,
+                    display:"block", zIndex:1,
+                    ["--border-color" as string]: borderStyle.color,
+                    ["--border-glow" as string]: borderStyle.glow,
+                  } as React.CSSProperties}
+                />
+                <span style={{
+                  position:"absolute", bottom:0, left:"50%",
+                  transform:"translateX(-50%)",
+                  zIndex:3,
+                  background:"#050E1A",
+                  border:`1.5px solid ${borderStyle.color}`,
+                  color:borderStyle.color,
+                  fontSize:11, fontWeight:700,
+                  padding:"2px 10px",
+                  borderRadius:9999, lineHeight:"16px",
+                  whiteSpace:"nowrap",
+                  boxShadow:`0 0 8px ${borderStyle.glow}`,
+                }}>
                   Nv. {level}
                 </span>
               </>
@@ -266,7 +273,13 @@ export default async function PlayerProfilePage({
               return (
                 <div key={r!.queueType} style={{ background:"#0A1428", border:"1px solid rgba(30,58,95,0.8)", borderRadius:16, padding:"20px 20px 20px 16px", display:"flex", alignItems:"center", gap:16, position:"relative", overflow:"hidden" }}>
                   <div style={{ position:"absolute", left:0, top:16, bottom:16, width:3, borderRadius:9999, background:color, boxShadow:`0 0 10px ${color}88` }} />
-                  <img src={rankEmblemUrl(tier)} width={80} height={80} alt={tier} style={{ width:80, height:80, objectFit:"contain", flexShrink:0 }} />
+                  <img
+                    src={rankEmblemUrl(tier)}
+                    width={80} height={80}
+                    alt={tier}
+                    style={{ width:80, height:80, objectFit:"contain", flexShrink:0 }}
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                  />
                   <div style={{ flex:1, minWidth:0 }}>
                     <p style={{ color:"#9CA3AF", fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:4 }}>
                       {r!.queueType === "RANKED_SOLO_5x5" ? "Solo / Duo" : "Flex 5v5"}

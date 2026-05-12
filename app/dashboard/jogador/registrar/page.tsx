@@ -23,6 +23,14 @@ const TIER_COLORS: Record<string, string> = {
   MASTER: "#9B59B6", GRANDMASTER: "#E74C3C", CHALLENGER: "#00D4FF",
 };
 
+/**
+ * Retorna o ícone do campeão via CommunityDragon por championId numérico.
+ * Evita problemas de normalização de nome (Twisted Fate, Bel'Veth, Nunu & Willump, etc.)
+ */
+function champIconUrl(championId: number): string {
+  return `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-icons/${championId}.png`;
+}
+
 export default function RegistrarRiotPage() {
   const [riotId,    setRiotId]    = useState("");
   const [result,    setResult]    = useState<SummonerResult | null>(null);
@@ -187,8 +195,9 @@ export default function RegistrarRiotPage() {
               <div className="flex gap-2 flex-wrap">
                 {result.masteries.slice(0, 5).map(m => (
                   <div key={m.championId} className="text-center" title={m.championName}>
+                    {/* CDragon por championId — imune a nomes com espaço/caractere especial */}
                     <Image
-                      src={DD + "/img/champion/" + m.championName + ".png"}
+                      src={champIconUrl(m.championId)}
                       width={44} height={44} alt={m.championName}
                       className="rounded border border-[#1E3A5F]"
                     />

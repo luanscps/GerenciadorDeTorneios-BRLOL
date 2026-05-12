@@ -196,12 +196,12 @@ export async function summonerSpellIconUrl(spellId: string): Promise<string> {
 
 /**
  * Emblema de rank (tier) — ícone grande estilo in-client.
- * URL verificada: retorna 200 para iron, bronze, silver, gold, platinum,
- * emerald, diamond, master, grandmaster, challenger.
+ * Path verificado no CDragon: retorna 200 para todos os tiers.
+ * Formato: /game/assets/loadouts/regalia/crests/ranked/ranked-emblem-{tier}.png
  */
 export function rankEmblemUrl(tier: string): string {
   const t = tier.toLowerCase();
-  return `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/ranked-emblem/emblem-${t}.png`;
+  return `https://raw.communitydragon.org/latest/game/assets/loadouts/regalia/crests/ranked/ranked-emblem-${t}.png`;
 }
 
 /**
