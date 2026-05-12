@@ -142,13 +142,17 @@ export default async function PlayerProfilePage({
   const mainSplash    = mainChampName ? championSplashUrl(mainChampName, 0) : null;
 
   // ── 5. Busca perfil interno (opcional) ────────────────────────────────────
+  // FIX: usa .limit(1) + array em vez de .maybeSingle() para evitar crash
+  // quando o banco retorna mais de 1 linha para o mesmo gameName/tagLine.
   const supabase = await createClient();
-  const { data: riotRow } = await supabase
+  const { data: riotRows } = await supabase
     .from("riot_accounts")
     .select(`id, profile_id, profiles ( full_name ), champion_masteries ( champion_id, champion_name, mastery_level, mastery_points )`)
     .ilike("game_name", gameName)
     .ilike("tag_line",  tagLine)
-    .maybeSingle();
+    .limit(1);
+
+  const riotRow = riotRows?.[0] ?? null;
 
   // ── 6. Stats rápidas ───────────────────────────────────────────────────────
   const myMatches = matches

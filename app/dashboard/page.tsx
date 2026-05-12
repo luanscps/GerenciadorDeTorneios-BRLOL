@@ -75,9 +75,13 @@ export default async function DashboardPage({
       .limit(10),
   ]);
 
-  const ownedIds = (myOwnedTeams ?? []).map((t: any) => t.id as string);
+  // FIX: filtra apenas IDs válidos (UUIDs reais) antes de usar no not.in()
+  // Evita o erro 400 do PostgREST quando ownedIds contém placeholders ou está vazio.
+  const ownedIds = (myOwnedTeams ?? [])
+    .map((t: any) => t.id as string)
+    .filter((id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
 
-  // Só busca times como membro se houver IDs para excluir — evita "not.in.()" inválido
+  // Só busca times como membro se houver IDs válidos para excluir — evita "not.in.()" inválido
   let myMemberTeams: any[] | null = null;
   if (ownedIds.length > 0) {
     const { data } = await supabase
@@ -97,7 +101,7 @@ export default async function DashboardPage({
       .limit(5);
     myMemberTeams = data;
   } else {
-    // Sem times próprios: busca todos os times onde é membro
+    // Sem times próprios (ou IDs inválidos): busca todos os times onde é membro
     const { data } = await supabase
       .from("team_members")
       .select(
