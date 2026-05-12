@@ -27,23 +27,6 @@ function rankEmblemMiniUrl(tier: string): string {
   return `https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/ranked-mini-crests/${tier.toLowerCase()}.png`;
 }
 
-/**
- * URL da moldura de nível via CommunityDragon.
- * Faixas espelhando as do cliente do LoL.
- */
-function profileLevelBorderUrl(level: number): string {
-  const base = "https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/level-borders";
-  if (level >= 500) return `${base}/summoner-levelborder-500.png`;
-  if (level >= 400) return `${base}/summoner-levelborder-400.png`;
-  if (level >= 300) return `${base}/summoner-levelborder-300.png`;
-  if (level >= 200) return `${base}/summoner-levelborder-200.png`;
-  if (level >= 150) return `${base}/summoner-levelborder-150.png`;
-  if (level >= 100) return `${base}/summoner-levelborder-100.png`;
-  if (level >= 75)  return `${base}/summoner-levelborder-75.png`;
-  if (level >= 50)  return `${base}/summoner-levelborder-50.png`;
-  return                    `${base}/summoner-levelborder-0.png`;
-}
-
 export default async function DashboardPage({
   searchParams,
 }: {
@@ -109,8 +92,8 @@ export default async function DashboardPage({
       `
     )
     .eq("profile_id", user.id)
-    .eq("status", "accepted") // Apenas membros aceitos
-    .not("team_id", "in", `(${ownedIds.join(",")})`) // Exclui times que o usuário é owner
+    .eq("status", "accepted")
+    .not("team_id", "in", `(${ownedIds.join(",")})`)
     .limit(5);
 
   const rankSolo = (riotAccount?.rank_snapshots as any[])?.find(
@@ -137,12 +120,9 @@ export default async function DashboardPage({
     ? await profileIconUrl(riotAccount.profile_icon_id)
     : null;
 
+  // borderStyle vem de lib/riot — contém .color, .glow e .boxShadow
   const borderStyle = riotAccount?.summoner_level
     ? profileIconBorderStyle(riotAccount.summoner_level)
-    : null;
-
-  const levelBorderUrl = riotAccount?.summoner_level
-    ? profileLevelBorderUrl(riotAccount.summoner_level)
     : null;
 
   const mainChampDisplayName = topMasteries[0]
@@ -169,10 +149,10 @@ export default async function DashboardPage({
 
       <style>{`
         @keyframes profile-glow-pulse {
-          0%, 100% { opacity: 1; filter: drop-shadow(0 0 6px var(--glow-color)); }
-          50%       { opacity: 0.80; filter: drop-shadow(0 0 14px var(--glow-color)); }
+          0%, 100% { box-shadow: 0 0 0 4px var(--border-color), 0 0 12px 2px var(--glow-color); }
+          50%       { box-shadow: 0 0 0 4px var(--border-color), 0 0 22px 6px var(--glow-color); }
         }
-        .profile-border-img {
+        .profile-icon-ring {
           animation: profile-glow-pulse 2.6s ease-in-out infinite;
         }
       `}</style>
@@ -190,48 +170,28 @@ export default async function DashboardPage({
       {/* ── Perfil ─────────────────────────────────────────────────────────── */}
       <div className="card-lol flex items-center gap-6 flex-wrap">
 
-        {/* ── Ícone de perfil com moldura de nível ────────────────────────── */}
-        <div style={{ position: "relative", width: 112, height: 128, flexShrink: 0 }}>
+        {/* ── Ícone de perfil com anel/moldura via CSS glow ─────────────── */}
+        <div style={{ position: "relative", width: 96, height: 112, flexShrink: 0 }}>
           {profileIcon ? (
             <>
-              {/* Ícone circular do invocador — camada base */}
+              {/* Ícone circular com ring colorido baseado no nível — sem imagem externa */}
               <img
                 src={profileIcon}
                 width={80}
                 height={80}
                 alt="Ícone de Perfil Riot"
+                className={borderStyle ? "profile-icon-ring" : ""}
                 style={{
                   position: "absolute",
-                  top: 10, left: 16,
+                  top: 8, left: 8,
                   width: 80, height: 80,
                   borderRadius: "50%",
                   display: "block",
                   zIndex: 1,
-                }}
+                  ["--border-color" as string]: borderStyle?.color ?? "#C8A84B",
+                  ["--glow-color" as string]:   borderStyle?.glow  ?? "rgba(200,168,75,0.5)",
+                } as React.CSSProperties}
               />
-
-              {/* Moldura de nível oficial CommunityDragon — camada superior
-                  NOTA: Server Component — sem event handlers (onError proibido).
-                  O PNG falha silenciosamente se a URL não existir. */}
-              {levelBorderUrl && (
-                <img
-                  src={levelBorderUrl}
-                  width={112}
-                  height={112}
-                  alt=""
-                  aria-hidden="true"
-                  className="profile-border-img"
-                  style={{
-                    position: "absolute",
-                    top: 0, left: 0,
-                    width: 112, height: 112,
-                    display: "block",
-                    zIndex: 2,
-                    pointerEvents: "none",
-                    ["--glow-color" as string]: borderStyle?.glow ?? "rgba(200,168,75,0.6)",
-                  } as React.CSSProperties}
-                />
-              )}
 
               {/* Badge de nível */}
               <span
