@@ -9,6 +9,7 @@ import {
   profileIconBorderStyle,
   championSplashUrl,
   getAllChampions,
+  rankEmblemUrl,
 } from "@/lib/riot";
 
 const TIER_COLORS: Record<string, string> = {
@@ -22,10 +23,6 @@ const STATUS_BADGE: Record<string, string> = {
   APPROVED: "bg-green-400/10  text-green-400  border border-green-400/30",
   REJECTED: "bg-red-400/10   text-red-400   border border-red-400/30",
 };
-
-function rankEmblemMiniUrl(tier: string): string {
-  return `https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/ranked-mini-crests/${tier.toLowerCase()}.png`;
-}
 
 export default async function DashboardPage({
   searchParams,
@@ -78,23 +75,45 @@ export default async function DashboardPage({
       .limit(10),
   ]);
 
-  const ownedIds = (myOwnedTeams ?? []).map((t: any) => t.id);
-  
-  const { data: myMemberTeams } = await supabase
-    .from("team_members")
-    .select(
-      `
+  const ownedIds = (myOwnedTeams ?? []).map((t: any) => t.id as string);
+
+  // Só busca times como membro se houver IDs para excluir — evita "not.in.()" inválido
+  let myMemberTeams: any[] | null = null;
+  if (ownedIds.length > 0) {
+    const { data } = await supabase
+      .from("team_members")
+      .select(
+        `
       id,
       teams ( id, name, tag ),
       inscricoes ( id, status, checked_in, checked_in_at, tournament_id,
         tournaments ( id, name, slug, status )
       )
       `
-    )
-    .eq("profile_id", user.id)
-    .eq("status", "accepted")
-    .not("team_id", "in", `(${ownedIds.join(",")})`)
-    .limit(5);
+      )
+      .eq("profile_id", user.id)
+      .eq("status", "accepted")
+      .not("team_id", "in", `(${ownedIds.join(",")})`)
+      .limit(5);
+    myMemberTeams = data;
+  } else {
+    // Sem times próprios: busca todos os times onde é membro
+    const { data } = await supabase
+      .from("team_members")
+      .select(
+        `
+      id,
+      teams ( id, name, tag ),
+      inscricoes ( id, status, checked_in, checked_in_at, tournament_id,
+        tournaments ( id, name, slug, status )
+      )
+      `
+      )
+      .eq("profile_id", user.id)
+      .eq("status", "accepted")
+      .limit(5);
+    myMemberTeams = data;
+  }
 
   const rankSolo = (riotAccount?.rank_snapshots as any[])?.find(
     (r: any) => r.queue_type === "RANKED_SOLO_5x5"
@@ -120,7 +139,6 @@ export default async function DashboardPage({
     ? await profileIconUrl(riotAccount.profile_icon_id)
     : null;
 
-  // borderStyle vem de lib/riot — contém .color, .glow e .boxShadow
   const borderStyle = riotAccount?.summoner_level
     ? profileIconBorderStyle(riotAccount.summoner_level)
     : null;
@@ -174,7 +192,6 @@ export default async function DashboardPage({
         <div style={{ position: "relative", width: 96, height: 112, flexShrink: 0 }}>
           {profileIcon ? (
             <>
-              {/* Ícone circular com ring colorido baseado no nível — sem imagem externa */}
               <img
                 src={profileIcon}
                 width={80}
@@ -271,12 +288,13 @@ export default async function DashboardPage({
                     overflow: "hidden",
                   }}>
                     <img
-                      src={rankEmblemMiniUrl(r.tier)}
+                      src={rankEmblemUrl(r.tier)}
                       alt={r.tier}
                       title={r.tier}
                       width={72}
                       height={72}
                       style={{ display: "block", width: 72, height: 72, objectFit: "contain" }}
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
                     />
                   </div>
                   <div>
