@@ -7,6 +7,7 @@ import {
   masteryIconUrl,
   masteryLevelColor,
   profileIconBorderStyle,
+  profileBorderUrl,
   championSplashUrl,
   getAllChampions,
   rankEmblemUrl,
@@ -139,9 +140,9 @@ export default async function DashboardPage({
     ? await profileIconUrl(riotAccount.profile_icon_id)
     : null;
 
-  const borderStyle = riotAccount?.summoner_level
-    ? profileIconBorderStyle(riotAccount.summoner_level)
-    : null;
+  const level       = riotAccount?.summoner_level ?? 0;
+  const borderStyle = profileIconBorderStyle(level);
+  const borderImg   = level > 0 ? profileBorderUrl(level) : null;
 
   const mainChampDisplayName = topMasteries[0]
     ? (champById[topMasteries[0].champion_id] ?? topMasteries[0].champion_name ?? null)
@@ -165,16 +166,6 @@ export default async function DashboardPage({
   return (
     <div className="space-y-8">
 
-      <style>{`
-        @keyframes profile-glow-pulse {
-          0%, 100% { box-shadow: 0 0 0 4px var(--border-color), 0 0 12px 2px var(--glow-color); }
-          50%       { box-shadow: 0 0 0 4px var(--border-color), 0 0 22px 6px var(--glow-color); }
-        }
-        .profile-icon-ring {
-          animation: profile-glow-pulse 2.6s ease-in-out infinite;
-        }
-      `}</style>
-
       {params.error === "acesso_negado" && (
         <div className="flex items-start gap-3 bg-red-950/60 border border-red-700/50 rounded-xl px-5 py-4">
           <span className="text-red-400 text-xl shrink-0">🚫</span>
@@ -187,44 +178,62 @@ export default async function DashboardPage({
 
       {/* ── Perfil ────────────────────────────────────────────────────────── */}
       <div className="card-lol flex items-center gap-6 flex-wrap">
-        <div style={{ position: "relative", width: 96, height: 112, flexShrink: 0 }}>
+        {/* Ícone + Moldura real por nível */}
+        <div style={{ position:"relative", width:96, height:112, flexShrink:0 }}>
           {profileIcon ? (
             <>
+              {/* Ícone de perfil — fica embaixo da moldura */}
               <img
                 src={profileIcon}
                 width={80}
                 height={80}
                 alt="Ícone de Perfil Riot"
-                className={borderStyle ? "profile-icon-ring" : ""}
                 style={{
-                  position: "absolute",
-                  top: 8, left: 8,
-                  width: 80, height: 80,
-                  borderRadius: "50%",
-                  display: "block",
-                  zIndex: 1,
-                  ["--border-color" as string]: borderStyle?.color ?? "#C8A84B",
-                  ["--glow-color" as string]:   borderStyle?.glow  ?? "rgba(200,168,75,0.5)",
-                } as React.CSSProperties}
+                  position:"absolute",
+                  top:8, left:8,
+                  width:80, height:80,
+                  borderRadius:"50%",
+                  display:"block",
+                  zIndex:1,
+                }}
               />
+              {/* Moldura real CDragon — PNG transparente por cima */}
+              {borderImg && (
+                <img
+                  src={borderImg}
+                  width={96}
+                  height={96}
+                  alt=""
+                  aria-hidden="true"
+                  style={{
+                    position:"absolute",
+                    top:0, left:0,
+                    width:96, height:96,
+                    display:"block",
+                    zIndex:2,
+                    pointerEvents:"none",
+                  }}
+                />
+              )}
+              {/* Badge de nível */}
               <span
                 style={{
-                  position: "absolute",
-                  bottom: 0, left: "50%",
-                  transform: "translateX(-50%)",
-                  zIndex: 3,
-                  background: "#0A1428",
-                  border: `1.5px solid ${borderStyle?.color ?? "#C8A84B"}`,
-                  color: borderStyle?.color ?? "#C8A84B",
-                  fontSize: 11, fontWeight: 700,
-                  padding: "2px 9px",
-                  borderRadius: 9999,
-                  lineHeight: "16px",
-                  whiteSpace: "nowrap",
-                  boxShadow: `0 0 8px ${borderStyle?.glow ?? "rgba(200,168,75,0.4)"}`,
+                  position:"absolute",
+                  bottom:0, left:"50%",
+                  transform:"translateX(-50%)",
+                  zIndex:3,
+                  background:"#0A1428",
+                  border:`1.5px solid ${borderStyle.color}`,
+                  color:borderStyle.color,
+                  fontSize:11, fontWeight:700,
+                  padding:"2px 9px",
+                  borderRadius:9999,
+                  lineHeight:"16px",
+                  whiteSpace:"nowrap",
+                  boxShadow:`0 0 8px ${borderStyle.glow}`,
                 }}
               >
-                Nv. {riotAccount?.summoner_level}
+                Nv. {level}
               </span>
             </>
           ) : (

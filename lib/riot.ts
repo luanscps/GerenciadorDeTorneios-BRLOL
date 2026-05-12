@@ -197,7 +197,6 @@ export async function summonerSpellIconUrl(spellId: string): Promise<string> {
 /**
  * Emblema de rank (tier) — ícone grande estilo in-client.
  * Path verificado no CDragon: retorna 200 para todos os tiers.
- * Formato: /game/assets/loadouts/regalia/crests/ranked/ranked-emblem-{tier}.png
  */
 export function rankEmblemUrl(tier: string): string {
   const t = tier.toLowerCase();
@@ -205,9 +204,37 @@ export function rankEmblemUrl(tier: string): string {
 }
 
 /**
- * Cor CSS da moldura de perfil por faixa de nível do invocador.
- * Usado para renderizar a borda CSS animada no ícone de perfil.
- * Espelha as faixas de cor do cliente do LoL.
+ * Moldura de perfil REAL por nível do invocador — imagem do CDragon.
+ *
+ * O cliente do LoL usa 7 variantes de moldura (border_1 … border_7),
+ * cada uma cobrindo uma faixa de nível. A imagem é um PNG com fundo
+ * transparente, dimensionada para cobrir o ícone de perfil.
+ *
+ * Faixas (espelhando o cliente):
+ *   1–29   → border_1  (bronze/iron)
+ *   30–99  → border_2  (prata)
+ *   100–149 → border_3 (ouro)
+ *   150–199 → border_4 (platina)
+ *   200–299 → border_5 (diamante)
+ *   300–499 → border_6 (mestre/GM)
+ *   500+    → border_7 (challenger/ancestral)
+ */
+export function profileBorderUrl(level: number): string {
+  const BASE = "https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/images";
+  let n: number;
+  if (level >= 500)      n = 7;
+  else if (level >= 300) n = 6;
+  else if (level >= 200) n = 5;
+  else if (level >= 150) n = 4;
+  else if (level >= 100) n = 3;
+  else if (level >= 30)  n = 2;
+  else                   n = 1;
+  return `${BASE}/summoner-icon-border-size-128-${n}.png`;
+}
+
+/**
+ * Cor CSS da moldura de perfil por faixa de nível.
+ * Mantida para o badge de nível (cor do texto + glow do badge).
  */
 export function profileIconBorderStyle(level: number): {
   color: string;
@@ -226,15 +253,13 @@ export function profileIconBorderStyle(level: number): {
 }
 
 /**
- * Ícone de maestria — usa mastery-mark.png do CommunityDragon (verificado 200).
- * A cor de destaque é aplicada via CSS no componente, por isso retornamos
- * também a cor correspondente ao nível.
+ * Ícone de maestria — usa mastery-mark.png do CommunityDragon.
  */
 export function masteryIconUrl(_level: number): string {
   return `https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/champion-mastery/mastery-mark.png`;
 }
 
-/** Cor CSS do nível de maestria (para tint/filter no ícone) */
+/** Cor CSS do nível de maestria */
 export function masteryLevelColor(level: number): string {
   if (level >= 10) return "#FFD700";
   if (level >= 7)  return "#C8A84B";

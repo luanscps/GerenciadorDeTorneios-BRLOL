@@ -10,6 +10,7 @@ import {
   getAllChampions,
   profileIconUrl,
   profileIconBorderStyle,
+  profileBorderUrl,
   championIconByCDragon,
   championSplashUrl,
   rankEmblemUrl,
@@ -19,7 +20,6 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import type { MatchParticipant } from "@/lib/riot";
 
-// Aumenta timeout desta rota para 60s (evita FUNCTION_INVOCATION_TIMEOUT na Riot API)
 export const maxDuration = 60;
 
 const TIER_COLORS: Record<string, string> = {
@@ -57,12 +57,6 @@ function timeAgo(ts: number): string {
   return `${Math.floor(diff / 86400)}d atrás`;
 }
 
-/**
- * Limpa o gameName recebido na URL.
- * Caso o banco tenha gravado "Nick #TAG" como gameName e o tagLine
- * tenha sido extraído de lá, o gameName pode chegar com "#TAG" no final.
- * Esta função remove qualquer coisa a partir do '#'.
- */
 function cleanGameName(raw: string): string {
   const idx = raw.indexOf('#');
   return idx !== -1 ? raw.slice(0, idx).trim() : raw.trim();
@@ -88,12 +82,9 @@ export default async function PlayerProfilePage({
   params: Promise<{ gameName: string; tagLine: string }>;
 }) {
   const { gameName: rawName, tagLine: rawTag } = await params;
-
-  // Decodifica URL e limpa resquícios de '#TAG' no gameName
   const gameName = cleanGameName(decodeURIComponent(rawName));
   const tagLine  = decodeURIComponent(rawTag);
 
-  // ── 1. Riot Account ────────────────────────────────────────────────────────
   let account;
   try {
     account = await getAccountByRiotId(gameName, tagLine);
@@ -102,12 +93,10 @@ export default async function PlayerProfilePage({
   }
   const { puuid } = account;
 
-  // ── 2. Summoner + League + Masteries + Matches + Champions (paralelo) ──────
   const [summoner, leagueEntries, masteries, matchIds, champMap] = await Promise.allSettled([
     getSummonerByPuuid(puuid),
     getLeagueEntriesByPuuid(puuid),
     getTopMasteriesByPuuid(puuid, 7),
-    // Reduzido de 10 para 5 para diminuir tempo total de SSR e evitar timeout
     getMatchIdsByPuuid(puuid, 5),
     getAllChampions(),
   ]);
@@ -121,7 +110,6 @@ export default async function PlayerProfilePage({
   const champById: Record<number, string> = {};
   for (const c of Object.values(champs)) champById[Number(c.key)] = c.name;
 
-  // ── 3. Matches (até 5) ─────────────────────────────────────────────────────
   const matchResults = await Promise.allSettled(
     mIds.slice(0, 5).map((id) => getMatchById(id))
   );
@@ -129,11 +117,11 @@ export default async function PlayerProfilePage({
     .filter((r): r is PromiseFulfilledResult<Awaited<ReturnType<typeof getMatchById>>> => r.status === "fulfilled")
     .map((r) => r.value);
 
-  // ── 4. Assets ──────────────────────────────────────────────────────────────
   const ddVersion   = await getDDVersion();
   const iconUrl     = sum ? await profileIconUrl(sum.profileIconId) : null;
   const level       = sum?.summonerLevel ?? 0;
   const borderStyle = profileIconBorderStyle(level);
+  const borderImg   = level > 0 ? profileBorderUrl(level) : null;
 
   const rankSolo = ranks.find((r) => r.queueType === "RANKED_SOLO_5x5") ?? null;
   const rankFlex = ranks.find((r) => r.queueType === "RANKED_FLEX_SR")  ?? null;
@@ -141,7 +129,6 @@ export default async function PlayerProfilePage({
   const mainChampName = tops[0] ? (champById[tops[0].championId] ?? tops[0].championName) : null;
   const mainSplash    = mainChampName ? championSplashUrl(mainChampName, 0) : null;
 
-  // ── 5. Busca perfil interno (opcional) ────────────────────────────────────
   const supabase = await createClient();
   const { data: riotRows } = await supabase
     .from("riot_accounts")
@@ -152,7 +139,6 @@ export default async function PlayerProfilePage({
 
   const riotRow = riotRows?.[0] ?? null;
 
-  // ── 6. Stats rápidas ───────────────────────────────────────────────────────
   const myMatches = matches
     .map((m) => ({ match: m, me: m.info.participants.find((p: MatchParticipant) => p.puuid === puuid) }))
     .filter((x) => x.me !== undefined);
@@ -168,11 +154,6 @@ export default async function PlayerProfilePage({
   return (
     <div className="min-h-screen bg-[#050E1A]">
       <style>{`
-        @keyframes glow-pulse {
-          0%, 100% { opacity:1; box-shadow: 0 0 0 3px var(--border-color), 0 0 12px 2px var(--border-glow); }
-          50%       { opacity:.9; box-shadow: 0 0 0 3px var(--border-color), 0 0 22px 6px var(--border-glow); }
-        }
-        .icon-border-anim { animation: glow-pulse 2.6s ease-in-out infinite; border-radius: 50%; }
         .match-row:hover { background: rgba(30,58,95,0.5); }
         .stat-pill {
           display:inline-flex; align-items:center; gap:4px;
@@ -192,25 +173,48 @@ export default async function PlayerProfilePage({
         <div style={{ position:"absolute", inset:0, background:"linear-gradient(to bottom, transparent 40%, #050E1A 100%)" }} />
 
         <div className="relative max-w-6xl mx-auto px-4 pt-10 pb-8" style={{ display:"flex", alignItems:"flex-end", gap:24, flexWrap:"wrap" }}>
-          {/* Ícone com moldura CSS glow */}
+
+          {/* ── Ícone + Moldura por nível ── */}
           <div style={{ position:"relative", width:110, height:126, flexShrink:0 }}>
             {iconUrl && (
               <>
+                {/* Ícone de perfil — fica embaixo da moldura */}
                 <img
                   src={iconUrl}
-                  width={86} height={86}
+                  width={86}
+                  height={86}
                   alt="Ícone de perfil"
-                  className="icon-border-anim"
                   style={{
-                    position:"absolute", top:8, left:12,
+                    position:"absolute",
+                    top:12, left:12,
                     width:86, height:86,
-                    display:"block", zIndex:1,
-                    ["--border-color" as string]: borderStyle.color,
-                    ["--border-glow" as string]: borderStyle.glow,
-                  } as React.CSSProperties}
+                    borderRadius:"50%",
+                    display:"block",
+                    zIndex:1,
+                  }}
                 />
+                {/* Moldura real do CDragon — cobre o ícone (PNG transparente) */}
+                {borderImg && (
+                  <img
+                    src={borderImg}
+                    width={110}
+                    height={110}
+                    alt=""
+                    aria-hidden="true"
+                    style={{
+                      position:"absolute",
+                      top:0, left:0,
+                      width:110, height:110,
+                      display:"block",
+                      zIndex:2,
+                      pointerEvents:"none",
+                    }}
+                  />
+                )}
+                {/* Badge de nível */}
                 <span style={{
-                  position:"absolute", bottom:0, left:"50%",
+                  position:"absolute",
+                  bottom:0, left:"50%",
                   transform:"translateX(-50%)",
                   zIndex:3,
                   background:"#050E1A",
