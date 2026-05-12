@@ -42,18 +42,18 @@ const spellIdToKey: Record<number, string> = {
   14: 'SummonerDot', 21: 'SummonerBarrier', 32: 'SummonerSnowball',
 };
 
-const champIconUrl = (id: number) =>
+const champIconUrl = (id: number): string | null =>
   id > 0 && championIdToKey[id]
     ? `https://ddragon.leagueoflegends.com/cdn/${DD_VERSION}/img/champion/${championIdToKey[id]}.png`
     : null;
 
-const spellIconUrl = (id: number) =>
+const spellIconUrl = (id: number): string =>
   `https://ddragon.leagueoflegends.com/cdn/${DD_VERSION}/img/spell/${spellIdToKey[id] ?? 'SummonerFlash'}.png`;
 
-const profileIconUrl = (iconId: number | string) =>
+const profileIconUrl = (iconId: number | string): string =>
   `https://ddragon.leagueoflegends.com/cdn/${DD_VERSION}/img/profileicon/${iconId}.png`;
 
-async function fetchDDVersion() {
+async function fetchDDVersion(): Promise<void> {
   try {
     const res = await fetch('https://ddragon.leagueoflegends.com/api/versions.json');
     const versions: string[] = await res.json();
@@ -61,7 +61,7 @@ async function fetchDDVersion() {
   } catch (_) {}
 }
 
-async function fetchChampionMap() {
+async function fetchChampionMap(): Promise<void> {
   if (Object.keys(championIdToKey).length > 0) return;
   try {
     const res = await fetch(
@@ -96,12 +96,20 @@ const STATUS_LABELS: Record<string, string> = {
 
 // ── Componente principal ─────────────────────────────────────────────────────
 interface Props {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   match: any;
-  teamAPlayers: { profile_id: any; team_role: any; lane: any; status: any }[];
-  teamBPlayers: { profile_id: any; team_role: any; lane: any; status: any }[];
+  teamAPlayers: { profile_id: string | number; team_role: string; lane: string | null; status: string | null }[];
+  teamBPlayers: { profile_id: string | number; team_role: string; lane: string | null; status: string | null }[];
   playersData?: {
-    id: any; summoner_name: any; tag_line: any; tier: any; rank: any;
-    lp: any; profile_icon: any; role: any; riot_account_id: any;
+    id: string | number;
+    summoner_name: string | null;
+    tag_line: string | null;
+    tier: string | null;
+    rank: string | null;
+    lp: number | null;
+    profile_icon: number | string | null;
+    role: string | null;
+    riot_account_id: string | null;
   }[];
   userInMatch: boolean;
   userRole?: UserRole;
@@ -117,20 +125,24 @@ export default function MatchPageContent({
   userRole = 'public',
   stageName,
 }: Props) {
-  const initialCode = match.tournament_code ??
-    (match.notes?.match(/BR1_[A-Z0-9-]+/)?.[0] ?? null);
+  // Extrai código de torneio inicial de forma defensiva
+  const notesStr = typeof match.notes === 'string' ? match.notes : '';
+  const initialCode: string | null =
+    match.tournament_code ?? (notesStr.match(/BR1_[A-Z0-9-]+/)?.[0] ?? null);
 
-  const [liveCode, setLiveCode]         = useState<string | null>(initialCode);
-  const [codeJustArrived, setCodeJA]    = useState(false);
-  const [liveGame, setLiveGame]         = useState<LiveGameData | null>(null);
-  const [loadingLive, setLoadingLive]   = useState(false);
+  const [liveCode, setLiveCode]           = useState<string | null>(initialCode);
+  const [codeJustArrived, setCodeJA]      = useState(false);
+  const [liveGame, setLiveGame]           = useState<LiveGameData | null>(null);
+  const [loadingLive, setLoadingLive]     = useState(false);
   const [champMapReady, setChampMapReady] = useState(false);
-  const [matchStatus, setMatchStatus]   = useState<string>(match.status ?? 'PENDING');
-  const [scores, setScores]             = useState({ a: match.score_a ?? 0, b: match.score_b ?? 0 });
-  const [timer, setTimer]               = useState(0); // segundos da partida ao vivo
-  const timerRef                        = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [matchStatus, setMatchStatus]     = useState<string>(match.status ?? 'PENDING');
+  const [scores, setScores]               = useState({ a: match.score_a ?? 0, b: match.score_b ?? 0 });
+  const [timer, setTimer]                 = useState(0);
 
-  const slug = match.tournament?.slug ?? '';
+  // FIX: tipo explícito `number` para setInterval no browser, com `| null`
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const slug       = match.tournament?.slug ?? '';
   const isLive     = ['IN_PROGRESS', 'ONGOING', 'ongoing'].includes(matchStatus);
   const isFinished = ['FINISHED', 'finished'].includes(matchStatus);
   const bestOf     = match.best_of ?? 1;
@@ -150,8 +162,9 @@ export default function MatchPageContent({
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'matches', filter: `id=eq.${match.id}` },
-        (payload) => {
-          const u = payload.new as any;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (payload: { new: any }) => {
+          const u = payload.new;
           if (u.tournament_code && u.tournament_code !== liveCode) {
             setLiveCode(u.tournament_code);
             setCodeJA(true);
@@ -169,8 +182,8 @@ export default function MatchPageContent({
   const fetchLiveGame = useCallback(async () => {
     if (!champMapReady) return;
     const puuids = playersData
-      .map(p => p.riot_account_id)
-      .filter(Boolean);
+      .map((p) => p.riot_account_id)
+      .filter((id): id is string => Boolean(id));
     if (puuids.length === 0) return;
 
     setLoadingLive(true);
@@ -180,7 +193,7 @@ export default function MatchPageContent({
       try {
         const res = await fetch(`/api/riot/live-game?puuid=${encodeURIComponent(puuid)}`);
         if (res.ok) {
-          found = await res.json();
+          found = (await res.json()) as LiveGameData;
           break;
         }
       } catch (_) {}
@@ -193,27 +206,30 @@ export default function MatchPageContent({
   // 4 ── Inicia polling quando partida está ao vivo
   useEffect(() => {
     if (!isLive) return;
-    fetchLiveGame();
-    const interval = setInterval(fetchLiveGame, 5000);
+    void fetchLiveGame();
+    const interval = setInterval(() => void fetchLiveGame(), 5000);
     return () => clearInterval(interval);
   }, [isLive, fetchLiveGame]);
 
-  // 5 ── Timer ao vivo sincronizado com gameLength da API
+  // 5 ── Timer ao vivo — reinicia somente quando gameLength muda
   useEffect(() => {
     if (liveGame) {
       setTimer(liveGame.gameLength);
-      if (timerRef.current) clearInterval(timerRef.current);
-      timerRef.current = setInterval(() => setTimer(t => t + 1), 1000);
+      if (timerRef.current) clearInterval(timerRef.current as ReturnType<typeof setInterval>);
+      timerRef.current = setInterval(() => setTimer((t) => t + 1), 1000);
     } else {
-      if (timerRef.current) clearInterval(timerRef.current);
+      if (timerRef.current) clearInterval(timerRef.current as ReturnType<typeof setInterval>);
     }
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current as ReturnType<typeof setInterval>);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveGame?.gameLength]);
 
-  const blueBans = liveGame?.bannedChampions.filter(b => b.teamId === 100) ?? [];
-  const redBans  = liveGame?.bannedChampions.filter(b => b.teamId === 200) ?? [];
+  const blueBans = liveGame?.bannedChampions.filter((b) => b.teamId === 100) ?? [];
+  const redBans  = liveGame?.bannedChampions.filter((b) => b.teamId === 200) ?? [];
 
-  const fmtTimer = (s: number) =>
+  const fmtTimer = (s: number): string =>
     `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
   // ── Render ───────────────────────────────────────────────────────────────
@@ -278,9 +294,9 @@ export default function MatchPageContent({
               {/* Time A */}
               <div className="flex-1 flex flex-col items-end gap-1">
                 {match.team_a?.logo_url && (
-                  <img src={match.team_a.logo_url} alt={match.team_a.name}
+                  <img src={match.team_a.logo_url} alt={match.team_a.name ?? 'Time A'}
                     width={48} height={48} className="rounded-full object-cover mb-1"
-                    onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                 )}
                 <h2 className="text-2xl md:text-4xl font-black italic uppercase tracking-tighter leading-none text-right">
                   {match.team_a?.name}
@@ -303,9 +319,9 @@ export default function MatchPageContent({
               {/* Time B */}
               <div className="flex-1 flex flex-col items-start gap-1">
                 {match.team_b?.logo_url && (
-                  <img src={match.team_b.logo_url} alt={match.team_b.name}
+                  <img src={match.team_b.logo_url} alt={match.team_b.name ?? 'Time B'}
                     width={48} height={48} className="rounded-full object-cover mb-1"
-                    onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                 )}
                 <h2 className="text-2xl md:text-4xl font-black italic uppercase tracking-tighter leading-none">
                   {match.team_b?.name}
@@ -356,7 +372,7 @@ export default function MatchPageContent({
                 side="blue"
                 members={teamAPlayers}
                 playersData={playersData}
-                liveParticipants={liveGame?.participants.filter(p => p.teamId === 100) ?? []}
+                liveParticipants={liveGame?.participants.filter((p) => p.teamId === 100) ?? []}
                 champMapReady={champMapReady}
               />
               <TeamPanel
@@ -364,7 +380,7 @@ export default function MatchPageContent({
                 side="red"
                 members={teamBPlayers}
                 playersData={playersData}
-                liveParticipants={liveGame?.participants.filter(p => p.teamId === 200) ?? []}
+                liveParticipants={liveGame?.participants.filter((p) => p.teamId === 200) ?? []}
                 champMapReady={champMapReady}
               />
             </div>
@@ -433,7 +449,7 @@ function BanRow({ bans, side }: { bans: RiotBannedChampion[]; side: 'blue' | 're
               {img ? (
                 <img src={img} alt="ban" width={36} height={36}
                   className={`rounded-md grayscale opacity-60 border ${borderColor} object-cover w-full h-full`}
-                  onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
               ) : (
                 <div className={`w-9 h-9 rounded-md bg-[#1A2535] border ${borderColor}`} />
               )}
@@ -452,16 +468,18 @@ function BanRow({ bans, side }: { bans: RiotBannedChampion[]; side: 'blue' | 're
 }
 
 // ── TeamPanel ────────────────────────────────────────────────────────────────
-function TeamPanel({
-  teamName, side, members, playersData, liveParticipants, champMapReady,
-}: {
+interface TeamPanelProps {
   teamName: string;
   side: 'blue' | 'red';
-  members: any[];
-  playersData: any[];
+  members: Props['teamAPlayers'];
+  playersData: NonNullable<Props['playersData']>;
   liveParticipants: RiotParticipant[];
   champMapReady: boolean;
-}) {
+}
+
+function TeamPanel({
+  teamName, side, members, playersData, liveParticipants, champMapReady,
+}: TeamPanelProps) {
   const isBlue = side === 'blue';
   return (
     <div className={`rounded-2xl border overflow-hidden bg-[#0D1421]/80 ${
@@ -482,17 +500,17 @@ function TeamPanel({
       {/* Jogadores */}
       <div className="p-2 space-y-1">
         {members.map((member) => {
-          const pd = playersData.find(p =>
-            p.riot_account_id === member.profile_id || p.id === member.profile_id
+          const pd = playersData.find(
+            (p) => p.riot_account_id === member.profile_id || p.id === member.profile_id
           );
-          const live = liveParticipants.find(p => p.puuid === pd?.riot_account_id);
+          const live = liveParticipants.find((p) => p.puuid === pd?.riot_account_id);
           const champImg = champMapReady && live ? champIconUrl(live.championId) : null;
           const tier = pd?.tier ?? 'UNRANKED';
-          const tierColor = TIER_COLORS[tier] ?? TIER_COLORS.UNRANKED;
+          const tierColor = TIER_COLORS[tier] ?? TIER_COLORS['UNRANKED'];
           const isInLobby = !!live;
 
           return (
-            <div key={member.profile_id}
+            <div key={String(member.profile_id)}
               className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-white/5 transition-colors">
 
               {/* Avatar/campeão */}
@@ -500,18 +518,21 @@ function TeamPanel({
                 {champImg ? (
                   <img src={champImg} alt="champ" width={40} height={40}
                     className="rounded-lg border border-white/10 object-cover w-10 h-10"
-                    onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                 ) : (
                   <div className="w-10 h-10 rounded-lg bg-[#1A2535] border border-white/5 flex items-center justify-center overflow-hidden">
-                    {pd?.profile_icon ? (
+                    {pd?.profile_icon != null ? (
                       <img
                         src={profileIconUrl(pd.profile_icon)}
                         alt="icon" width={40} height={40}
                         className="rounded-lg object-cover w-10 h-10"
-                        onError={e => {
+                        onError={(e) => {
                           const el = e.target as HTMLImageElement;
                           el.style.display = 'none';
-                          el.parentElement!.innerHTML = '<span class="text-[#4A5568] text-lg">◈</span>';
+                          // FIX: null-safety no parentElement
+                          if (el.parentElement) {
+                            el.parentElement.innerHTML = '<span class="text-[#4A5568] text-lg">◈</span>';
+                          }
                         }}
                       />
                     ) : (
@@ -543,9 +564,9 @@ function TeamPanel({
                       {pd.tier.slice(0, 1)}{pd.rank} {pd.lp}lp
                     </span>
                   )}
-                  {(member.lane || pd?.role) && (
+                  {(member.lane ?? pd?.role) && (
                     <span className="text-[10px] text-[#4A5568] uppercase">
-                      {LANE_LABELS[member.lane ?? pd?.role] ?? member.lane ?? pd?.role}
+                      {LANE_LABELS[member.lane ?? pd?.role ?? ''] ?? member.lane ?? pd?.role}
                     </span>
                   )}
                 </div>
@@ -557,11 +578,11 @@ function TeamPanel({
                   <img src={spellIconUrl(live.spell1Id)} alt="D"
                     width={18} height={18}
                     className="rounded border border-white/10"
-                    onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                   <img src={spellIconUrl(live.spell2Id)} alt="F"
                     width={18} height={18}
                     className="rounded border border-white/10"
-                    onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                 </div>
               )}
 
