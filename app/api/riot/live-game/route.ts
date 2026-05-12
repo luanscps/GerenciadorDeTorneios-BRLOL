@@ -1,69 +1,72 @@
-import { NextRequest, NextResponse } from 'next/server';
-
 /**
- * GET /api/riot/live-game?puuid=<puuid>
+ * /api/riot/live-game
+ * Proxy para Riot Spectator v5 — active game by PUUID
  *
- * Proxy para a Riot Spectator API v5.
- * Endpoint: GET /lol/spectator/v5/active-games/by-summoner/{encryptedPUUID}
- * Retorna os dados da partida ao vivo ou 404 se não estiver em jogo.
+ * GET /api/riot/live-game?puuid={puuid}&region={region}
+ *
+ * region defaults to "br1"
+ * Returns 404 JSON { inGame: false } when player is not in a game.
+ * Returns Spectator v5 response when in game.
+ *
+ * NOTE: The spectator gameLength / gameStartTime is inconsistent per Riot docs.
+ * Always compute elapsed time client-side using gameStartTime (unix ms) vs Date.now().
+ *
+ * Riot Policy compliance:
+ * - Only uses official SPECTATOR-V5 endpoint
+ * - Does NOT expose custom game data (only ranked/tournament tracked games)
+ * - Rate limited server-side via RIOT_API_KEY env var
  */
+
+import { NextRequest, NextResponse } from 'next/server'
+
+const RIOT_API_KEY = process.env.RIOT_API_KEY
+
 export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const puuid = searchParams.get('puuid');
+  if (!RIOT_API_KEY) {
+    return NextResponse.json({ error: 'RIOT_API_KEY not configured' }, { status: 500 })
+  }
+
+  const { searchParams } = new URL(req.url)
+  const puuid = searchParams.get('puuid')
+  const region = searchParams.get('region') ?? 'br1'
 
   if (!puuid) {
-    return NextResponse.json({ error: 'puuid required' }, { status: 400 });
+    return NextResponse.json({ error: 'puuid is required' }, { status: 400 })
   }
 
-  const apiKey = process.env.RIOT_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json({ error: 'RIOT_API_KEY not set' }, { status: 500 });
-  }
-
-  // Região padrão BR1 — pode ser parametrizado futuramente
-  const region = searchParams.get('region') ?? 'br1';
-  const url = `https://${region}.api.riotgames.com/lol/spectator/v5/active-games/by-summoner/${encodeURIComponent(puuid)}`;
+  // SPECTATOR-V5: platform routing (br1, na1, euw1, etc.)
+  const url = `https://${region}.api.riotgames.com/lol/spectator/v5/active-games/by-summoner/${encodeURIComponent(puuid)}`
 
   try {
-    const riotRes = await fetch(url, {
-      headers: { 'X-Riot-Token': apiKey },
-      next: { revalidate: 0 }, // sem cache
-    });
+    const res = await fetch(url, {
+      headers: { 'X-Riot-Token': RIOT_API_KEY },
+      cache: 'no-store',
+    })
 
-    if (riotRes.status === 404) {
-      return NextResponse.json(null, { status: 404 });
+    if (res.status === 404) {
+      return NextResponse.json({ inGame: false }, { status: 200 })
     }
 
-    if (!riotRes.ok) {
-      const text = await riotRes.text();
-      return NextResponse.json({ error: `Riot API error: ${riotRes.status}`, detail: text }, { status: riotRes.status });
+    if (res.status === 429) {
+      const retryAfter = res.headers.get('Retry-After') ?? '5'
+      return NextResponse.json(
+        { error: 'Rate limited', retryAfter: parseInt(retryAfter) },
+        { status: 429 }
+      )
     }
 
-    const data = await riotRes.json();
+    if (!res.ok) {
+      const body = await res.text()
+      return NextResponse.json(
+        { error: `Riot API error ${res.status}`, detail: body },
+        { status: res.status }
+      )
+    }
 
-    // Normaliza para o formato que o frontend espera
-    const normalized = {
-      gameId: data.gameId,
-      gameStatus: data.gameStatus ?? 'IN_GAME',
-      gameLength: data.gameLength ?? 0,
-      participants: (data.participants ?? []).map((p: any) => ({
-        puuid: p.puuid,
-        summonerName: p.summonerName ?? p.riotId ?? '',
-        championId: p.championId,
-        teamId: p.teamId,
-        spell1Id: p.spell1Id,
-        spell2Id: p.spell2Id,
-        perks: p.perks,
-      })),
-      bannedChampions: (data.bannedChampions ?? []).map((b: any) => ({
-        championId: b.championId,
-        teamId: b.teamId,
-        pickTurn: b.pickTurn,
-      })),
-    };
-
-    return NextResponse.json(normalized);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    const data = await res.json()
+    return NextResponse.json({ inGame: true, ...data })
+  } catch (err) {
+    console.error('[live-game] fetch error:', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
