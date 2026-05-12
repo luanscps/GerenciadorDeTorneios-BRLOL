@@ -325,26 +325,34 @@ export default function MatchPageContent({
 
   // 2 ─ Polling Spectator API v5
   //
+  // [FIX 3] Rate-limit guard: usa apenas 1 candidato por time (2 requests/poll)
+  // em vez de iterar todos os jogadores (até 10/poll), respeitando o limite
+  // de 20 req/s e 100 req/2min da Dev Key da Riot.
+  //
   // Preferência de identificador para a Spectator v5 (por ordem):
   //   1. players.puuid       — PUUID Riot Account v1 (mais direto)
   //   2. players.riot_account_id — pode ser PUUID dependendo do fluxo de cadastro
-  //
-  // O endpoint /api/riot/live-game retorna { inGame: false } com status 200
-  // quando o jogador não está em partida — verificar data.inGame, não apenas res.ok.
   const fetchLiveGame = useCallback(async () => {
     if (!assets.ready) return;
 
-    // Coleta PUUIDs disponíveis: prioriza puuid, fallback para riot_account_id
-    const puuids = playersData
-      .map((p) => p.puuid ?? p.riot_account_id)
+    // [FIX 3] Pega apenas 1 PUUID por time — o primeiro membro com puuid disponível
+    const candidatePuuids = [
+      playersData.find((p) =>
+        teamAPlayers.some((m) => String(m.profile_id) === String(p.id))
+      ),
+      playersData.find((p) =>
+        teamBPlayers.some((m) => String(m.profile_id) === String(p.id))
+      ),
+    ]
+      .map((p) => p?.puuid ?? p?.riot_account_id)
       .filter((id): id is string => Boolean(id));
 
-    if (puuids.length === 0) return;
+    if (candidatePuuids.length === 0) return;
 
     setLoadingLive(true);
     let found: LiveGameData | null = null;
 
-    for (const puuid of puuids) {
+    for (const puuid of candidatePuuids) {
       try {
         const res = await fetch(`/api/riot/live-game?puuid=${encodeURIComponent(puuid)}`);
         if (!res.ok) continue;
@@ -357,21 +365,29 @@ export default function MatchPageContent({
           break;
         }
       } catch (_) {
-        // silencia erros de rede individuais — tenta o próximo puuid
+        // silencia erros de rede individuais — tenta o próximo candidato
       }
     }
 
     setLiveGame(found);
     setLoadingLive(false);
-  }, [assets.ready, playersData]);
+  }, [assets.ready, playersData, teamAPlayers, teamBPlayers]);
 
-  // 3 ─ Inicia polling quando partida está ao vivo
+  // 3 ─ Polling: inicia quando IN_PROGRESS ou PENDING
+  //
+  // [FIX 2] Polling também ativa com status PENDING para detectar automaticamente
+  // quando a partida começa na Riot antes do Supabase atualizar o status.
+  // Quando liveGame.inGame === true com status ainda PENDING, o Realtime
+  // do Supabase atualizará o status logo em seguida.
   useEffect(() => {
-    if (!isLive) return;
+    // [FIX 2] shouldPoll inclui PENDING além de IN_PROGRESS
+    const isPending  = ['PENDING', 'pending', 'SCHEDULED'].includes(matchStatus);
+    const shouldPoll = isLive || isPending;
+    if (!shouldPoll) return;
     void fetchLiveGame();
     const interval = setInterval(() => void fetchLiveGame(), 5000);
     return () => clearInterval(interval);
-  }, [isLive, fetchLiveGame]);
+  }, [isLive, matchStatus, fetchLiveGame]);
 
   // 4 ─ Timer ao vivo — calculado via gameStartTime (não gameLength)
   //
@@ -398,6 +414,10 @@ export default function MatchPageContent({
 
   const blueBans = liveGame?.bannedChampions?.filter((b) => b.teamId === 100) ?? [];
   const redBans  = liveGame?.bannedChampions?.filter((b) => b.teamId === 200) ?? [];
+
+  // [FIX 1] Picks separados por side para o painel de Picks ao vivo
+  const bluePicks = liveGame?.inGame ? (liveGame.participants?.filter((p) => p.teamId === 100) ?? []) : [];
+  const redPicks  = liveGame?.inGame ? (liveGame.participants?.filter((p) => p.teamId === 200) ?? []) : [];
 
   const fmtTimer = (s: number): string =>
     `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
@@ -517,6 +537,104 @@ export default function MatchPageContent({
               <BanRow bans={blueBans} side="blue" getImg={banChampImg} />
               <span className="text-[#4A5568] text-xs font-black uppercase shrink-0">vs</span>
               <BanRow bans={redBans} side="red" getImg={banChampImg} />
+            </div>
+          </div>
+        )}
+
+        {/* ── [FIX 1] Picks ao vivo ────────────────────────────────────────── */}
+        {liveGame?.inGame && assets.ready && (bluePicks.length > 0 || redPicks.length > 0) && (
+          <div className="bg-[#0D1421] border border-[#1E2D45] rounded-2xl p-6">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-xs font-black uppercase tracking-widest text-[#718096]">Picks</h3>
+              <span className="text-[10px] text-green-400 font-bold flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-ping" />
+                AO VIVO · {fmtTimer(timer)}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-6">
+              {/* Time Azul */}
+              <div className="space-y-2">
+                <span className="text-[10px] font-black uppercase text-blue-400 tracking-widest block mb-3">
+                  🔵 {match.team_a?.name ?? 'Time A'}
+                </span>
+                {bluePicks.map((p) => {
+                  const champKey = assets.champMap[p.championId];
+                  return (
+                    <div key={p.puuid} className="flex items-center gap-2.5 px-2 py-1.5 rounded-xl hover:bg-white/5 transition-colors">
+                      {champKey ? (
+                        <img
+                          src={champCircleUrl(champKey)}
+                          alt={champKey}
+                          width={36}
+                          height={36}
+                          className="rounded-full border border-blue-500/30 shrink-0"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                        />
+                      ) : (
+                        <div className="w-9 h-9 rounded-full bg-[#1A2535] border border-blue-500/10 shrink-0 flex items-center justify-center">
+                          <span className="text-[#4A5568] text-xs">?</span>
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white text-xs font-bold leading-none truncate">
+                          {champKey ?? `Campeão ${p.championId}`}
+                        </p>
+                        <p className="text-[#4A5568] text-[10px] truncate mt-0.5">{p.summonerName}</p>
+                      </div>
+                      <div className="flex gap-0.5 shrink-0">
+                        <img src={spellImg(p.spell1Id)} alt="D" width={18} height={18}
+                          className="rounded border border-white/10"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                        <img src={spellImg(p.spell2Id)} alt="F" width={18} height={18}
+                          className="rounded border border-white/10"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Time Vermelho */}
+              <div className="space-y-2">
+                <span className="text-[10px] font-black uppercase text-red-400 tracking-widest block mb-3">
+                  🔴 {match.team_b?.name ?? 'Time B'}
+                </span>
+                {redPicks.map((p) => {
+                  const champKey = assets.champMap[p.championId];
+                  return (
+                    <div key={p.puuid} className="flex items-center gap-2.5 px-2 py-1.5 rounded-xl hover:bg-white/5 transition-colors">
+                      {champKey ? (
+                        <img
+                          src={champCircleUrl(champKey)}
+                          alt={champKey}
+                          width={36}
+                          height={36}
+                          className="rounded-full border border-red-500/30 shrink-0"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                        />
+                      ) : (
+                        <div className="w-9 h-9 rounded-full bg-[#1A2535] border border-red-500/10 shrink-0 flex items-center justify-center">
+                          <span className="text-[#4A5568] text-xs">?</span>
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white text-xs font-bold leading-none truncate">
+                          {champKey ?? `Campeão ${p.championId}`}
+                        </p>
+                        <p className="text-[#4A5568] text-[10px] truncate mt-0.5">{p.summonerName}</p>
+                      </div>
+                      <div className="flex gap-0.5 shrink-0">
+                        <img src={spellImg(p.spell1Id)} alt="D" width={18} height={18}
+                          className="rounded border border-white/10"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                        <img src={spellImg(p.spell2Id)} alt="F" width={18} height={18}
+                          className="rounded border border-white/10"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         )}
