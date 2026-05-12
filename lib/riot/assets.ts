@@ -6,7 +6,7 @@
  *
  * Regras:
  *  - DDragon   → ícones de campeão (square), spells, profile icons
- *  - CDragon   → circle HUD, ranked emblems, lane/role icons
+ *  - CDragon   → circle HUD, ranked emblems, lane/role icons, level borders
  *  - Sempre usa `latest` no CDragon para garantir assets do patch atual
  *  - Singletons de Promise para versão e mapa de campeões (sem race condition)
  */
@@ -21,6 +21,12 @@ const CDRAGON_CLASH = `${CDRAGON_BASE}/plugins/rcp-fe-lol-clash/global/default/a
 const CDRAGON_RANKED = `${CDRAGON_BASE}/game/assets/loadouts/regalia/crests/ranked`;
 const CDRAGON_HUD = (nameLower: string) =>
   `${CDRAGON_BASE}/game/assets/characters/${nameLower}/hud`;
+
+/**
+ * Base do diretório de molduras/rings de nível (themed-level-ring).
+ * Fonte: rcp-fe-lol-static-assets/global/default/images/uikit/themed-level-ring/
+ */
+const CDRAGON_LEVEL_RING = `${CDRAGON_BASE}/plugins/rcp-fe-lol-static-assets/global/default/images/uikit/themed-level-ring`;
 
 const DD_VERSION_FALLBACK = '15.10.1';
 
@@ -293,3 +299,65 @@ export const TIER_SHORT: Record<string, string> = {
   MASTER: 'M', GRANDMASTER: 'GM', CHALLENGER: 'C',
   UNRANKED: '—',
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Seção 7 — Level Border / Ring (CDragon themed-level-ring)
+//
+// Fonte da lógica: rcp-fe-lol-uikit.js → getThemeFromLevel()
+// Extraído diretamente do cliente LoL (não é estimativa).
+//
+// Mapeamento oficial level → themeIndex:
+//   1–29  → theme 1
+//   30–49 → theme 2
+//   50+   → Math.floor(level / 25) + 1, máximo 21
+//
+// Temas disponíveis: 1–21 (21 = cap para level 500+)
+//
+// Assets disponíveis por tema:
+//   theme-N-border.png          → moldura do ícone de perfil (uso principal)
+//   theme-N-ring.png            → anel de XP girando ao redor do ícone
+//   theme-N-simplified-border.png → versão sem detalhes (ex: loading screen)
+//   theme-N-social-border.png   → versão para chat/social panel (menor, quadrada)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Retorna o themeIndex oficial do cliente LoL baseado no summonerLevel.
+ *
+ * Lógica extraída de:
+ *   rcp-fe-lol-uikit/global/default/rcp-fe-lol-uikit.js → getThemeFromLevel()
+ *
+ * @param level  summonerLevel da conta (ex: 419)
+ * @returns      themeIndex entre 1 e 21
+ */
+export function getThemeFromLevel(level: number): number {
+  if (level >= 1 && level <= 29) return 1;
+  if (level >= 30 && level <= 49) return 2;
+  return Math.min(Math.floor(level / 25) + 1, 21);
+}
+
+/**
+ * URL da moldura (border) do ícone de perfil baseada no summonerLevel.
+ * Asset: theme-N-border.png — a moldura principal exibida na página de perfil.
+ *
+ * Uso recomendado:
+ *   <img src={profileBorderUrl(summonerLevel)} alt="Level border" />
+ *
+ * @param level  summonerLevel da conta
+ */
+export function profileBorderUrl(level: number): string {
+  const theme = getThemeFromLevel(level);
+  return `${CDRAGON_LEVEL_RING}/theme-${theme}-border.png`;
+}
+
+/**
+ * URL do anel de XP (ring) do ícone de perfil baseado no summonerLevel.
+ * Asset: theme-N-ring.png — anel circular que envolve o ícone e exibe progresso de XP.
+ *
+ * Uso recomendado: sobrepor ao redor do ícone (position: absolute, inset: -N%).
+ *
+ * @param level  summonerLevel da conta
+ */
+export function profileRingUrl(level: number): string {
+  const theme = getThemeFromLevel(level);
+  return `${CDRAGON_LEVEL_RING}/theme-${theme}-ring.png`;
+}
