@@ -4,22 +4,36 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 
 const STATUS_COLOR: Record<string, string> = {
+  registration: "text-green-400",
+  active:       "text-yellow-400",
+  finished:     "text-gray-400",
+  draft:        "text-gray-500",
+  open:         "text-green-400",
+  checkin:      "text-blue-400",
+  ongoing:      "text-yellow-400",
+  // uppercase legado
   REGISTRATION: "text-green-400",
   ACTIVE:       "text-yellow-400",
   FINISHED:     "text-gray-400",
   DRAFT:        "text-gray-500",
-  // legados
   OPEN:         "text-green-400",
   CHECKIN:      "text-blue-400",
   IN_PROGRESS:  "text-yellow-400",
 };
 
 const STATUS_LABEL: Record<string, string> = {
+  registration: "Inscrições abertas",
+  active:       "Em andamento",
+  finished:     "Finalizado",
+  draft:        "Rascunho",
+  open:         "Aberto",
+  checkin:      "Check-in",
+  ongoing:      "Em andamento",
+  // uppercase legado
   REGISTRATION: "Inscrições abertas",
   ACTIVE:       "Em andamento",
   FINISHED:     "Finalizado",
   DRAFT:        "Rascunho",
-  // legados
   OPEN:         "Aberto",
   CHECKIN:      "Check-in",
   IN_PROGRESS:  "Em andamento",
@@ -44,13 +58,17 @@ export default async function AdminDashboard() {
     { count: totalTeams },
     { count: activeT },
     { count: pendingMatches },
+    { count: pendingInscricoes },
     { data: recentTournaments },
   ] = await Promise.all([
     adminClient.from("players").select("*", { count: "exact", head: true }),
     adminClient.from("teams").select("*",   { count: "exact", head: true }),
-    // status real do banco: ACTIVE (era IN_PROGRESS)
-    adminClient.from("tournaments").select("*", { count: "exact", head: true }).eq("status", "ACTIVE"),
-    adminClient.from("matches").select("*",     { count: "exact", head: true }).eq("status", "pending"),
+    // torneios com status 'active' ou 'ongoing' (suporta ambas as convenções)
+    adminClient.from("tournaments").select("*", { count: "exact", head: true }).in("status", ["active", "ongoing", "ACTIVE", "IN_PROGRESS"]),
+    // partidas agendadas/pendentes
+    adminClient.from("matches").select("*", { count: "exact", head: true }).in("status", ["SCHEDULED", "scheduled", "pending"]),
+    // inscrições pendentes de aprovação
+    adminClient.from("inscricoes").select("*", { count: "exact", head: true }).in("status", ["PENDING", "pending"]),
     adminClient
       .from("tournaments")
       .select("id, name, slug, status")
@@ -59,17 +77,18 @@ export default async function AdminDashboard() {
   ]);
 
   const stats = [
-    { label: "Invocadores",        value: totalPlayers   ?? 0, icon: "&#128100;", color: "text-blue-400",  href: "/admin/jogadores"   },
-    { label: "Times inscritos",    value: totalTeams     ?? 0, icon: "&#128737;", color: "text-green-400", href: "/admin/tournaments" },
-    { label: "Em andamento",       value: activeT        ?? 0, icon: "&#9876;",   color: "text-[#C8A84B]", href: "/admin/tournaments" },
-    { label: "Partidas pendentes", value: pendingMatches ?? 0, icon: "&#9888;",   color: "text-red-400",   href: "/admin/tournaments" },
+    { label: "Invocadores",         value: totalPlayers       ?? 0, icon: "&#128100;", color: "text-blue-400",   href: "/admin/jogadores"   },
+    { label: "Times cadastrados",   value: totalTeams         ?? 0, icon: "&#128737;", color: "text-green-400",  href: "/admin/tournaments" },
+    { label: "Torneios ativos",     value: activeT            ?? 0, icon: "&#9876;",   color: "text-[#C8A84B]",  href: "/admin/tournaments" },
+    { label: "Partidas pendentes",  value: pendingMatches     ?? 0, icon: "&#9203;",   color: "text-yellow-400", href: "/admin/tournaments" },
+    { label: "Inscrições pendentes",value: pendingInscricoes  ?? 0, icon: "&#9888;",   color: "text-red-400",    href: "/admin/tournaments" },
   ];
 
   return (
     <div className="space-y-8">
       <h1 className="text-2xl font-bold text-white">Dashboard Admin</h1>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         {stats.map((s) => (
           <Link
             key={s.label}

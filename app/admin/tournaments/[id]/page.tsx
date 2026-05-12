@@ -28,13 +28,13 @@ export default async function AdminTournamentPage({
     .from("inscricoes")
     .select("*", { count: "exact", head: true })
     .eq("tournament_id", id)
-    .eq("status", "PENDING");
+    .in("status", ["PENDING", "pending"]);
 
   const { count: approvedTeams } = await supabase
     .from("inscricoes")
     .select("*", { count: "exact", head: true })
     .eq("tournament_id", id)
-    .eq("status", "APPROVED");
+    .in("status", ["APPROVED", "approved"]);
 
   const { count: checkedInTeams } = await supabase
     .from("inscricoes")
@@ -47,17 +47,60 @@ export default async function AdminTournamentPage({
     .select("*", { count: "exact", head: true })
     .eq("tournament_id", id);
 
+  const { count: stagesCount } = await supabase
+    .from("tournament_stages")
+    .select("*", { count: "exact", head: true })
+    .eq("tournament_id", id);
+
   const STATUS_LABEL: Record<string, string> = {
-    draft:    "Rascunho",
-    open:     "Aberto",
-    checkin:  "Check-in",
-    ongoing:  "Em andamento",
-    finished: "Finalizado",
+    draft:        "Rascunho",
+    open:         "Aberto",
+    registration: "Inscrições abertas",
+    checkin:      "Check-in",
+    ongoing:      "Em andamento",
+    active:       "Em andamento",
+    finished:     "Finalizado",
+    // uppercase legado
+    DRAFT:        "Rascunho",
+    OPEN:         "Aberto",
+    CHECKIN:      "Check-in",
+    ACTIVE:       "Em andamento",
+    IN_PROGRESS:  "Em andamento",
+    FINISHED:     "Finalizado",
   };
+
+  const navLinks = [
+    {
+      href: `/admin/tournaments/${id}/fases`,
+      label: "Fases",
+      badge: stagesCount ? `(${stagesCount})` : null,
+    },
+    {
+      href: `/admin/tournaments/${id}/inscricoes`,
+      label: "Inscrições",
+      badge: pendingTeams ? `(${pendingTeams} pendentes)` : null,
+    },
+    {
+      href: `/admin/tournaments/${id}/checkin`,
+      label: "Check-ins",
+      badge: checkedInTeams ? `(${checkedInTeams} ✓)` : null,
+    },
+    {
+      href: `/admin/tournaments/${id}/partidas`,
+      label: "Partidas",
+      badge: matchesCount ? `(${matchesCount})` : null,
+    },
+    {
+      href: t.slug ? `/torneios/${t.slug}` : `/t/${id}`,
+      label: "Ver público ↗",
+      badge: null,
+      external: true,
+    },
+  ];
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <div className="mb-1">
             <Link href="/admin/tournaments" className="text-gray-400 hover:text-white text-sm">
@@ -69,32 +112,18 @@ export default async function AdminTournamentPage({
             Status: {STATUS_LABEL[t.status] ?? t.status}
           </span>
         </div>
-        <div className="flex gap-3 flex-wrap justify-end">
-          <Link
-            href={`/admin/tournaments/${id}/inscricoes`}
-            className="bg-[#1E3A5F] hover:bg-[#C8A84B]/20 text-white hover:text-[#C8A84B] text-sm px-3 py-1.5 rounded border border-[#1E3A5F] hover:border-[#C8A84B]/30 transition-colors"
-          >
-            Inscrições {pendingTeams ? `(${pendingTeams} pendentes)` : ""}
-          </Link>
-          <Link
-            href={`/admin/tournaments/${id}/checkin`}
-            className="bg-[#1E3A5F] hover:bg-[#C8A84B]/20 text-white hover:text-[#C8A84B] text-sm px-3 py-1.5 rounded border border-[#1E3A5F] hover:border-[#C8A84B]/30 transition-colors"
-          >
-            Check-ins {checkedInTeams ? `(${checkedInTeams} ✓)` : ""}
-          </Link>
-          <Link
-            href={`/admin/tournaments/${id}/partidas`}
-            className="bg-[#1E3A5F] hover:bg-[#C8A84B]/20 text-white hover:text-[#C8A84B] text-sm px-3 py-1.5 rounded border border-[#1E3A5F] hover:border-[#C8A84B]/30 transition-colors"
-          >
-            Partidas {matchesCount ? `(${matchesCount})` : ""}
-          </Link>
-          <Link
-            href={t.slug ? `/torneios/${t.slug}` : `/t/${id}`}
-            target="_blank"
-            className="bg-[#1E3A5F] hover:bg-[#C8A84B]/20 text-white hover:text-[#C8A84B] text-sm px-3 py-1.5 rounded border border-[#1E3A5F] hover:border-[#C8A84B]/30 transition-colors"
-          >
-            Ver público ↗
-          </Link>
+        <div className="flex gap-2 flex-wrap justify-end">
+          {navLinks.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              target={link.external ? "_blank" : undefined}
+              rel={link.external ? "noopener noreferrer" : undefined}
+              className="bg-[#1E3A5F] hover:bg-[#C8A84B]/20 text-white hover:text-[#C8A84B] text-sm px-3 py-1.5 rounded border border-[#1E3A5F] hover:border-[#C8A84B]/30 transition-colors"
+            >
+              {link.label}{link.badge ? ` ${link.badge}` : ""}
+            </Link>
+          ))}
         </div>
       </div>
 
