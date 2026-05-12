@@ -39,15 +39,21 @@ interface RiotBannedChampion {
 }
 
 interface LiveGameData {
-  gameId: number;
-  gameStatus: string;
-  participants: RiotParticipant[];
-  bannedChampions: RiotBannedChampion[];
-  gameLength: number;
+  inGame: boolean;
+  gameId?: number;
+  gameStatus?: string;
+  /**
+   * gameStartTime: timestamp Unix em ms — use ISSO para calcular o tempo.
+   * Conforme docs da Riot, gameLength é inconsistente/não confiável.
+   */
+  gameStartTime?: number;
+  gameLength?: number; // NÃO usar para timer — pode ser 0 ou impreciso
+  participants?: RiotParticipant[];
+  bannedChampions?: RiotBannedChampion[];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Constantes de status
+// Status labels
 // ─────────────────────────────────────────────────────────────────────────────
 
 const STATUS_LABELS: Record<string, string> = {
@@ -219,7 +225,6 @@ function PlayerAvatar({
 // Props
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Tipo do stage vindo do Supabase (page.tsx)
 export interface StageData {
   id: string | number;
   name: string | null;
@@ -231,10 +236,6 @@ export interface StageData {
 interface Props {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   match: any;
-  /**
-   * Objeto stage completo vindo do Supabase (ou null).
-   * A prop `stageName` foi removida — o nome é extraído de `stage.name` aqui.
-   */
   stage?: StageData | null;
   teamAPlayers: { profile_id: string | number; team_role: string; lane: string | null; status: string | null }[];
   teamBPlayers: { profile_id: string | number; team_role: string; lane: string | null; status: string | null }[];
@@ -247,7 +248,10 @@ interface Props {
     lp: number | null;
     profile_icon: number | string | null;
     role: string | null;
-    /** puuid — campo adicionado no select de players (usada pela Spectator API) */
+    /**
+     * puuid — PUUID da Riot Games (Riot Account v1 / ACCOUNT-V1).
+     * Usado como identificador na Spectator v5.
+     */
     puuid?: string | null;
     riot_account_id: string | null;
   }[];
@@ -268,7 +272,6 @@ export default function MatchPageContent({
   userInMatch,
   userRole = 'public',
 }: Props) {
-  // Extrai nome da fase do objeto stage
   const stageName = stage?.name ?? null;
 
   const notesStr = typeof match.notes === 'string' ? match.notes : '';
@@ -281,8 +284,13 @@ export default function MatchPageContent({
   const [loadingLive, setLoadingLive] = useState(false);
   const [matchStatus, setMatchStatus] = useState<string>(match.status ?? 'PENDING');
   const [scores, setScores]           = useState({ a: match.score_a ?? 0, b: match.score_b ?? 0 });
-  const [timer, setTimer]             = useState(0);
-  const timerRef                      = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /**
+   * Timer — segundos decorridos desde gameStartTime.
+   * Calculado client-side via Date.now() - gameStartTime (mais confiável que gameLength da Riot).
+   */
+  const [timer, setTimer] = useState(0);
+  const timerRef          = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const assets = useRiotAssets();
 
@@ -291,7 +299,7 @@ export default function MatchPageContent({
   const isFinished = ['FINISHED', 'finished'].includes(matchStatus);
   const bestOf     = match.best_of ?? stage?.best_of ?? 1;
 
-  // 1 ─ Realtime: tournament_code + status + score
+  // 1 ─ Realtime Supabase: tournament_code + status + score
   useEffect(() => {
     const supabase = createClient();
     const ch = supabase
@@ -315,23 +323,44 @@ export default function MatchPageContent({
     return () => { supabase.removeChannel(ch); };
   }, [match.id, liveCode]);
 
-  // 2 ─ Polling Spectator API
+  // 2 ─ Polling Spectator API v5
+  //
+  // Preferência de identificador para a Spectator v5 (por ordem):
+  //   1. players.puuid       — PUUID Riot Account v1 (mais direto)
+  //   2. players.riot_account_id — pode ser PUUID dependendo do fluxo de cadastro
+  //
+  // O endpoint /api/riot/live-game retorna { inGame: false } com status 200
+  // quando o jogador não está em partida — verificar data.inGame, não apenas res.ok.
   const fetchLiveGame = useCallback(async () => {
     if (!assets.ready) return;
-    // Usa riot_account_id (puuid) para polling — campo consistente com a Spectator v5
+
+    // Coleta PUUIDs disponíveis: prioriza puuid, fallback para riot_account_id
     const puuids = playersData
-      .map((p) => p.riot_account_id)
+      .map((p) => p.puuid ?? p.riot_account_id)
       .filter((id): id is string => Boolean(id));
+
     if (puuids.length === 0) return;
 
     setLoadingLive(true);
     let found: LiveGameData | null = null;
+
     for (const puuid of puuids) {
       try {
         const res = await fetch(`/api/riot/live-game?puuid=${encodeURIComponent(puuid)}`);
-        if (res.ok) { found = (await res.json()) as LiveGameData; break; }
-      } catch (_) {}
+        if (!res.ok) continue;
+
+        const data: LiveGameData = await res.json();
+
+        // A API retorna { inGame: false } com 200 quando fora de partida
+        if (data.inGame && data.participants && data.participants.length > 0) {
+          found = data;
+          break;
+        }
+      } catch (_) {
+        // silencia erros de rede individuais — tenta o próximo puuid
+      }
     }
+
     setLiveGame(found);
     setLoadingLive(false);
   }, [assets.ready, playersData]);
@@ -344,21 +373,31 @@ export default function MatchPageContent({
     return () => clearInterval(interval);
   }, [isLive, fetchLiveGame]);
 
-  // 4 ─ Timer ao vivo
+  // 4 ─ Timer ao vivo — calculado via gameStartTime (não gameLength)
+  //
+  // Riot docs: gameLength retorna o número de segundos desde o início da partida
+  // mas é atualizado apenas no polling e pode ser 0 no início.
+  // gameStartTime (timestamp Unix ms) é confiável e atualizado pelo servidor da Riot.
   useEffect(() => {
-    if (liveGame) {
-      setTimer(liveGame.gameLength);
-      if (timerRef.current) clearInterval(timerRef.current as ReturnType<typeof setInterval>);
-      timerRef.current = setInterval(() => setTimer((t) => t + 1), 1000);
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current as ReturnType<typeof setInterval>);
-    }
-    return () => { if (timerRef.current) clearInterval(timerRef.current as ReturnType<typeof setInterval>); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [liveGame?.gameLength]);
+    if (timerRef.current) clearInterval(timerRef.current);
 
-  const blueBans = liveGame?.bannedChampions.filter((b) => b.teamId === 100) ?? [];
-  const redBans  = liveGame?.bannedChampions.filter((b) => b.teamId === 200) ?? [];
+    if (liveGame?.inGame && liveGame.gameStartTime) {
+      const startMs = liveGame.gameStartTime;
+      const tick = () => {
+        const elapsed = Math.floor((Date.now() - startMs) / 1000);
+        setTimer(Math.max(0, elapsed));
+      };
+      tick();
+      timerRef.current = setInterval(tick, 1000);
+    } else {
+      setTimer(0);
+    }
+
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [liveGame?.inGame, liveGame?.gameStartTime]);
+
+  const blueBans = liveGame?.bannedChampions?.filter((b) => b.teamId === 100) ?? [];
+  const redBans  = liveGame?.bannedChampions?.filter((b) => b.teamId === 200) ?? [];
 
   const fmtTimer = (s: number): string =>
     `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
@@ -406,13 +445,13 @@ export default function MatchPageContent({
           </div>
         )}
 
-        {/* ── Scoreboard Header ─────────────────────────────────────────────────────── */}
+        {/* ── Scoreboard Header ─────────────────────────────────────────────── */}
         <div className="relative">
           <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10">
             {isLive ? (
               <span className="flex items-center gap-1.5 bg-green-500/10 border border-green-500/30 text-green-400 text-[10px] font-black uppercase px-3 py-1 rounded-full">
                 <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-ping" />
-                {liveGame ? fmtTimer(timer) : 'Em Andamento'}
+                {liveGame?.inGame ? fmtTimer(timer) : 'Em Andamento'}
               </span>
             ) : isFinished ? (
               <span className="bg-gray-700/50 border border-gray-600/30 text-gray-400 text-[10px] font-black uppercase px-3 py-1 rounded-full">Finalizada</span>
@@ -464,8 +503,8 @@ export default function MatchPageContent({
           </div>
         </div>
 
-        {/* ── Bans ao vivo ─────────────────────────────────────────────────────────── */}
-        {liveGame && assets.ready && (
+        {/* ── Bans ao vivo ─────────────────────────────────────────────────── */}
+        {liveGame?.inGame && assets.ready && (
           <div className="bg-[#0D1421] border border-[#1E2D45] rounded-2xl p-6 space-y-5">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-black uppercase tracking-widest text-[#718096]">Bans</h3>
@@ -482,7 +521,7 @@ export default function MatchPageContent({
           </div>
         )}
 
-        {/* ── Grid principal ─────────────────────────────────────────────────────────── */}
+        {/* ── Grid principal ───────────────────────────────────────────────── */}
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-8">
           <div className="space-y-4">
             <div className="flex items-center gap-2 px-1">
@@ -499,7 +538,7 @@ export default function MatchPageContent({
                 side="blue"
                 members={teamAPlayers}
                 playersData={playersData}
-                liveParticipants={liveGame?.participants.filter((p) => p.teamId === 100) ?? []}
+                liveParticipants={(liveGame?.inGame ? liveGame.participants?.filter((p) => p.teamId === 100) : undefined) ?? []}
                 assets={assets}
                 getSpell={spellImg}
               />
@@ -508,7 +547,7 @@ export default function MatchPageContent({
                 side="red"
                 members={teamBPlayers}
                 playersData={playersData}
-                liveParticipants={liveGame?.participants.filter((p) => p.teamId === 200) ?? []}
+                liveParticipants={(liveGame?.inGame ? liveGame.participants?.filter((p) => p.teamId === 200) : undefined) ?? []}
                 assets={assets}
                 getSpell={spellImg}
               />
@@ -639,10 +678,15 @@ function TeamPanel({
 
       <div className="p-2 space-y-1">
         {members.map((member) => {
-          const pd = playersData.find(
-            (p) => p.riot_account_id === member.profile_id || p.id === member.profile_id
+          // players.id === profile_id (UUID do auth/profiles)
+          const pd = playersData.find((p) => String(p.id) === String(member.profile_id));
+
+          // Spectator v5: participantes identificados por puuid
+          // Prioriza pd.puuid; fallback pd.riot_account_id (pode ser puuid em cadastros antigos)
+          const live = liveParticipants.find(
+            (p) => p.puuid === pd?.puuid || p.puuid === pd?.riot_account_id
           );
-          const live      = liveParticipants.find((p) => p.puuid === pd?.riot_account_id);
+
           const isInLobby = !!live;
           const lane      = member.lane ?? pd?.role ?? null;
 

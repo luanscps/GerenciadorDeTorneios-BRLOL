@@ -10,6 +10,7 @@ export default async function MatchPage({
   params: Promise<{ slug: string; id: string }>;
 }) {
   const { slug, id } = await params;
+  void slug; // usado via match.tournament.slug no componente
   const supabase = await createClient();
 
   // 1. Partida completa
@@ -51,21 +52,28 @@ export default async function MatchPage({
     .eq('team_id', (match.team_b as any).id)
     .eq('status', 'accepted');
 
-  // 4. Players (inclui puuid para Spectator API)
+  // 4. Players
+  // profile_id em team_members == id em players (ambos são o UUID do auth/profiles)
+  // A coluna 'id' em players é o mesmo UUID de profiles.id
   const allProfileIds = [
-    ...(teamAMembers ?? []).map(m => m.profile_id),
-    ...(teamBMembers ?? []).map(m => m.profile_id),
-  ].filter(Boolean);
+    ...(teamAMembers ?? []).map((m) => m.profile_id),
+    ...(teamBMembers ?? []).map((m) => m.profile_id),
+  ].filter(Boolean) as string[];
 
   const { data: playersData } = allProfileIds.length > 0
     ? await supabase
         .from('players')
-        .select('id, summoner_name, tag_line, tier, rank, lp, profile_icon, role, riot_account_id, puuid')
-        .in('riot_account_id', allProfileIds)
+        .select(
+          'id, summoner_name, tag_line, tier, rank, lp, profile_icon, role, riot_account_id, puuid'
+        )
+        // players.id === profile_id (UUID do auth)
+        .in('id', allProfileIds)
     : { data: [] };
 
   // 5. Permissao do usuario logado
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   type UserRole = 'admin' | 'organizer' | 'captain' | 'member' | 'public';
   let userRole: UserRole = 'public';
@@ -87,7 +95,7 @@ export default async function MatchPage({
       userRole = 'organizer';
     } else {
       const allMembers = [...(teamAMembers ?? []), ...(teamBMembers ?? [])];
-      const my = allMembers.find(m => m.profile_id === user.id);
+      const my = allMembers.find((m) => m.profile_id === user.id);
       if (my) userRole = my.team_role === 'captain' ? 'captain' : 'member';
     }
   }
