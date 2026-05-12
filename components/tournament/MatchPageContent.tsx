@@ -5,8 +5,6 @@ import { createClient } from '@/lib/supabase/client';
 import TournamentCodeBox from './TournamentCodeBox';
 import {
   initRiotAssets,
-  getDDVersion,
-  getChampionMap,
   champCircleUrl,
   champSquareUrl,
   spellIconUrl,
@@ -60,7 +58,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Estado de assets resolvidos (versão + mapa de campeões)
+// Hook: resolve versão DDragon + mapa de campeões
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface AssetsState {
@@ -91,19 +89,13 @@ function useRiotAssets(): AssetsState {
 // Sub-componentes visuais
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Ícone de lane com fallback para texto label.
- * Usa CDragon Clash latest para os PNGs oficiais.
- */
 function LaneIcon({ lane }: { lane: string }) {
   const label = LANE_LABEL[lane] ?? lane ?? '—';
   const src   = laneIconUrl(lane);
   const [failed, setFailed] = useState(false);
 
   if (failed || !lane) {
-    return (
-      <span className="text-[10px] text-[#4A5568] uppercase font-bold">{label}</span>
-    );
+    return <span className="text-[10px] text-[#4A5568] uppercase font-bold">{label}</span>;
   }
 
   return (
@@ -119,10 +111,6 @@ function LaneIcon({ lane }: { lane: string }) {
   );
 }
 
-/**
- * Emblema de ranked com fallback para texto colorido.
- * Imagem 18x18 do CDragon ranked crests.
- */
 function RankEmblem({
   tier, rank, lp,
 }: {
@@ -152,7 +140,6 @@ function RankEmblem({
           onError={() => setImgFailed(true)}
         />
       ) : (
-        // fallback: texto abreviado colorido
         <span className="text-[10px] font-black">{short}</span>
       )}
       <span className="text-[10px] font-black">
@@ -163,9 +150,6 @@ function RankEmblem({
   );
 }
 
-/**
- * Avatar do jogador: tenta CDragon circle → DDragon square → profile icon → ◈
- */
 function PlayerAvatar({
   championId, champMap, version, profileIcon, isLive,
 }: {
@@ -175,14 +159,13 @@ function PlayerAvatar({
   profileIcon?: number | string | null;
   isLive: boolean;
 }) {
-  const [src, setSrc]         = useState<string | null>(null);
-  const [fallback, setFallback] = useState(0); // 0=circle, 1=square, 2=profile, 3=placeholder
+  const [src, setSrc]           = useState<string | null>(null);
+  const [fallback, setFallback] = useState(0);
 
   useEffect(() => {
     if (championId && championId > 0 && champMap[championId]) {
-      const key = champMap[championId];
       setFallback(0);
-      setSrc(champCircleUrl(key));
+      setSrc(champCircleUrl(champMap[championId]));
     } else if (profileIcon != null) {
       setFallback(2);
       setSrc(profileIconUrl(profileIcon, version));
@@ -195,19 +178,16 @@ function PlayerAvatar({
     if (championId && championId > 0 && champMap[championId]) {
       const key = champMap[championId];
       if (fallback === 0) {
-        // CDragon circle falhou → tenta DDragon square
         setFallback(1);
         setSrc(champSquareUrl(key, version));
         return;
       }
     }
     if (fallback < 2 && profileIcon != null) {
-      // square também falhou → profile icon
       setFallback(2);
       setSrc(profileIconUrl(profileIcon, version));
       return;
     }
-    // tudo falhou → placeholder
     setFallback(3);
     setSrc(null);
   };
@@ -228,7 +208,6 @@ function PlayerAvatar({
           <span className="text-[#4A5568] text-lg">◈</span>
         )}
       </div>
-      {/* Status dot */}
       <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#0D1421] ${
         isLive ? 'bg-green-500' : 'bg-[#2D3748]'
       }`} />
@@ -237,12 +216,26 @@ function PlayerAvatar({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Componente principal
+// Props
 // ─────────────────────────────────────────────────────────────────────────────
+
+// Tipo do stage vindo do Supabase (page.tsx)
+export interface StageData {
+  id: string | number;
+  name: string | null;
+  bracket_type: string | null;
+  best_of: number | null;
+  stage_order: number | null;
+}
 
 interface Props {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   match: any;
+  /**
+   * Objeto stage completo vindo do Supabase (ou null).
+   * A prop `stageName` foi removida — o nome é extraído de `stage.name` aqui.
+   */
+  stage?: StageData | null;
   teamAPlayers: { profile_id: string | number; team_role: string; lane: string | null; status: string | null }[];
   teamBPlayers: { profile_id: string | number; team_role: string; lane: string | null; status: string | null }[];
   playersData?: {
@@ -254,22 +247,30 @@ interface Props {
     lp: number | null;
     profile_icon: number | string | null;
     role: string | null;
+    /** puuid — campo adicionado no select de players (usada pela Spectator API) */
+    puuid?: string | null;
     riot_account_id: string | null;
   }[];
   userInMatch: boolean;
   userRole?: UserRole;
-  stageName?: string | null;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Componente principal
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function MatchPageContent({
   match,
+  stage = null,
   teamAPlayers,
   teamBPlayers,
   playersData = [],
   userInMatch,
   userRole = 'public',
-  stageName,
 }: Props) {
+  // Extrai nome da fase do objeto stage
+  const stageName = stage?.name ?? null;
+
   const notesStr = typeof match.notes === 'string' ? match.notes : '';
   const initialCode: string | null =
     match.tournament_code ?? (notesStr.match(/BR1_[A-Z0-9-]+/)?.[0] ?? null);
@@ -283,13 +284,12 @@ export default function MatchPageContent({
   const [timer, setTimer]             = useState(0);
   const timerRef                      = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Hook que resolve versão DDragon + mapa de campeões (singletons de Promise)
   const assets = useRiotAssets();
 
   const slug       = match.tournament?.slug ?? '';
   const isLive     = ['IN_PROGRESS', 'ONGOING', 'ongoing'].includes(matchStatus);
   const isFinished = ['FINISHED', 'finished'].includes(matchStatus);
-  const bestOf     = match.best_of ?? 1;
+  const bestOf     = match.best_of ?? stage?.best_of ?? 1;
 
   // 1 ─ Realtime: tournament_code + status + score
   useEffect(() => {
@@ -318,6 +318,7 @@ export default function MatchPageContent({
   // 2 ─ Polling Spectator API
   const fetchLiveGame = useCallback(async () => {
     if (!assets.ready) return;
+    // Usa riot_account_id (puuid) para polling — campo consistente com a Spectator v5
     const puuids = playersData
       .map((p) => p.riot_account_id)
       .filter((id): id is string => Boolean(id));
@@ -362,13 +363,11 @@ export default function MatchPageContent({
   const fmtTimer = (s: number): string =>
     `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
-  // helper: resolve ícone de campeão para bans (DDragon square — correto para ban row)
   const banChampImg = (championId: number): string | null => {
     const key = assets.champMap[championId];
     return key ? champSquareUrl(key, assets.version) : null;
   };
 
-  // helper: resolve ícone de spell para partida ao vivo
   const spellImg = (spellId: number): string =>
     spellIconUrl(spellId, assets.version);
 
@@ -530,6 +529,9 @@ export default function MatchPageContent({
               <InfoRow label="Formato" value={bestOf > 1 ? `MD${bestOf}` : 'BO1'} />
               <InfoRow label="Status"  value={STATUS_LABELS[matchStatus] ?? matchStatus} />
               {stageName && <InfoRow label="Fase" value={stageName} />}
+              {stage?.bracket_type && (
+                <InfoRow label="Formato da Fase" value={stage.bracket_type} />
+              )}
               {match.scheduled_at && (
                 <InfoRow
                   label="Agendado"
@@ -624,7 +626,6 @@ function TeamPanel({
     <div className={`rounded-2xl border overflow-hidden bg-[#0D1421]/80 ${
       isBlue ? 'border-blue-500/30' : 'border-red-500/30'
     }`}>
-      {/* Header */}
       <div className={`px-4 py-3 flex items-center justify-between ${
         isBlue ? 'bg-blue-500/10' : 'bg-red-500/10'
       }`}>
@@ -636,22 +637,20 @@ function TeamPanel({
         </span>
       </div>
 
-      {/* Jogadores */}
       <div className="p-2 space-y-1">
         {members.map((member) => {
           const pd = playersData.find(
             (p) => p.riot_account_id === member.profile_id || p.id === member.profile_id
           );
-          const live     = liveParticipants.find((p) => p.puuid === pd?.riot_account_id);
+          const live      = liveParticipants.find((p) => p.puuid === pd?.riot_account_id);
           const isInLobby = !!live;
-          const lane     = member.lane ?? pd?.role ?? null;
+          const lane      = member.lane ?? pd?.role ?? null;
 
           return (
             <div
               key={String(member.profile_id)}
               className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-white/5 transition-colors"
             >
-              {/* Avatar: CDragon circle → DDragon square → profile icon → ◈ */}
               <PlayerAvatar
                 championId={live?.championId}
                 champMap={assets.champMap}
@@ -660,7 +659,6 @@ function TeamPanel({
                 isLive={isInLobby}
               />
 
-              {/* Info */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5">
                   <p className="text-white text-xs font-bold truncate leading-none">
@@ -673,14 +671,12 @@ function TeamPanel({
                     <span className="text-[8px] font-black uppercase text-[#C8A84B] border border-[#C8A84B]/30 px-1 rounded shrink-0">C</span>
                   )}
                 </div>
-                {/* Rank + Lane */}
                 <div className="flex items-center gap-2 mt-0.5">
                   <RankEmblem tier={pd?.tier ?? null} rank={pd?.rank ?? null} lp={pd?.lp ?? null} />
                   {lane && <LaneIcon lane={lane} />}
                 </div>
               </div>
 
-              {/* Summoner spells ao vivo */}
               {live && (
                 <div className="flex flex-col gap-0.5 shrink-0">
                   <img src={getSpell(live.spell1Id)} alt="D"
@@ -694,7 +690,6 @@ function TeamPanel({
                 </div>
               )}
 
-              {/* Status badge */}
               <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-lg shrink-0 ${
                 isInLobby
                   ? 'bg-green-500/10 text-green-500 border border-green-500/20'
@@ -706,7 +701,6 @@ function TeamPanel({
           );
         })}
 
-        {/* Slots vazios skeleton */}
         {Array.from({ length: Math.max(0, 5 - members.length) }).map((_, i) => (
           <div key={`empty-${i}`} className="flex items-center gap-3 px-3 py-2 rounded-xl opacity-20">
             <div className="w-10 h-10 rounded-lg bg-[#1A2535] animate-pulse shrink-0" />
