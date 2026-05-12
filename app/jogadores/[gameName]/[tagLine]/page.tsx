@@ -142,8 +142,6 @@ export default async function PlayerProfilePage({
   const mainSplash    = mainChampName ? championSplashUrl(mainChampName, 0) : null;
 
   // ── 5. Busca perfil interno (opcional) ────────────────────────────────────
-  // FIX: usa .limit(1) + array em vez de .maybeSingle() para evitar crash
-  // quando o banco retorna mais de 1 linha para o mesmo gameName/tagLine.
   const supabase = await createClient();
   const { data: riotRows } = await supabase
     .from("riot_accounts")
@@ -194,7 +192,7 @@ export default async function PlayerProfilePage({
         <div style={{ position:"absolute", inset:0, background:"linear-gradient(to bottom, transparent 40%, #050E1A 100%)" }} />
 
         <div className="relative max-w-6xl mx-auto px-4 pt-10 pb-8" style={{ display:"flex", alignItems:"flex-end", gap:24, flexWrap:"wrap" }}>
-          {/* Ícone com moldura CSS (sem depender de imagem externa) */}
+          {/* Ícone com moldura CSS glow */}
           <div style={{ position:"relative", width:110, height:126, flexShrink:0 }}>
             {iconUrl && (
               <>
@@ -286,7 +284,6 @@ export default async function PlayerProfilePage({
                     width={80} height={80}
                     alt={tier}
                     style={{ width:80, height:80, objectFit:"contain", flexShrink:0 }}
-                    onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
                   />
                   <div style={{ flex:1, minWidth:0 }}>
                     <p style={{ color:"#9CA3AF", fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:4 }}>

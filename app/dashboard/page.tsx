@@ -75,13 +75,10 @@ export default async function DashboardPage({
       .limit(10),
   ]);
 
-  // FIX: filtra apenas IDs válidos (UUIDs reais) antes de usar no not.in()
-  // Evita o erro 400 do PostgREST quando ownedIds contém placeholders ou está vazio.
   const ownedIds = (myOwnedTeams ?? [])
     .map((t: any) => t.id as string)
     .filter((id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
 
-  // Só busca times como membro se houver IDs válidos para excluir — evita "not.in.()" inválido
   let myMemberTeams: any[] | null = null;
   if (ownedIds.length > 0) {
     const { data } = await supabase
@@ -101,7 +98,6 @@ export default async function DashboardPage({
       .limit(5);
     myMemberTeams = data;
   } else {
-    // Sem times próprios (ou IDs inválidos): busca todos os times onde é membro
     const { data } = await supabase
       .from("team_members")
       .select(
@@ -189,10 +185,8 @@ export default async function DashboardPage({
         </div>
       )}
 
-      {/* ── Perfil ─────────────────────────────────────────────────────────── */}
+      {/* ── Perfil ────────────────────────────────────────────────────────── */}
       <div className="card-lol flex items-center gap-6 flex-wrap">
-
-        {/* ── Ícone de perfil com anel/moldura via CSS glow ─────────────── */}
         <div style={{ position: "relative", width: 96, height: 112, flexShrink: 0 }}>
           {profileIcon ? (
             <>
@@ -213,8 +207,6 @@ export default async function DashboardPage({
                   ["--glow-color" as string]:   borderStyle?.glow  ?? "rgba(200,168,75,0.5)",
                 } as React.CSSProperties}
               />
-
-              {/* Badge de nível */}
               <span
                 style={{
                   position: "absolute",
@@ -258,7 +250,7 @@ export default async function DashboardPage({
         </Link>
       </div>
 
-      {/* ── Conta Riot ─────────────────────────────────────────────────────── */}
+      {/* ── Conta Riot ────────────────────────────────────────────────────── */}
       {riotAccount && (
         <div className="card-lol space-y-4">
           <h2 className="text-lg font-bold text-white">⚔️ Conta Riot Vinculada</h2>
@@ -298,7 +290,6 @@ export default async function DashboardPage({
                       width={72}
                       height={72}
                       style={{ display: "block", width: 72, height: 72, objectFit: "contain" }}
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
                     />
                   </div>
                   <div>
@@ -323,7 +314,6 @@ export default async function DashboardPage({
             <p className="text-gray-500 text-sm">Sem rank nesta temporada</p>
           )}
 
-          {/* Top Campeões */}
           {masteryAssets.length > 0 && (
             <div>
               <p className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-3">
@@ -402,7 +392,7 @@ export default async function DashboardPage({
         </div>
       )}
 
-      {/* ── Meus Times ─────────────────────────────────────────────────────────── */}
+      {/* ── Meus Times ────────────────────────────────────────────────────── */}
       <div className="card-lol">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold text-white">🛡️ Meus Times</h2>
@@ -473,7 +463,7 @@ export default async function DashboardPage({
         )}
       </div>
 
-      {/* ── Torneios Abertos ───────────────────────────────────────────────── */}
+      {/* ── Torneios Abertos ──────────────────────────────────────────────── */}
       {openTournaments && openTournaments.length > 0 && (
         <div className="card-lol">
           <div className="flex items-center justify-between mb-4">
