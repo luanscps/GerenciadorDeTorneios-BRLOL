@@ -218,6 +218,8 @@ export function rankEmblemUrl(tier: string): string {
  *   200–299 → border_5 (diamante)
  *   300–499 → border_6 (mestre/GM)
  *   500+    → border_7 (challenger/ancestral)
+ *
+ * Nome correto do arquivo CDragon: summoner-level-border-N.png
  */
 export function profileBorderUrl(level: number): string {
   const BASE = "https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/images";
@@ -229,7 +231,7 @@ export function profileBorderUrl(level: number): string {
   else if (level >= 100) n = 3;
   else if (level >= 30)  n = 2;
   else                   n = 1;
-  return `${BASE}/summoner-icon-border-size-128-${n}.png`;
+  return `${BASE}/summoner-level-border-${n}.png`;
 }
 
 /**
