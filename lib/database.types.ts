@@ -407,6 +407,8 @@ export type Database = {
       matches: {
         Row: {
           best_of: number
+          codes_expire_at: string | null
+          codes_generated_at: string | null
           created_at: string
           finished_at: string | null
           format: string
@@ -417,6 +419,8 @@ export type Database = {
           notes: string | null
           played_at: string | null
           riot_match_id: string | null
+          riot_provider_id: number | null
+          riot_tournament_id: number | null
           round: number
           scheduled_at: string | null
           score_a: number | null
@@ -427,12 +431,15 @@ export type Database = {
           team_a_id: string | null
           team_b_id: string | null
           tournament_code: string | null
+          tournament_codes: Json | null
           tournament_id: string
           updated_at: string
           winner_id: string | null
         }
         Insert: {
           best_of?: number
+          codes_expire_at?: string | null
+          codes_generated_at?: string | null
           created_at?: string
           finished_at?: string | null
           format?: string
@@ -443,6 +450,8 @@ export type Database = {
           notes?: string | null
           played_at?: string | null
           riot_match_id?: string | null
+          riot_provider_id?: number | null
+          riot_tournament_id?: number | null
           round?: number
           scheduled_at?: string | null
           score_a?: number | null
@@ -453,12 +462,15 @@ export type Database = {
           team_a_id?: string | null
           team_b_id?: string | null
           tournament_code?: string | null
+          tournament_codes?: Json | null
           tournament_id: string
           updated_at?: string
           winner_id?: string | null
         }
         Update: {
           best_of?: number
+          codes_expire_at?: string | null
+          codes_generated_at?: string | null
           created_at?: string
           finished_at?: string | null
           format?: string
@@ -469,6 +481,8 @@ export type Database = {
           notes?: string | null
           played_at?: string | null
           riot_match_id?: string | null
+          riot_provider_id?: number | null
+          riot_tournament_id?: number | null
           round?: number
           scheduled_at?: string | null
           score_a?: number | null
@@ -479,6 +493,7 @@ export type Database = {
           team_a_id?: string | null
           team_b_id?: string | null
           tournament_code?: string | null
+          tournament_codes?: Json | null
           tournament_id?: string
           updated_at?: string
           winner_id?: string | null
@@ -962,6 +977,61 @@ export type Database = {
             columns: ["profile_id"]
             isOneToOne: false
             referencedRelation: "profiles_with_riot"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      riot_tournament_registrations: {
+        Row: {
+          callback_url: string
+          created_at: string
+          created_by: string | null
+          id: string
+          region: string
+          riot_provider_id: number
+          riot_tournament_id: number
+          tournament_id: string
+        }
+        Insert: {
+          callback_url: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          region?: string
+          riot_provider_id: number
+          riot_tournament_id: number
+          tournament_id: string
+        }
+        Update: {
+          callback_url?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          region?: string
+          riot_provider_id?: number
+          riot_tournament_id?: number
+          tournament_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "riot_tournament_registrations_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "riot_tournament_registrations_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_with_riot"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "riot_tournament_registrations_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: true
+            referencedRelation: "tournaments"
             referencedColumns: ["id"]
           },
         ]
