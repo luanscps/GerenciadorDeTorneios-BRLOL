@@ -1482,7 +1482,7 @@ export type Database = {
           slug: string
           start_date: string | null
           starts_at: string | null
-          status: string
+          status: Database["public"]["Enums"]["tournament_status"]
           updated_at: string
         }
         Insert: {
@@ -1508,7 +1508,7 @@ export type Database = {
           slug: string
           start_date?: string | null
           starts_at?: string | null
-          status?: string
+          status?: Database["public"]["Enums"]["tournament_status"]
           updated_at?: string
         }
         Update: {
@@ -1534,7 +1534,7 @@ export type Database = {
           slug?: string
           start_date?: string | null
           starts_at?: string | null
-          status?: string
+          status?: Database["public"]["Enums"]["tournament_status"]
           updated_at?: string
         }
         Relationships: [
@@ -1717,7 +1717,12 @@ export type Database = {
       dispute_status: "OPEN" | "UNDER_REVIEW" | "RESOLVED" | "DISMISSED"
       inscricao_status: "PENDING" | "APPROVED" | "REJECTED"
       invite_status: "PENDING" | "ACCEPTED" | "DECLINED" | "EXPIRED"
-      match_status: "SCHEDULED" | "IN_PROGRESS" | "FINISHED"
+      match_status:
+        | "SCHEDULED"
+        | "IN_PROGRESS"
+        | "FINISHED"
+        | "CANCELLED"
+        | "WALKOVER"
       player_role: "TOP" | "JUNGLE" | "MID" | "ADC" | "SUPPORT"
       team_member_role: "captain" | "member" | "substitute"
       team_member_status: "pending" | "accepted" | "rejected" | "left"
@@ -1867,7 +1872,13 @@ export const Constants = {
       dispute_status: ["OPEN", "UNDER_REVIEW", "RESOLVED", "DISMISSED"],
       inscricao_status: ["PENDING", "APPROVED", "REJECTED"],
       invite_status: ["PENDING", "ACCEPTED", "DECLINED", "EXPIRED"],
-      match_status: ["SCHEDULED", "IN_PROGRESS", "FINISHED"],
+      match_status: [
+        "SCHEDULED",
+        "IN_PROGRESS",
+        "FINISHED",
+        "CANCELLED",
+        "WALKOVER",
+      ],
       player_role: ["TOP", "JUNGLE", "MID", "ADC", "SUPPORT"],
       team_member_role: ["captain", "member", "substitute"],
       team_member_status: ["pending", "accepted", "rejected", "left"],
