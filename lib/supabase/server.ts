@@ -1,5 +1,6 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 export async function createClient() {
   const cookieStore = await cookies();
@@ -18,8 +19,6 @@ export async function createClient() {
               cookieStore.set(name, value, options)
             );
           } catch (e: any) {
-            // Ignora erro de "cookies can only be modified in Server Action/Route Handler"
-            // pois ocorre em Server Components onde a leitura ainda funciona corretamente
             if (!e?.message?.includes('Cookies can only be modified')) {
               throw e;
             }
@@ -28,4 +27,13 @@ export async function createClient() {
       },
     }
   );
+}
+
+/**
+ * Alias para createAdminClient — bypassa RLS via service_role.
+ * Usar APENAS em Route Handlers, Server Actions e libs server-side.
+ * NUNCA chamar de código client-side.
+ */
+export function createServiceRoleClient() {
+  return createAdminClient();
 }
