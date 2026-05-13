@@ -81,7 +81,6 @@ function buildCodeParams(
   bestOf: number,
   puuids: string[]
 ): { count: number; params: TournamentCodeParameters } {
-  // count = número máximo de games possíveis para o formato
   const count = bestOf;
   const params: TournamentCodeParameters = {
     teamSize: 5,
@@ -101,11 +100,16 @@ export async function generateCodesForMatch(
   options: {
     /** Forçar regeração mesmo se codes ainda são válidos */
     forceRegenerate?: boolean;
-    /** Incluir PUUIDs dos jogadores como allowedParticipants. Se false → lobby aberto */
+    /**
+     * Incluir PUUIDs dos jogadores como allowedParticipants.
+     * Default: true → lobby fechado (mais seguro para torneios).
+     * false → qualquer 10 jogadores podem entrar.
+     */
     lockParticipants?: boolean;
   } = {}
 ): Promise<GenerateCodesForMatchResult> {
-  const { forceRegenerate = false, lockParticipants = false } = options;
+  // FIX: lockParticipants default true — lobby fechado por padrão
+  const { forceRegenerate = false, lockParticipants = true } = options;
 
   const supabase = createServiceRoleClient();
 
@@ -157,24 +161,36 @@ export async function generateCodesForMatch(
   const riotTournamentId = Number(registration.riot_tournament_id);
 
   // ── 4. Buscar PUUIDs dos jogadores (se lockParticipants = true) ───────────
+  //
+  // FIX: o join direto select("riot_accounts(puuid)") em team_members não
+  // funciona pois a FK nomeada "riot_accounts" não existe no schema PostgREST.
+  // Correto: buscar riot_account_id de team_members → resolver puuid em riot_accounts.
+  //
   let puuids: string[] = [];
   if (lockParticipants && match.team_a_id && match.team_b_id) {
+    // Passo 1: IDs das contas Riot dos membros aceitos dos dois times
     const { data: members } = await supabase
       .from("team_members")
-      .select("riot_accounts(puuid)")
+      .select("riot_account_id")
       .in("team_id", [match.team_a_id, match.team_b_id])
       .eq("status", "accepted");
 
-    if (members) {
-      puuids = members
-        .flatMap((m: any) => {
-          const ra = m.riot_accounts;
-          if (!ra) return [];
-          return Array.isArray(ra) ? ra.map((r: any) => r.puuid) : [ra.puuid];
-        })
-        .filter(Boolean)
-        // PUUID válido tem 78 caracteres
-        .filter((p: string) => p.length === 78)
+    const riotAccountIds = (members ?? [])
+      .map((m: any) => m.riot_account_id)
+      .filter((id: unknown): id is string => typeof id === "string" && id.length > 0);
+
+    // Passo 2: resolver PUUIDs pelas contas primárias
+    if (riotAccountIds.length > 0) {
+      const { data: riotAccounts } = await supabase
+        .from("riot_accounts")
+        .select("puuid")
+        .in("id", riotAccountIds)
+        .eq("is_primary", true);
+
+      puuids = (riotAccounts ?? [])
+        .map((r: any) => r.puuid)
+        // PUUID válido tem exatamente 78 caracteres
+        .filter((p: unknown): p is string => typeof p === "string" && p.length === 78)
         // Riot aceita máx 10 participantes
         .slice(0, 10);
     }
@@ -235,7 +251,8 @@ export async function generateCodesForStage(
     skipValid?: boolean;
   } = {}
 ): Promise<GenerateCodesForStageResult> {
-  const { forceRegenerate = false, lockParticipants = false, skipValid = true } = options;
+  // FIX: lockParticipants default true — consistente com generateCodesForMatch
+  const { forceRegenerate = false, lockParticipants = true, skipValid = true } = options;
 
   const supabase = createServiceRoleClient();
 
@@ -271,11 +288,10 @@ export async function generateCodesForStage(
       codesArray.length > 0 && !isExpiredOrMissing(m.codes_expire_at);
 
     if (skipValid && hasValidCodes && !forceRegenerate) {
-      // Retornar cache sem chamar Riot API
       results.push({
         match_id: m.id,
         codes: codesArray,
-        generated_at: "", // já persisted, não precisamos retornar
+        generated_at: "",
         expire_at: m.codes_expire_at!,
         from_cache: true,
         regenerated: false,
