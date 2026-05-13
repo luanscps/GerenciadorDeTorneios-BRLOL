@@ -8,22 +8,55 @@ function getApiKey(): string {
   return key;
 }
 
+/**
+ * Mapeamento de platform host → regional host.
+ *
+ * Plataformas SEA atuais (2024+):
+ *   sg2 = Singapore (unificou ph2 e th2 em 2023)
+ *   tw2 = Taiwan
+ *   vn2 = Vietnam
+ *
+ * ph2 e th2 mantidos apenas para compatibilidade com dados históricos.
+ */
 const REGION_TO_REGIONAL: Record<string, string> = {
-  br1: "americas", na1: "americas", la1: "americas", la2: "americas",
-  euw1: "europe", eun1: "europe", tr1: "europe", ru: "europe",
-  kr: "asia", jp1: "asia",
-  oc1: "sea", ph2: "sea", sg2: "sea", th2: "sea", tw2: "sea", vn2: "sea",
+  // Americas
+  br1: "americas",
+  na1: "americas",
+  la1: "americas",
+  la2: "americas",
+  // Europe
+  euw1: "europe",
+  eun1: "europe",
+  tr1: "europe",
+  ru: "europe",
+  // Asia
+  kr: "asia",
+  jp1: "asia",
+  // SEA — plataformas atuais
+  oc1: "sea",
+  sg2: "sea",
+  tw2: "sea",
+  vn2: "sea",
+  // SEA — legado (ph2 e th2 foram migrados para sg2 em 2023)
+  ph2: "sea",
+  th2: "sea",
 };
 
-export function getRegion(): string { return (process.env.RIOT_REGION ?? "br1").toLowerCase(); }
+export function getRegion(): string {
+  return (process.env.RIOT_REGION ?? "br1").toLowerCase();
+}
 export function getRegionalHost(): string {
   const region = getRegion();
   return process.env.RIOT_REGIONAL_HOST ?? REGION_TO_REGIONAL[region] ?? "americas";
 }
-export function getPlatformUrl(): string { return "https://" + getRegion() + ".api.riotgames.com"; }
-export function getRegionalUrl(): string { return "https://" + getRegionalHost() + ".api.riotgames.com"; }
+export function getPlatformUrl(): string {
+  return "https://" + getRegion() + ".api.riotgames.com";
+}
+export function getRegionalUrl(): string {
+  return "https://" + getRegionalHost() + ".api.riotgames.com";
+}
 
-// ─── Data Dragon: versão dinâmica ─────────────────────────────────────────────
+// ─── Data Dragon: versão dinâmica ──────────────────────────────────────────────
 let _ddVersion: string | null = null;
 
 export async function getDDVersion(): Promise<string> {
@@ -31,16 +64,31 @@ export async function getDDVersion(): Promise<string> {
   const cached = getCached<string>("dd:version");
   if (cached) { _ddVersion = cached; return cached; }
   try {
-    const res = await fetch("https://ddragon.leagueoflegends.com/api/versions.json", {
-      next: { revalidate: 3600 },
-    });
-    const versions: string[] = await res.json();
-    _ddVersion = versions[0];
+    // Usa realms/br.json para obter a versão exata da região BR
+    // (mais preciso que versions.json que pode não refletir a versão regional atual)
+    const res = await fetch(
+      "https://ddragon.leagueoflegends.com/realms/br.json",
+      { next: { revalidate: 3600 } }
+    );
+    const realm = await res.json();
+    _ddVersion = realm.v as string;
     setCached("dd:version", _ddVersion, 3600);
     return _ddVersion;
   } catch {
-    _ddVersion = "15.1.1";
-    return _ddVersion;
+    // Fallback: busca lista geral de versões
+    try {
+      const res = await fetch(
+        "https://ddragon.leagueoflegends.com/api/versions.json",
+        { next: { revalidate: 3600 } }
+      );
+      const versions: string[] = await res.json();
+      _ddVersion = versions[0];
+      setCached("dd:version", _ddVersion, 3600);
+      return _ddVersion;
+    } catch {
+      _ddVersion = "15.1.1";
+      return _ddVersion;
+    }
   }
 }
 
@@ -60,14 +108,19 @@ async function riotFetch<T>(url: string): Promise<T> {
 
 // ─── Endpoints ────────────────────────────────────────────────────────────────
 
-export async function getAccountByRiotId(gameName: string, tagLine: string): Promise<RiotAccount> {
+export async function getAccountByRiotId(
+  gameName: string,
+  tagLine: string
+): Promise<RiotAccount> {
   const key = ("account:" + gameName + "#" + tagLine).toLowerCase();
   const cached = getCached<RiotAccount>(key);
   if (cached) return cached;
   const data = await riotFetch<RiotAccount>(
     getRegionalUrl() +
-    "/riot/account/v1/accounts/by-riot-id/" +
-    encodeURIComponent(gameName) + "/" + encodeURIComponent(tagLine)
+      "/riot/account/v1/accounts/by-riot-id/" +
+      encodeURIComponent(gameName) +
+      "/" +
+      encodeURIComponent(tagLine)
   );
   setCached(key, data, 600);
   return data;
@@ -84,7 +137,9 @@ export async function getSummonerByPuuid(puuid: string): Promise<Summoner> {
   return data;
 }
 
-export async function getLeagueEntriesByPuuid(puuid: string): Promise<LeagueEntry[]> {
+export async function getLeagueEntriesByPuuid(
+  puuid: string
+): Promise<LeagueEntry[]> {
   const key = "league:" + puuid;
   const cached = getCached<LeagueEntry[]>(key);
   if (cached) return cached;
@@ -95,43 +150,57 @@ export async function getLeagueEntriesByPuuid(puuid: string): Promise<LeagueEntr
   return data;
 }
 
-export async function getTopMasteriesByPuuid(puuid: string, count = 5): Promise<ChampionMastery[]> {
+export async function getTopMasteriesByPuuid(
+  puuid: string,
+  count = 5
+): Promise<ChampionMastery[]> {
   const key = "mastery:" + puuid + ":" + count;
   const cached = getCached<ChampionMastery[]>(key);
   if (cached) return cached;
   const data = await riotFetch<ChampionMastery[]>(
     getPlatformUrl() +
-    "/lol/champion-mastery/v4/champion-masteries/by-puuid/" +
-    puuid + "/top?count=" + count
+      "/lol/champion-mastery/v4/champion-masteries/by-puuid/" +
+      puuid +
+      "/top?count=" +
+      count
   );
   setCached(key, data, 600);
   return data;
 }
 
-export async function getMatchIdsByPuuid(puuid: string, count = 20, queue?: number): Promise<string[]> {
+export async function getMatchIdsByPuuid(
+  puuid: string,
+  count = 20,
+  queue?: number
+): Promise<string[]> {
   const key = "matchids:" + puuid + ":" + count + ":" + (queue ?? "all");
   const cached = getCached<string[]>(key);
   if (cached) return cached;
   const q = queue ? "&queue=" + queue : "";
   const data = await riotFetch<string[]>(
     getRegionalUrl() +
-    "/lol/match/v5/matches/by-puuid/" +
-    puuid + "/ids?count=" + count + q
+      "/lol/match/v5/matches/by-puuid/" +
+      puuid +
+      "/ids?count=" +
+      count +
+      q
   );
   setCached(key, data, 120);
   return data;
 }
 
 /**
- * Busca e valida uma partida pelo matchId.
+ * Busca e valida uma partida pelo matchId via MatchDtoSchema (Zod).
  *
- * O MatchDtoSchema (Zod) garante:
+ * Garantias do schema:
  * - PUUIDs de todos os participantes são válidos
- * - participantId (1–10) presente em cada participante (necessário para pick order)
- * - gameDuration normalizado: partidas antigas (< patch 11.20) vêm em ms e são
- *   convertidas para segundos automaticamente pelo transform do schema
+ * - participantId (1–10) presente (necessário para pick order)
+ * - gameDuration normalizado: partidas antigas (< patch 11.20) vinham em ms →
+ *   convertido para segundos automaticamente
  * - teamId restrito a 100 (Blue) ou 200 (Red)
  * - neutralMinionsKilled com default 0 quando ausente
+ * - summonerName opcional (campo deprecated pela Riot desde nov/2023)
+ * - riotIdGameName / riotIdTagLine quando disponíveis
  */
 export async function getMatchById(matchId: string): Promise<MatchDto> {
   const key = "match:" + matchId;
@@ -145,19 +214,23 @@ export async function getMatchById(matchId: string): Promise<MatchDto> {
   return data;
 }
 
-// ─── Asset URLs — Data Dragon ──────────────────────────────────────────────────
+// ─── Asset URLs — Data Dragon ─────────────────────────────────────────────────
 
 export async function profileIconUrl(id: number): Promise<string> {
   const v = await getDDVersion();
   return `https://ddragon.leagueoflegends.com/cdn/${v}/img/profileicon/${id}.png`;
 }
 
-export function championIconByCDragon(championId: number | null | undefined): string {
+export function championIconByCDragon(
+  championId: number | null | undefined
+): string {
   const id = championId ?? -1;
   return `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-icons/${id}.png`;
 }
 
-export async function championIconUrl(name: string | null | undefined): Promise<string> {
+export async function championIconUrl(
+  name: string | null | undefined
+): Promise<string> {
   const v = await getDDVersion();
   if (!name || name === "null" || name.trim() === "") {
     return `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-icons/-1.png`;
@@ -166,7 +239,10 @@ export async function championIconUrl(name: string | null | undefined): Promise<
   return `https://ddragon.leagueoflegends.com/cdn/${v}/img/champion/${normalized}.png`;
 }
 
-export function championSplashUrl(name: string | null | undefined, skinNum = 0): string {
+export function championSplashUrl(
+  name: string | null | undefined,
+  skinNum = 0
+): string {
   if (!name || name === "null" || name.trim() === "") {
     return "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-splashes/unmasked-magician.png";
   }
@@ -174,7 +250,10 @@ export function championSplashUrl(name: string | null | undefined, skinNum = 0):
   return `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${normalized}_${skinNum}.jpg`;
 }
 
-export function championLoadingUrl(name: string | null | undefined, skinNum = 0): string {
+export function championLoadingUrl(
+  name: string | null | undefined,
+  skinNum = 0
+): string {
   if (!name || name === "null" || name.trim() === "") return "";
   const normalized = name.replace(/[^a-zA-Z0-9]/g, "");
   return `https://ddragon.leagueoflegends.com/cdn/img/champion/loading/${normalized}_${skinNum}.jpg`;
@@ -198,15 +277,16 @@ export function rankEmblemUrl(tier: string): string {
 }
 
 export function profileBorderUrl(level: number): string {
-  const BASE = "https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/images";
+  const BASE =
+    "https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/images";
   let n: number;
-  if (level >= 500)      n = 7;
+  if (level >= 500) n = 7;
   else if (level >= 300) n = 6;
   else if (level >= 200) n = 5;
   else if (level >= 150) n = 4;
   else if (level >= 100) n = 3;
-  else if (level >= 30)  n = 2;
-  else                   n = 1;
+  else if (level >= 30) n = 2;
+  else n = 1;
   return `${BASE}/summoner-level-border-${n}.png`;
 }
 
@@ -223,7 +303,7 @@ export function profileIconBorderStyle(level: number): {
   if (level >= 100) return { color: "#00E5CC", glow: "rgba(0,229,204,0.6)",   label: "Teal" };
   if (level >= 50)  return { color: "#C8A84B", glow: "rgba(200,168,75,0.6)",  label: "Dourado" };
   if (level >= 30)  return { color: "#A8A9AD", glow: "rgba(168,169,173,0.5)", label: "Prata" };
-  return            { color: "#8B7A6B", glow: "rgba(139,122,107,0.4)", label: "Bronze" };
+  return              { color: "#8B7A6B", glow: "rgba(139,122,107,0.4)", label: "Bronze" };
 }
 
 export function masteryIconUrl(_level: number): string {
@@ -241,7 +321,9 @@ export function masteryLevelColor(level: number): string {
 
 // ─── Data Dragon: JSON estático ───────────────────────────────────────────────
 
-export async function getAllChampions(): Promise<Record<string, ChampionBasic>> {
+export async function getAllChampions(): Promise<
+  Record<string, ChampionBasic>
+> {
   const cacheKey = "dd:champions:pt_BR";
   const cached = getCached<Record<string, ChampionBasic>>(cacheKey);
   if (cached) return cached;
@@ -346,12 +428,21 @@ export interface MatchTeam {
 export interface MatchParticipant {
   puuid: string;
   /**
-   * ID do participante (1–10). Determina o time e o slot de pick no draft.
-   * 1–5 = Blue, 6–10 = Red.
+   * ID do participante (1–10). Determina o time e slot de pick no draft.
+   * 1–5 = Blue Side, 6–10 = Red Side.
    * Use getPickOrderSlot(participantId) de lib/riot-tournament.ts para mapear.
    */
   participantId: number;
-  summonerName: string;
+  /**
+   * @deprecated Campo em processo de descontinuação pela Riot (nov/2023).
+   * Para contas novas pode retornar UUID aleatório em vez do nome do jogador.
+   * Use riotIdGameName + riotIdTagLine para exibição.
+   */
+  summonerName?: string;
+  /** Nome da parte do Riot ID (ex: "Faker"). Disponível em partidas recentes. */
+  riotIdGameName?: string;
+  /** Tag da parte do Riot ID (ex: "KR1"). Disponível em partidas recentes. */
+  riotIdTagLine?: string;
   championName: string;
   championId: number;
   kills: number;
@@ -364,8 +455,13 @@ export interface MatchParticipant {
   totalMinionsKilled: number;
   neutralMinionsKilled: number;
   visionScore: number;
-  item0: number; item1: number; item2: number;
-  item3: number; item4: number; item5: number; item6: number;
+  item0: number;
+  item1: number;
+  item2: number;
+  item3: number;
+  item4: number;
+  item5: number;
+  item6: number;
   pentaKills: number;
   individualPosition: string;
   teamPosition: string;

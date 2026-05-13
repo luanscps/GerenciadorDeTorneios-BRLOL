@@ -58,19 +58,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
 
-  let body: {
+  let rawBody: {
     tournamentId?: number;
     count?: number;
     teamSize?: number;
     pickType?: string;
     mapType?: string;
     spectatorType?: string;
+    /** @deprecated Use allowedParticipants (PUUIDs) — mantido para compatibilidade de frontend legado */
     allowedSummonerIds?: string[];
+    allowedParticipants?: string[];
     metadata?: string;
   };
 
   try {
-    body = await req.json();
+    rawBody = await req.json();
   } catch {
     return NextResponse.json({ error: "Body JSON inválido" }, { status: 400 });
   }
@@ -82,24 +84,34 @@ export async function POST(req: NextRequest) {
     pickType = "TOURNAMENT_DRAFT",
     mapType = "SUMMONERS_RIFT",
     spectatorType = "ALL",
-    allowedSummonerIds,
     metadata,
-  } = body;
+  } = rawBody;
+
+  // Alias legado: se vier allowedSummonerIds, usa como allowedParticipants
+  // A Riot v5 só aceita PUUIDs em allowedParticipants
+  const allowedParticipants =
+    rawBody.allowedParticipants ?? rawBody.allowedSummonerIds;
 
   if (!tournamentId) {
-    return NextResponse.json({ error: "tournamentId é obrigatório" }, { status: 400 });
+    return NextResponse.json(
+      { error: "tournamentId é obrigatório" },
+      { status: 400 }
+    );
   }
 
   if (count < 1 || count > 1000) {
-    return NextResponse.json({ error: "count deve ser entre 1 e 1000" }, { status: 400 });
+    return NextResponse.json(
+      { error: "count deve ser entre 1 e 1000" },
+      { status: 400 }
+    );
   }
 
   const params: TournamentCodeParameters = {
     teamSize,
-    pickType: pickType as "TOURNAMENT_DRAFT",
-    mapType: mapType as "SUMMONERS_RIFT",
-    spectatorType: spectatorType as "ALL",
-    ...(allowedSummonerIds?.length ? { allowedSummonerIds } : {}),
+    pickType: pickType as TournamentCodeParameters["pickType"],
+    mapType: mapType as TournamentCodeParameters["mapType"],
+    spectatorType: spectatorType as TournamentCodeParameters["spectatorType"],
+    ...(allowedParticipants?.length ? { allowedParticipants } : {}),
     ...(metadata ? { metadata } : {}),
   };
 
@@ -122,18 +134,38 @@ export async function PUT(req: NextRequest) {
 
   const code = req.nextUrl.searchParams.get("code");
   if (!code) {
-    return NextResponse.json({ error: "Parâmetro 'code' obrigatório" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Parâmetro 'code' obrigatório" },
+      { status: 400 }
+    );
   }
 
-  let body: Partial<TournamentCodeParameters>;
+  let rawBody: Pick<
+    TournamentCodeParameters,
+    "pickType" | "mapType" | "spectatorType" | "allowedParticipants"
+  > & {
+    /** @deprecated Use allowedParticipants */
+    allowedSummonerIds?: string[];
+  };
+
   try {
-    body = await req.json();
+    rawBody = await req.json();
   } catch {
     return NextResponse.json({ error: "Body JSON inválido" }, { status: 400 });
   }
 
+  // Alias legado para PUT também
+  const body: Pick<
+    TournamentCodeParameters,
+    "pickType" | "mapType" | "spectatorType" | "allowedParticipants"
+  > = {
+    ...rawBody,
+    allowedParticipants:
+      rawBody.allowedParticipants ?? rawBody.allowedSummonerIds,
+  };
+
   try {
-    await updateTournamentCode(code, body as Pick<TournamentCodeParameters, "pickType" | "mapType" | "spectatorType" | "allowedSummonerIds">);
+    await updateTournamentCode(code, body);
     return NextResponse.json({ success: true, code, updated: body });
   } catch (err) {
     const { error, status } = riotErrorResponse(err);

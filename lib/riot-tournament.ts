@@ -22,7 +22,7 @@ import {
   type ValidatedLobbyEventResponse,
 } from "@/lib/validations/riot-tournament.schema";
 
-// ── Alterne para "/lol/tournament/v5" ao receber Production Key ────────────────
+// ── Alterne para "/lol/tournament/v5" ao receber Production Key ──────────────
 const BASE = "/lol/tournament-stub/v5";
 const METHOD_PREFIX = "tournament-stub-v5";
 
@@ -49,8 +49,8 @@ export type SpectatorType = "NONE" | "LOBBYONLY" | "ALL";
  * Parâmetros para gerar tournament codes.
  *
  * IMPORTANTE: tournament-v5 usa `allowedParticipants` com PUUIDs.
- * O campo `allowedSummonerIds` era da v4 e NÃO é aceito na v5 — passa
- * silenciosamente ou retorna 400.
+ * O campo `allowedSummonerIds` era da v4 e NÃO é aceito na v5 —
+ * passa silenciosamente ou retorna 400.
  */
 export interface TournamentCodeParameters {
   teamSize: number;
@@ -67,7 +67,19 @@ export type LobbyEventResponse = ValidatedLobbyEventResponse;
 
 export interface ProviderRegistration {
   region: string;
-  /** URL que a Riot vai chamar via POST com o resultado da partida */
+  /**
+   * URL que a Riot vai chamar via POST com o resultado da partida.
+   *
+   * RESTRIÇÕES OBRIGATÓRIAS DA RIOT (violação causa rejeição silenciosa):
+   * - Apenas http:80 ou https:443 (sem portas customizadas)
+   * - TLD aprovado antes de março/2011: .com, .net, .org, .br, etc.
+   * - gTLDs modernos como .app, .dev, .io, .xyz são REJEITADOS
+   * - Domínios *.vercel.app, *.netlify.app, *.pages.dev NÃO são válidos
+   *   para callback de produção (use um domínio próprio)
+   *
+   * Exemplo válido:  https://api.seudominio.com.br/api/riot/tournament/callback
+   * Exemplo inválido: https://seuapp.vercel.app/api/riot/tournament/callback
+   */
   url: string;
 }
 
@@ -76,7 +88,7 @@ export interface TournamentRegistration {
   providerId: number;
 }
 
-// ─── 1. Registrar Provider ──────────────────────────────────────────────────────
+// ─── 1. Registrar Provider ───────────────────────────────────────────────────
 export async function registerProvider(
   params: ProviderRegistration
 ): Promise<number> {
@@ -87,7 +99,7 @@ export async function registerProvider(
   );
 }
 
-// ─── 2. Criar Torneio ──────────────────────────────────────────────────────────
+// ─── 2. Criar Torneio ────────────────────────────────────────────────────────
 export async function createTournament(
   params: TournamentRegistration
 ): Promise<number> {
@@ -98,10 +110,13 @@ export async function createTournament(
   );
 }
 
-// ─── 3. Gerar Tournament Codes ─────────────────────────────────────────────────
+// ─── 3. Gerar Tournament Codes ───────────────────────────────────────────────
 /**
  * Valida os parâmetros via Zod antes de enviar à Riot.
  * Captura cedo: PUUIDs inválidos, enums incorretos, allowedParticipants mal formado.
+ *
+ * BEST PRACTICE: Gere codes sob demanda (por partida), não todos de uma vez.
+ * Tournament codes expiram em 3 meses se não usados.
  */
 export async function generateTournamentCodes(
   tournamentId: number,
@@ -116,7 +131,7 @@ export async function generateTournamentCodes(
   );
 }
 
-// ─── 4. Buscar detalhes de um Code ─────────────────────────────────────────────
+// ─── 4. Buscar detalhes de um Code ──────────────────────────────────────────
 /**
  * Retorno validado pelo TournamentCodeSchema:
  * - participants são PUUIDs válidos (78 chars)
@@ -132,7 +147,7 @@ export async function getTournamentCode(
   return TournamentCodeSchema.parse(raw);
 }
 
-// ─── 5. Atualizar um Code ──────────────────────────────────────────────────────
+// ─── 5. Atualizar um Code ────────────────────────────────────────────────────
 /**
  * Valida via Zod antes do PUT.
  * Usa .pick() para validar apenas os campos aceitos neste endpoint.
@@ -158,7 +173,7 @@ export async function updateTournamentCode(
   );
 }
 
-// ─── 6. Listar Lobby Events ────────────────────────────────────────────────────
+// ─── 6. Listar Lobby Events ──────────────────────────────────────────────────
 /**
  * O campo `timestamp` de cada evento é coercido automaticamente pelo
  * LobbyEventSchema: string epoch-ms → Date.
@@ -176,7 +191,7 @@ export async function getLobbyEvents(
   return LobbyEventResponseSchema.parse(raw);
 }
 
-// ─── 7. Helper: pick order por participantId ──────────────────────────────────
+// ─── 7. Helper: pick order por participantId ─────────────────────────────────
 /**
  * Mapeia participantId (1–10) para slot de draft e time.
  *
@@ -205,7 +220,13 @@ export function getPickOrderSlot(participantId: number): {
  */
 export const PICK_ORDER_SEQUENCE = [1, 6, 2, 7, 3, 8, 4, 9, 5, 10] as const;
 
-// ─── 8. Setup completo de torneio ──────────────────────────────────────────────
+// ─── 8. Setup completo de torneio ────────────────────────────────────────────
+/**
+ * Fluxo completo: registerProvider → createTournament → generateTournamentCodes.
+ *
+ * ATENÇÃO: para torneios grandes, prefira gerar codes sob demanda por partida
+ * em vez de usar matchCount para gerar todos de uma vez. Codes expiram em 3 meses.
+ */
 export async function setupTournament(options: {
   tournamentName: string;
   callbackUrl: string;

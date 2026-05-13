@@ -30,7 +30,8 @@ export const TournamentCodeParametersSchema = z.object({
   pickType: PickTypeSchema,
   mapType: MapTypeSchema,
   spectatorType: SpectatorTypeSchema,
-  // tournament-v5 usa "allowedParticipants" com PUUIDs, NÃO "allowedSummonerIds"
+  // tournament-v5 usa "allowedParticipants" com PUUIDs
+  // "allowedSummonerIds" era da v4 e NÃO é aceito na v5
   allowedParticipants: z.array(PuuidSchema).optional(),
   metadata: z.string().max(256).optional(),
 });
@@ -52,10 +53,30 @@ export const TournamentCodeSchema = z.object({
   participants: z.array(PuuidSchema),
 });
 
-// ── LobbyEvent com timestamp coercido de epoch-ms string → Date ───────────────
+// ── LobbyEvent com timestamp coercido e eventType tipado ──────────────────────
+/**
+ * Valores documentados de eventType (Riot Games Developer Relations, 2024).
+ * Usar .or(z.string()) como fallback para novos tipos não documentados.
+ */
+export const LobbyEventTypeSchema = z
+  .enum([
+    "PracticeGameCreatedEvent",   // Lobby criado
+    "PlayerJoinedGameEvent",      // Jogador entrou
+    "PlayerSwitchedTeamEvent",    // Jogador trocou de time
+    "PlayerQuitGameEvent",        // Jogador saiu do lobby
+    "ChampSelectStartedEvent",    // Champ select iniciou
+    "GameAllocationStartedEvent", // Loading screen
+    "GameAllocatedToLsmEvent",    // Jogo iniciou
+  ])
+  .or(z.string()); // fallback para eventTypes futuros não documentados
+
 export const LobbyEventSchema = z.object({
   summonerId: z.string(),
-  eventType: z.string(),
+  eventType: LobbyEventTypeSchema,
+  /**
+   * Riot envia timestamp como epoch-ms em formato string.
+   * O transform converte automaticamente para Date.
+   */
   timestamp: z
     .string()
     .transform((v) => new Date(Number(v)))
@@ -66,11 +87,25 @@ export const LobbyEventResponseSchema = z.object({
   eventList: z.array(LobbyEventSchema),
 });
 
-// ── MatchParticipant com participantId para pick order ───────────────────────
+// ── MatchParticipant — alinhado com match-v5 atual (2024+) ───────────────────
 export const MatchParticipantSchema = z.object({
   puuid: PuuidSchema,
+  /**
+   * ID do participante (1–10).
+   * 1–5 = Blue Side, 6–10 = Red Side.
+   * Necessário para calcular pick order no draft.
+   */
   participantId: z.number().int().min(1).max(10),
-  summonerName: z.string(),
+  /**
+   * @deprecated Campo em descontinuação pela Riot desde nov/2023.
+   * Pode retornar UUID aleatório para contas novas.
+   * Use riotIdGameName + riotIdTagLine para exibição.
+   */
+  summonerName: z.string().optional(),
+  /** Nome do Riot ID (ex: "Faker"). Presente em partidas após nov/2023. */
+  riotIdGameName: z.string().optional(),
+  /** Tag do Riot ID (ex: "KR1"). Presente em partidas após nov/2023. */
+  riotIdTagLine: z.string().optional(),
   championId: z.number().int().positive(),
   championName: z.string(),
   kills: z.number().int().nonnegative(),
@@ -146,3 +181,4 @@ export type ValidatedLobbyEventResponse = z.infer<typeof LobbyEventResponseSchem
 export type ValidatedMatchParticipant = z.infer<typeof MatchParticipantSchema>;
 export type ValidatedMatchInfo = z.infer<typeof MatchInfoSchema>;
 export type ValidatedMatchDto = z.infer<typeof MatchDtoSchema>;
+export type ValidatedLobbyEventType = z.infer<typeof LobbyEventTypeSchema>;
