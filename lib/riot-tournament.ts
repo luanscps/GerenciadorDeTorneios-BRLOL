@@ -1,12 +1,11 @@
 /**
  * lib/riot-tournament.ts
  *
- * Cliente completo para tournament-stub-v5 (desenvolvimento / staging).
+ * Cliente completo para a Riot Tournament API.
  *
- * Quando a Production Key for aprovada, troque:
- *   const BASE = "/lol/tournament-stub/v5"
- * por:
- *   const BASE = "/lol/tournament/v5"
+ * Ambiente controlado via variável de ambiente:
+ *   RIOT_USE_STUB=true  → tournament-stub-v5  (desenvolvimento / staging)
+ *   RIOT_USE_STUB=false → tournament-v5        (produção — Production Key)
  *
  * Documentação oficial:
  *   https://developer.riotgames.com/apis#tournament-stub-v5
@@ -22,9 +21,10 @@ import {
   type ValidatedLobbyEventResponse,
 } from "@/lib/validations/riot-tournament.schema";
 
-// ── Alterne para "/lol/tournament/v5" ao receber Production Key ──────────────
-const BASE = "/lol/tournament-stub/v5";
-const METHOD_PREFIX = "tournament-stub-v5";
+// ── Alterna entre stub (dev) e produção via RIOT_USE_STUB env ────────────────
+const USE_STUB = process.env.RIOT_USE_STUB === "true";
+const BASE = USE_STUB ? "/lol/tournament-stub/v5" : "/lol/tournament/v5";
+const METHOD_PREFIX = USE_STUB ? "tournament-stub-v5" : "tournament-v5";
 
 function getPlatformUrl(): string {
   const region = (process.env.RIOT_REGION ?? "br1").toLowerCase();
