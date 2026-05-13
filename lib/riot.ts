@@ -1,5 +1,6 @@
 // lib/riot.ts
 import { getCached, setCached } from "@/lib/riot-cache";
+import { MatchDtoSchema } from "@/lib/validations/riot-tournament.schema";
 
 function getApiKey(): string {
   const key = process.env.RIOT_API_KEY;
@@ -121,39 +122,41 @@ export async function getMatchIdsByPuuid(puuid: string, count = 20, queue?: numb
   return data;
 }
 
+/**
+ * Busca e valida uma partida pelo matchId.
+ *
+ * O MatchDtoSchema (Zod) garante:
+ * - PUUIDs de todos os participantes são válidos
+ * - participantId (1–10) presente em cada participante (necessário para pick order)
+ * - gameDuration normalizado: partidas antigas (< patch 11.20) vêm em ms e são
+ *   convertidas para segundos automaticamente pelo transform do schema
+ * - teamId restrito a 100 (Blue) ou 200 (Red)
+ * - neutralMinionsKilled com default 0 quando ausente
+ */
 export async function getMatchById(matchId: string): Promise<MatchDto> {
   const key = "match:" + matchId;
   const cached = getCached<MatchDto>(key);
   if (cached) return cached;
-  const data = await riotFetch<MatchDto>(
+  const raw = await riotFetch<unknown>(
     getRegionalUrl() + "/lol/match/v5/matches/" + matchId
   );
+  const data = MatchDtoSchema.parse(raw) as MatchDto;
   setCached(key, data, 3600);
   return data;
 }
 
 // ─── Asset URLs — Data Dragon ──────────────────────────────────────────────────
 
-/** Ícone circular de perfil do invocador */
 export async function profileIconUrl(id: number): Promise<string> {
   const v = await getDDVersion();
   return `https://ddragon.leagueoflegends.com/cdn/${v}/img/profileicon/${id}.png`;
 }
 
-/**
- * Ícone do campeão via CommunityDragon usando champion_id numérico.
- * Mais confiável que DataDragon por nome pois não depende de normalização de string.
- * Fallback: -1 retorna ícone genérico de placeholder.
- */
 export function championIconByCDragon(championId: number | null | undefined): string {
   const id = championId ?? -1;
   return `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-icons/${id}.png`;
 }
 
-/**
- * Ícone quadrado do campeão via DataDragon (por nome).
- * Mantido como fallback. Prefira championIconByCDragon quando tiver o ID.
- */
 export async function championIconUrl(name: string | null | undefined): Promise<string> {
   const v = await getDDVersion();
   if (!name || name === "null" || name.trim() === "") {
@@ -163,11 +166,6 @@ export async function championIconUrl(name: string | null | undefined): Promise<
   return `https://ddragon.leagueoflegends.com/cdn/${v}/img/champion/${normalized}.png`;
 }
 
-/**
- * Splash art do campeão.
- * @param name     Nome exato do campeão (ex: "Ahri", "MissFortune")
- * @param skinNum  0 = skin base
- */
 export function championSplashUrl(name: string | null | undefined, skinNum = 0): string {
   if (!name || name === "null" || name.trim() === "") {
     return "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-splashes/unmasked-magician.png";
@@ -194,33 +192,11 @@ export async function summonerSpellIconUrl(spellId: string): Promise<string> {
 
 // ─── Asset URLs — CommunityDragon ─────────────────────────────────────────────
 
-/**
- * Emblema de rank (tier) — ícone grande estilo in-client.
- * Path verificado no CDragon: retorna 200 para todos os tiers.
- */
 export function rankEmblemUrl(tier: string): string {
   const t = tier.toLowerCase();
   return `https://raw.communitydragon.org/latest/game/assets/loadouts/regalia/crests/ranked/ranked-emblem-${t}.png`;
 }
 
-/**
- * Moldura de perfil REAL por nível do invocador — imagem do CDragon.
- *
- * O cliente do LoL usa 7 variantes de moldura (border_1 … border_7),
- * cada uma cobrindo uma faixa de nível. A imagem é um PNG com fundo
- * transparente, dimensionada para cobrir o ícone de perfil.
- *
- * Faixas (espelhando o cliente):
- *   1–29   → border_1  (bronze/iron)
- *   30–99  → border_2  (prata)
- *   100–149 → border_3 (ouro)
- *   150–199 → border_4 (platina)
- *   200–299 → border_5 (diamante)
- *   300–499 → border_6 (mestre/GM)
- *   500+    → border_7 (challenger/ancestral)
- *
- * Nome correto do arquivo CDragon: summoner-level-border-N.png
- */
 export function profileBorderUrl(level: number): string {
   const BASE = "https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/images";
   let n: number;
@@ -234,10 +210,6 @@ export function profileBorderUrl(level: number): string {
   return `${BASE}/summoner-level-border-${n}.png`;
 }
 
-/**
- * Cor CSS da moldura de perfil por faixa de nível.
- * Mantida para o badge de nível (cor do texto + glow do badge).
- */
 export function profileIconBorderStyle(level: number): {
   color: string;
   glow: string;
@@ -254,14 +226,10 @@ export function profileIconBorderStyle(level: number): {
   return            { color: "#8B7A6B", glow: "rgba(139,122,107,0.4)", label: "Bronze" };
 }
 
-/**
- * Ícone de maestria — usa mastery-mark.png do CommunityDragon.
- */
 export function masteryIconUrl(_level: number): string {
   return `https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/champion-mastery/mastery-mark.png`;
 }
 
-/** Cor CSS do nível de maestria */
 export function masteryLevelColor(level: number): string {
   if (level >= 10) return "#FFD700";
   if (level >= 7)  return "#C8A84B";
@@ -352,16 +320,21 @@ export interface MatchDto {
 
 export interface MatchInfo {
   gameId: number;
+  /**
+   * Duração em SEGUNDOS (normalizado pelo MatchDtoSchema).
+   * Partidas antes do patch 11.20 retornavam em ms — o schema converte automaticamente.
+   */
   gameDuration: number;
   gameMode: string;
   queueId: number;
+  /** Epoch em milissegundos */
   gameStartTimestamp: number;
   participants: MatchParticipant[];
   teams: MatchTeam[];
 }
 
 export interface MatchTeam {
-  teamId: number;
+  teamId: 100 | 200;
   win: boolean;
   objectives: {
     baron: { kills: number };
@@ -372,6 +345,12 @@ export interface MatchTeam {
 
 export interface MatchParticipant {
   puuid: string;
+  /**
+   * ID do participante (1–10). Determina o time e o slot de pick no draft.
+   * 1–5 = Blue, 6–10 = Red.
+   * Use getPickOrderSlot(participantId) de lib/riot-tournament.ts para mapear.
+   */
+  participantId: number;
   summonerName: string;
   championName: string;
   championId: number;
@@ -379,11 +358,11 @@ export interface MatchParticipant {
   deaths: number;
   assists: number;
   win: boolean;
-  teamId: number;
+  teamId: 100 | 200;
   totalDamageDealtToChampions: number;
   goldEarned: number;
   totalMinionsKilled: number;
-  neutralMinionsKilled?: number;
+  neutralMinionsKilled: number;
   visionScore: number;
   item0: number; item1: number; item2: number;
   item3: number; item4: number; item5: number; item6: number;

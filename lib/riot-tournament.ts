@@ -19,11 +19,10 @@ import {
   TournamentCodeParametersSchema,
   LobbyEventResponseSchema,
   type ValidatedTournamentCode,
-  type ValidatedTournamentCodeParameters,
   type ValidatedLobbyEventResponse,
 } from "@/lib/validations/riot-tournament.schema";
 
-// ── Alterne para "/lol/tournament/v5" ao receber Production Key ─────────────────
+// ── Alterne para "/lol/tournament/v5" ao receber Production Key ────────────────
 const BASE = "/lol/tournament-stub/v5";
 const METHOD_PREFIX = "tournament-stub-v5";
 
@@ -32,7 +31,7 @@ function getPlatformUrl(): string {
   return `https://${region}.api.riotgames.com`;
 }
 
-// ─── Tipos públicos (re-exportados dos schemas) ───────────────────────────────
+// ─── Tipos públicos ───────────────────────────────────────────────────────────
 export type PickType =
   | "BLIND_PICK"
   | "DRAFT_MODE"
@@ -50,27 +49,21 @@ export type SpectatorType = "NONE" | "LOBBYONLY" | "ALL";
  * Parâmetros para gerar tournament codes.
  *
  * IMPORTANTE: tournament-v5 usa `allowedParticipants` com PUUIDs.
- * O campo `allowedSummonerIds` era da v4 e não é aceito na v5.
+ * O campo `allowedSummonerIds` era da v4 e NÃO é aceito na v5 — passa
+ * silenciosamente ou retorna 400.
  */
 export interface TournamentCodeParameters {
   teamSize: number;
   pickType: PickType;
   mapType: MapType;
   spectatorType: SpectatorType;
-  /** Lista de PUUIDs autorizados (tournament-v5). Deixe vazio para permitir todos. */
+  /** Lista de PUUIDs autorizados (tournament-v5). Vazio = todos permitidos. */
   allowedParticipants?: string[];
   metadata?: string;
 }
 
 export type TournamentCode = ValidatedTournamentCode;
 export type LobbyEventResponse = ValidatedLobbyEventResponse;
-
-export interface LobbyEvent {
-  summonerId: string;
-  eventType: string;
-  /** Já convertido para Date (a Riot envia epoch em ms como string) */
-  timestamp: Date;
-}
 
 export interface ProviderRegistration {
   region: string;
@@ -83,59 +76,52 @@ export interface TournamentRegistration {
   providerId: number;
 }
 
-// ─── 1. Registrar Provider ───────────────────────────────────────────────────────
-/**
- * Registra o servidor do BRLOL como provider de torneios na Riot.
- * Necessário UMA VEZ por ambiente. Guarde o providerId retornado.
- *
- * Em desenvolvimento, a callbackUrl pode ser qualquer HTTPS válida.
- * Use https://gerenciador-de-torneios-brlol.vercel.app/api/riot/tournament/callback
- */
+// ─── 1. Registrar Provider ──────────────────────────────────────────────────────
 export async function registerProvider(
   params: ProviderRegistration
 ): Promise<number> {
-  const providerId = await riotFetch<number>(
+  return riotFetch<number>(
     `${getPlatformUrl()}${BASE}/providers`,
     `${METHOD_PREFIX}:providers`,
     { method: "POST", body: JSON.stringify(params) }
   );
-  return providerId;
 }
 
-// ─── 2. Criar Torneio ───────────────────────────────────────────────────────────
+// ─── 2. Criar Torneio ──────────────────────────────────────────────────────────
 export async function createTournament(
   params: TournamentRegistration
 ): Promise<number> {
-  const tournamentId = await riotFetch<number>(
+  return riotFetch<number>(
     `${getPlatformUrl()}${BASE}/tournaments`,
     `${METHOD_PREFIX}:tournaments`,
     { method: "POST", body: JSON.stringify(params) }
   );
-  return tournamentId;
 }
 
 // ─── 3. Gerar Tournament Codes ─────────────────────────────────────────────────
+/**
+ * Valida os parâmetros via Zod antes de enviar à Riot.
+ * Captura cedo: PUUIDs inválidos, enums incorretos, allowedParticipants mal formado.
+ */
 export async function generateTournamentCodes(
   tournamentId: number,
   count: number,
   params: TournamentCodeParameters
 ): Promise<string[]> {
-  // Valida os parâmetros antes de enviar — pega erros de PUUID/enum cedo
-  TournamentCodeParametersSchema.parse({
-    ...params,
-    // mapeia para o nome esperado pelo schema se vier do legado
-    allowedParticipants: params.allowedParticipants,
-  });
-
-  const codes = await riotFetch<string[]>(
+  const validated = TournamentCodeParametersSchema.parse(params);
+  return riotFetch<string[]>(
     `${getPlatformUrl()}${BASE}/codes?count=${count}&tournamentId=${tournamentId}`,
     `${METHOD_PREFIX}:codes`,
-    { method: "POST", body: JSON.stringify(params) }
+    { method: "POST", body: JSON.stringify(validated) }
   );
-  return codes;
 }
 
-// ─── 4. Buscar detalhes de um Code ──────────────────────────────────────────────
+// ─── 4. Buscar detalhes de um Code ─────────────────────────────────────────────
+/**
+ * Retorno validado pelo TournamentCodeSchema:
+ * - participants são PUUIDs válidos (78 chars)
+ * - enums pickType / mapType / spectatorType verificados em runtime
+ */
 export async function getTournamentCode(
   tournamentCode: string
 ): Promise<TournamentCode> {
@@ -143,26 +129,39 @@ export async function getTournamentCode(
     `${getPlatformUrl()}${BASE}/codes/${tournamentCode}`,
     `${METHOD_PREFIX}:codes`
   );
-  // Valida e retorna typed: garante PUUIDs corretos, enums válidos
   return TournamentCodeSchema.parse(raw);
 }
 
-// ─── 5. Atualizar um Code ───────────────────────────────────────────────────────────
+// ─── 5. Atualizar um Code ──────────────────────────────────────────────────────
+/**
+ * Valida via Zod antes do PUT.
+ * Usa .pick() para validar apenas os campos aceitos neste endpoint.
+ */
 export async function updateTournamentCode(
   tournamentCode: string,
-  params: Pick<TournamentCodeParameters, "pickType" | "mapType" | "spectatorType" | "allowedParticipants">
+  params: Pick<
+    TournamentCodeParameters,
+    "pickType" | "mapType" | "spectatorType" | "allowedParticipants"
+  >
 ): Promise<void> {
+  const validated = TournamentCodeParametersSchema.pick({
+    pickType: true,
+    mapType: true,
+    spectatorType: true,
+    allowedParticipants: true,
+  }).parse(params);
+
   await riotFetch<void>(
     `${getPlatformUrl()}${BASE}/codes/${tournamentCode}`,
     `${METHOD_PREFIX}:codes`,
-    { method: "PUT", body: JSON.stringify(params) }
+    { method: "PUT", body: JSON.stringify(validated) }
   );
 }
 
-// ─── 6. Listar Lobby Events ───────────────────────────────────────────────────────
+// ─── 6. Listar Lobby Events ────────────────────────────────────────────────────
 /**
- * Busca os eventos de lobby de uma partida de torneio.
- * O campo `timestamp` de cada evento já vem convertido para Date.
+ * O campo `timestamp` de cada evento é coercido automaticamente pelo
+ * LobbyEventSchema: string epoch-ms → Date.
  *
  * Faça polling a cada 30s para detectar quando a partida terminou.
  */
@@ -172,13 +171,41 @@ export async function getLobbyEvents(
   const raw = await riotFetch<unknown>(
     `${getPlatformUrl()}${BASE}/lobby/events/by-code/${tournamentCode}`,
     `${METHOD_PREFIX}:events`,
-    { revalidate: 0 } // sem cache — dados em tempo real
+    { revalidate: 0 }
   );
-  // Valida e converte timestamp string → Date automaticamente
   return LobbyEventResponseSchema.parse(raw);
 }
 
-// ─── 7. Fluxo completo para criar uma fase do torneio ───────────────────────────
+// ─── 7. Helper: pick order por participantId ──────────────────────────────────
+/**
+ * Mapeia participantId (1–10) para slot de draft e time.
+ *
+ * A Riot numera participantes 1–5 (Blue) e 6–10 (Red).
+ * A sequência real de picks no draft é: [1,6,2,7,3,8,4,9,5,10]
+ * (não é 1–10 sequencialmente).
+ *
+ * @example
+ * getPickOrderSlot(1)  → { team: "blue", pickSlot: 1 }  // 1º pick Blue
+ * getPickOrderSlot(6)  → { team: "red",  pickSlot: 1 }  // 1º pick Red
+ * getPickOrderSlot(10) → { team: "red",  pickSlot: 5 }  // último pick Red
+ */
+export function getPickOrderSlot(participantId: number): {
+  team: "blue" | "red";
+  pickSlot: number;
+} {
+  if (participantId >= 1 && participantId <= 5) {
+    return { team: "blue", pickSlot: participantId };
+  }
+  return { team: "red", pickSlot: participantId - 5 };
+}
+
+/**
+ * Sequência completa de picks/bans por participantId.
+ * Use para ordenar a exibição do draft overlay.
+ */
+export const PICK_ORDER_SEQUENCE = [1, 6, 2, 7, 3, 8, 4, 9, 5, 10] as const;
+
+// ─── 8. Setup completo de torneio ──────────────────────────────────────────────
 export async function setupTournament(options: {
   tournamentName: string;
   callbackUrl: string;
