@@ -14,8 +14,16 @@
  */
 
 import { riotFetch } from "@/lib/riot-rate-limiter";
+import {
+  TournamentCodeSchema,
+  TournamentCodeParametersSchema,
+  LobbyEventResponseSchema,
+  type ValidatedTournamentCode,
+  type ValidatedTournamentCodeParameters,
+  type ValidatedLobbyEventResponse,
+} from "@/lib/validations/riot-tournament.schema";
 
-// ── Alterne para "/lol/tournament/v5" ao receber Production Key ───────────────
+// ── Alterne para "/lol/tournament/v5" ao receber Production Key ─────────────────
 const BASE = "/lol/tournament-stub/v5";
 const METHOD_PREFIX = "tournament-stub-v5";
 
@@ -24,7 +32,7 @@ function getPlatformUrl(): string {
   return `https://${region}.api.riotgames.com`;
 }
 
-// ─── Tipos ────────────────────────────────────────────────────────────────────
+// ─── Tipos públicos (re-exportados dos schemas) ───────────────────────────────
 export type PickType =
   | "BLIND_PICK"
   | "DRAFT_MODE"
@@ -38,41 +46,30 @@ export type MapType =
 
 export type SpectatorType = "NONE" | "LOBBYONLY" | "ALL";
 
+/**
+ * Parâmetros para gerar tournament codes.
+ *
+ * IMPORTANTE: tournament-v5 usa `allowedParticipants` com PUUIDs.
+ * O campo `allowedSummonerIds` era da v4 e não é aceito na v5.
+ */
 export interface TournamentCodeParameters {
-  /** Número de participantes por time (5 para LoL padrão) */
   teamSize: number;
   pickType: PickType;
   mapType: MapType;
   spectatorType: SpectatorType;
-  /** Lista de PUUIDs autorizados (opcional — deixe vazio para permitir todos) */
-  allowedSummonerIds?: string[];
+  /** Lista de PUUIDs autorizados (tournament-v5). Deixe vazio para permitir todos. */
+  allowedParticipants?: string[];
   metadata?: string;
 }
 
-export interface TournamentCode {
-  code: string;
-  spectators: SpectatorType;
-  lobbyName: string;
-  metaData: string;
-  password: string;
-  teamSize: number;
-  providerId: number;
-  pickType: PickType;
-  tournamentId: number;
-  lobbyId: string;
-  id: number;
-  mapType: MapType;
-  participants: string[]; // PUUIDs
-}
+export type TournamentCode = ValidatedTournamentCode;
+export type LobbyEventResponse = ValidatedLobbyEventResponse;
 
 export interface LobbyEvent {
   summonerId: string;
-  eventType: string; // "Practice", "Start", etc.
-  timestamp: string;
-}
-
-export interface LobbyEventResponse {
-  eventList: LobbyEvent[];
+  eventType: string;
+  /** Já convertido para Date (a Riot envia epoch em ms como string) */
+  timestamp: Date;
 }
 
 export interface ProviderRegistration {
@@ -86,7 +83,7 @@ export interface TournamentRegistration {
   providerId: number;
 }
 
-// ─── 1. Registrar Provider ────────────────────────────────────────────────────
+// ─── 1. Registrar Provider ───────────────────────────────────────────────────────
 /**
  * Registra o servidor do BRLOL como provider de torneios na Riot.
  * Necessário UMA VEZ por ambiente. Guarde o providerId retornado.
@@ -105,11 +102,7 @@ export async function registerProvider(
   return providerId;
 }
 
-// ─── 2. Criar Torneio ─────────────────────────────────────────────────────────
-/**
- * Cria um torneio associado ao provider.
- * Retorna o tournamentId que será usado em todos os tournament codes.
- */
+// ─── 2. Criar Torneio ───────────────────────────────────────────────────────────
 export async function createTournament(
   params: TournamentRegistration
 ): Promise<number> {
@@ -121,20 +114,19 @@ export async function createTournament(
   return tournamentId;
 }
 
-// ─── 3. Gerar Tournament Codes ────────────────────────────────────────────────
-/**
- * Gera N tournament codes para um torneio.
- * Cada code corresponde a UMA partida (fase do bracket).
- *
- * @param tournamentId  ID retornado por createTournament()
- * @param count         Quantas partidas/códigos gerar (1–1000)
- * @param params        Configurações da partida
- */
+// ─── 3. Gerar Tournament Codes ─────────────────────────────────────────────────
 export async function generateTournamentCodes(
   tournamentId: number,
   count: number,
   params: TournamentCodeParameters
 ): Promise<string[]> {
+  // Valida os parâmetros antes de enviar — pega erros de PUUID/enum cedo
+  TournamentCodeParametersSchema.parse({
+    ...params,
+    // mapeia para o nome esperado pelo schema se vier do legado
+    allowedParticipants: params.allowedParticipants,
+  });
+
   const codes = await riotFetch<string[]>(
     `${getPlatformUrl()}${BASE}/codes?count=${count}&tournamentId=${tournamentId}`,
     `${METHOD_PREFIX}:codes`,
@@ -143,20 +135,22 @@ export async function generateTournamentCodes(
   return codes;
 }
 
-// ─── 4. Buscar detalhes de um Code ───────────────────────────────────────────
+// ─── 4. Buscar detalhes de um Code ──────────────────────────────────────────────
 export async function getTournamentCode(
   tournamentCode: string
 ): Promise<TournamentCode> {
-  return riotFetch<TournamentCode>(
+  const raw = await riotFetch<unknown>(
     `${getPlatformUrl()}${BASE}/codes/${tournamentCode}`,
     `${METHOD_PREFIX}:codes`
   );
+  // Valida e retorna typed: garante PUUIDs corretos, enums válidos
+  return TournamentCodeSchema.parse(raw);
 }
 
-// ─── 5. Atualizar um Code ─────────────────────────────────────────────────────
+// ─── 5. Atualizar um Code ───────────────────────────────────────────────────────────
 export async function updateTournamentCode(
   tournamentCode: string,
-  params: Pick<TournamentCodeParameters, "pickType" | "mapType" | "spectatorType" | "allowedSummonerIds">
+  params: Pick<TournamentCodeParameters, "pickType" | "mapType" | "spectatorType" | "allowedParticipants">
 ): Promise<void> {
   await riotFetch<void>(
     `${getPlatformUrl()}${BASE}/codes/${tournamentCode}`,
@@ -165,30 +159,26 @@ export async function updateTournamentCode(
   );
 }
 
-// ─── 6. Listar Lobby Events ───────────────────────────────────────────────────
+// ─── 6. Listar Lobby Events ───────────────────────────────────────────────────────
 /**
  * Busca os eventos de lobby de uma partida de torneio.
- * Inclui: jogador entrou, saiu, partida iniciada, resultado.
+ * O campo `timestamp` de cada evento já vem convertido para Date.
  *
  * Faça polling a cada 30s para detectar quando a partida terminou.
  */
 export async function getLobbyEvents(
   tournamentCode: string
 ): Promise<LobbyEventResponse> {
-  return riotFetch<LobbyEventResponse>(
+  const raw = await riotFetch<unknown>(
     `${getPlatformUrl()}${BASE}/lobby/events/by-code/${tournamentCode}`,
     `${METHOD_PREFIX}:events`,
     { revalidate: 0 } // sem cache — dados em tempo real
   );
+  // Valida e converte timestamp string → Date automaticamente
+  return LobbyEventResponseSchema.parse(raw);
 }
 
-// ─── 7. Fluxo completo para criar uma fase do torneio ─────────────────────────
-/**
- * Helper de alto nível: cria provider + torneio + codes em sequência.
- * Útil para inicializar um novo torneio no BRLOL do zero.
- *
- * @returns { providerId, tournamentId, codes }
- */
+// ─── 7. Fluxo completo para criar uma fase do torneio ───────────────────────────
 export async function setupTournament(options: {
   tournamentName: string;
   callbackUrl: string;
