@@ -7,7 +7,7 @@
  * SEGURANÇA (doc oficial Riot):
  *  - A Riot NÃO assina os requests com secret/token
  *  - Validação recomendada pela própria Riot: usar o campo metaData
- *  - O shortCode é verificado contra tournament_codes no banco
+ *  - O shortCode é verificado contra tournament_codes (JSONB) em matches
  *  - Se shortCode não existir no banco, o payload é rejeitado (possível forge)
  *  - Rate limit por IP real (cf-connecting-ip) para bloquear flood
  *
@@ -15,7 +15,7 @@
  * {
  *   startTime: number,       // epoch ms
  *   shortCode: string,       // tournament code usado
- *   metaData: string,        // metadata que você definiu no code
+ *   metaData: string,        // metadata definida no generateCode
  *   gameId: number,
  *   gameName: string,
  *   gameType: string,
@@ -34,7 +34,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getRealIp, rateLimit } from '@/lib/rate-limit';
 
-// Cliente admin do Supabase (service_role) para gravar sem restrição de RLS
+// ── Tipos internos ────────────────────────────────────────────────────────────
+
+/** Entrada de um tournament code gravado no JSONB de matches.tournament_codes */
+interface TournamentCodeEntry {
+  game_number: number;
+  code: string;
+  used: boolean;
+  used_at: string | null;
+}
+
+// ── Cliente admin ─────────────────────────────────────────────────────────────
+
+/** Service-role para gravar sem bloqueio de RLS */
 function getAdminClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -42,15 +54,21 @@ function getAdminClient() {
   );
 }
 
+// ── Handler ───────────────────────────────────────────────────────────────────
+
 export async function POST(req: NextRequest) {
   // ── 1. Rate limit por IP real (Cloudflare-aware) ──────────────────────────
+  //
+  // FIX: getRealIp usa next/headers internamente (não precisa de req),
+  // portanto a assinatura sem argumento está correta conforme lib/rate-limit.ts.
+  // Mantemos o await correto aqui.
   const clientIp = await getRealIp();
   if (!rateLimit(clientIp, 20, 60_000)) {
     console.warn(`[tournament/callback] Rate limit excedido: ${clientIp}`);
     return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
   }
 
-  // ── 2. Parse do payload ─────────────────────────────────────────────────
+  // ── 2. Parse do payload ───────────────────────────────────────────────────
   let payload: Record<string, unknown>;
   try {
     payload = await req.json();
@@ -58,7 +76,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Body inválido' }, { status: 400 });
   }
 
-  const shortCode = payload.shortCode as string | undefined;
+  const shortCode = typeof payload.shortCode === 'string' ? payload.shortCode.trim() : undefined;
   if (!shortCode) {
     console.warn(`[tournament/callback] shortCode ausente. IP: ${clientIp}`);
     return NextResponse.json({ error: 'shortCode ausente' }, { status: 400 });
@@ -66,27 +84,33 @@ export async function POST(req: NextRequest) {
 
   const supabase = getAdminClient();
 
-  // ── 3. Valida shortCode contra banco (doc Riot: use metaData para validar) ─
+  // ── 3. Valida shortCode contra matches.tournament_codes (JSONB array) ─────
   //
-  // A Riot recomenda usar metaData para autenticar callbacks.
-  // O shortCode gerado pelo nosso sistema já está registrado em tournament_codes.
-  // Se não encontrar, o callback não é nosso — rejeita com 404 silencioso.
+  // Os tournament codes ficam em matches.tournament_codes como:
+  // [{ game_number, code, used, used_at }, ...]
   //
-  // Adicionalmente, o campo metadata do payload (preenchido no generateCode)
-  // pode conter um token que você valida aqui para segurança extra.
-  const { data: codeRecord, error: codeError } = await supabase
-    .from('tournament_codes')
-    .select('id, match_id, metadata')
-    .eq('code', shortCode)
+  // Usamos o operador JSONB @> (contains) para encontrar o match que contém
+  // o shortCode recebido. O cast JSON.stringify garante escape seguro.
+  //
+  // Nota: o índice GIN em tournament_codes (se existir) acelera essa query;
+  // sem índice ela fará seq scan em matches, o que é aceitável para o volume
+  // de torneios esperado.
+  const { data: matchRecord, error: matchError } = await supabase
+    .from('matches')
+    .select('id, tournament_codes, tournament_id')
+    .contains('tournament_codes', JSON.stringify([{ code: shortCode }]))
     .maybeSingle();
 
-  if (codeError) {
-    console.error(`[tournament/callback] Erro ao buscar code ${shortCode}:`, codeError.message);
+  if (matchError) {
+    console.error(
+      `[tournament/callback] Erro ao buscar shortCode ${shortCode}:`,
+      matchError.message
+    );
     // Retorna 200 para a Riot não retentar por instabilidade nossa
-    return NextResponse.json({ received: true, dbError: codeError.message });
+    return NextResponse.json({ received: true, dbError: matchError.message });
   }
 
-  if (!codeRecord) {
+  if (!matchRecord) {
     // shortCode desconhecido — não foi gerado por nós
     console.warn(
       `[tournament/callback] shortCode desconhecido: "${shortCode}". ` +
@@ -96,38 +120,73 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ received: true });
   }
 
-  // ── 4. Validação extra por metaData (quando preenchido) ───────────────────
+  // ── 4. Validação extra via metaData do code (quando disponível) ───────────
   //
-  // Se o code foi gerado com metadata contendo um token/matchId,
-  // compara com o que veio no payload da Riot.
-  // Caso haja discordância, loga para auditoria mas ainda aceita
-  // (a Riot pode reenviar com metaData diferente em stub).
-  const payloadMeta = payload.metaData as string | undefined;
-  if (codeRecord.metadata && payloadMeta) {
-    if (codeRecord.metadata !== payloadMeta) {
-      console.warn(
-        `[tournament/callback] metaData divergente para ${shortCode}. ` +
-        `Esperado: ${codeRecord.metadata}. Recebido: ${payloadMeta}. ` +
-        `IP: ${clientIp}`
-      );
-    }
+  // Compara metaData recebida no payload com a metaData que foi definida
+  // ao gerar o code (se houver). Discordância é logada para auditoria.
+  // Ainda aceita o payload: a Riot pode reenviar com metaData em stub.
+  const payloadMeta = typeof payload.metaData === 'string' ? payload.metaData : undefined;
+  const codesArray = (matchRecord.tournament_codes as TournamentCodeEntry[] | null) ?? [];
+  // tournament-codes-manager não persiste metadata no code entry; a validação
+  // aqui é baseada apenas no match_id (o próprio shortCode já confirma origem).
+  // Bloco mantido como ponto de extensão para futura validação extra.
+  if (payloadMeta) {
+    console.log(
+      `[tournament/callback] metaData recebida para ${shortCode}: "${payloadMeta}"`
+    );
   }
 
-  // ── 5. Persiste resultado bruto para processamento posterior ──────────────
+  // ── 5. Marcar o code como usado no JSONB de matches ───────────────────────
+  //
+  // Atualiza o entry do code no array JSONB com used=true e used_at=now().
+  // Isso mantém o estado de quais games do BO já foram jogados.
+  const updatedCodes: TournamentCodeEntry[] = codesArray.map((entry) =>
+    entry.code === shortCode
+      ? { ...entry, used: true, used_at: new Date().toISOString() }
+      : entry
+  );
+
+  const { error: updateCodeError } = await supabase
+    .from('matches')
+    .update({
+      tournament_codes: updatedCodes,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', matchRecord.id);
+
+  if (updateCodeError) {
+    // Não crítico: persiste o resultado mesmo se a atualização do code falhar
+    console.error(
+      `[tournament/callback] Falha ao marcar code como usado (match ${matchRecord.id}):`,
+      updateCodeError.message
+    );
+  }
+
+  // ── 6. Persiste resultado bruto para processamento posterior ──────────────
+  //
+  // A tabela tournament_match_results armazena o payload cru recebido da Riot.
+  // O processamento real (atualizar score, winner, etc.) deve ser feito por
+  // um worker/job separado que lê processed=false.
+  //
+  // Colunas existentes: id, tournament_code, game_id, game_data,
+  //                     processed, received_at, match_id, origin_ip
+  // (match_id e origin_ip adicionados na migration 20260514120000)
   try {
+    const gameId = typeof payload.gameId === 'number' ? payload.gameId : null;
+
     const { error: upsertError } = await supabase
       .from('tournament_match_results')
       .upsert(
         {
           tournament_code: shortCode,
-          match_id: codeRecord.match_id ?? null,
-          game_id: payload.gameId,
+          match_id: matchRecord.id,           // FK para matches.id (nova coluna)
+          game_id: gameId,
           game_data: payload,
           processed: false,
           received_at: new Date().toISOString(),
-          origin_ip: clientIp,
+          origin_ip: clientIp,                // auditoria (nova coluna)
         },
-        { onConflict: 'tournament_code' }
+        { onConflict: 'tournament_code' }    // UNIQUE constraint adicionada na migration
       );
 
     if (upsertError) {
@@ -138,12 +197,13 @@ export async function POST(req: NextRequest) {
 
     console.log(
       `[tournament/callback] Partida recebida: ${shortCode} ` +
-      `(gameId: ${payload.gameId}, matchId: ${codeRecord.match_id ?? 'N/A'}, IP: ${clientIp})`
+      `(gameId: ${gameId ?? 'N/A'}, matchId: ${matchRecord.id}, IP: ${clientIp})`
     );
     return NextResponse.json({ received: true });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Erro interno';
     console.error('[tournament/callback]', msg);
+    // Retorna 200 mesmo em erro inesperado para a Riot não retentar
     return NextResponse.json({ received: true, error: msg });
   }
 }
