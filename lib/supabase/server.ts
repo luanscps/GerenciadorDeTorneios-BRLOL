@@ -37,3 +37,47 @@ export async function createClient() {
 export function createServiceRoleClient() {
   return createAdminClient();
 }
+
+/**
+ * Helper centralizado de autenticação para Route Handlers.
+ *
+ * Substitui as implementações locais de isAdmin() / getAuthUser()
+ * que estavam duplicadas em cada route handler.
+ *
+ * @returns { userId, role }
+ *   - userId: null  → usuário não autenticado (retorne 401)
+ *   - role: null    → autenticado mas sem perfil/role definido
+ *   - role: "admin" → administrador global
+ *   - role: "organizer" → organizador de torneio
+ *   - role: "player" → jogador comum
+ *
+ * @example
+ * const { userId, role } = await getAuthUser();
+ * if (!userId) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+ * if (role !== "admin") return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+ */
+export async function getAuthUser(): Promise<{
+  userId: string | null;
+  role: string | null;
+}> {
+  const cookieStore = await cookies();
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { cookies: { getAll: () => cookieStore.getAll() } }
+  );
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { userId: null, role: null };
+
+  const { data } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single();
+
+  return { userId: user.id, role: data?.role ?? null };
+}
