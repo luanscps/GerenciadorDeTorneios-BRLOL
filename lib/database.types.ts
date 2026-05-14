@@ -1360,6 +1360,8 @@ export type Database = {
           game_data: Json
           game_id: number | null
           id: string
+          match_id: string | null
+          origin_ip: string | null
           processed: boolean | null
           received_at: string | null
           tournament_code: string
@@ -1368,6 +1370,8 @@ export type Database = {
           game_data: Json
           game_id?: number | null
           id?: string
+          match_id?: string | null
+          origin_ip?: string | null
           processed?: boolean | null
           received_at?: string | null
           tournament_code: string
@@ -1376,11 +1380,21 @@ export type Database = {
           game_data?: Json
           game_id?: number | null
           id?: string
+          match_id?: string | null
+          origin_ip?: string | null
           processed?: boolean | null
           received_at?: string | null
           tournament_code?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "tournament_match_results_match_id_fkey"
+            columns: ["match_id"]
+            isOneToOne: false
+            referencedRelation: "matches"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       tournament_rules: {
         Row: {
