@@ -15,6 +15,41 @@ const SITE_RULES = [
   'Cada conta pode ter no máximo 2 torneios ativos simultaneamente.',
 ]
 
+// Mapeado ao mapType + pickType da Riot Tournament-v5
+// https://developer.riotgames.com/apis#tournament-v5
+const QUEUE_TYPE_OPTIONS = [
+  {
+    value: 'SUMMONERS_RIFT_5v5',
+    label: "5v5 Summoner's Rift — Tournament Draft",
+    description: 'Formato competitivo padrão. Draft completo com bans.',
+    pickType: 'TOURNAMENT_DRAFT',
+    mapType:  'SUMMONERS_RIFT',
+  },
+  {
+    value: 'SUMMONERS_RIFT_DRAFT',
+    label: "5v5 Summoner's Rift — Draft Mode",
+    description: 'Draft sem bans. Ideal para torneios iniciantes.',
+    pickType: 'DRAFT_MODE',
+    mapType:  'SUMMONERS_RIFT',
+  },
+  {
+    value: 'SUMMONERS_RIFT_BLIND',
+    label: "5v5 Summoner's Rift — Blind Pick",
+    description: 'Todos escolhem simultaneamente, sem bans.',
+    pickType: 'BLIND_PICK',
+    mapType:  'SUMMONERS_RIFT',
+  },
+  {
+    value: 'HOWLING_ABYSS_ARAM',
+    label: 'ARAM — Howling Abyss',
+    description: 'All Random All Mid. Campeões aleatórios.',
+    pickType: 'ALL_RANDOM',
+    mapType:  'HOWLING_ABYSS',
+  },
+] as const
+
+type QueueTypeValue = typeof QUEUE_TYPE_OPTIONS[number]['value']
+
 export default function NovoTorneiPage() {
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -30,6 +65,7 @@ export default function NovoTorneiPage() {
   const [minMembers, setMinMembers]   = useState(6)
   const [maxMembers, setMaxMembers]   = useState(10)
   const [bracketType, setBracketType] = useState('SINGLE_ELIMINATION')
+  const [queueType, setQueueType]     = useState<QueueTypeValue>('SUMMONERS_RIFT_5v5')
   const [prizePool, setPrizePool]     = useState('')
   const [startsAt, setStartsAt]       = useState('')
   const [endsAt, setEndsAt]           = useState('')
@@ -91,6 +127,7 @@ export default function NovoTorneiPage() {
           slug: finalSlug,
           status: 'DRAFT',
           bracket_type: bracketType,
+          queue_type: queueType,
           max_teams: maxTeams,
           min_members: minMembers,
           max_members: maxMembers,
@@ -106,7 +143,6 @@ export default function NovoTorneiPage() {
 
       if (tErr) throw new Error(tErr.message)
 
-      // Redireciona para o painel do organizador com flag ?criado=true
       router.push(`/organizador/torneios/${torneio.id}?criado=true`)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao criar torneio')
@@ -275,6 +311,37 @@ export default function NovoTorneiPage() {
               className="input-lol w-full min-h-[80px] resize-y text-sm"
               maxLength={500}
             />
+          </div>
+
+          {/* Tipo de Fila — alinhado ao Riot Tournament-v5 */}
+          <div>
+            <label className="block text-gray-400 text-sm mb-2">Modo de Jogo</label>
+            <div className="space-y-2">
+              {QUEUE_TYPE_OPTIONS.map(opt => (
+                <label
+                  key={opt.value}
+                  className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                    queueType === opt.value
+                      ? 'border-[#C8A84B] bg-[#C8A84B]/5'
+                      : 'border-[#1E3A5F] hover:border-[#2a4f7f]'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="queue_type"
+                    value={opt.value}
+                    checked={queueType === opt.value}
+                    onChange={() => setQueueType(opt.value)}
+                    className="mt-1 accent-[#C8A84B] shrink-0"
+                  />
+                  <div>
+                    <p className="text-white text-sm font-medium">{opt.label}</p>
+                    <p className="text-gray-500 text-xs mt-0.5">{opt.description}</p>
+                    <p className="text-gray-600 text-xs mt-0.5 font-mono">mapType: {opt.mapType} · pickType: {opt.pickType}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
