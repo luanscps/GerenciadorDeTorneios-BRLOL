@@ -106,7 +106,8 @@ export default function NovoTorneiPage() {
 
       if (tErr) throw new Error(tErr.message)
 
-      router.push(`/torneios/${torneio.id}/inscricoes`)
+      // Redireciona para o painel do organizador com flag ?criado=true
+      router.push(`/organizador/torneios/${torneio.id}?criado=true`)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao criar torneio')
     } finally {
