@@ -4,11 +4,11 @@ import Link from "next/link";
 import { BracketView } from "@/components/tournament/BracketView";
 import { StandingsTable } from "@/components/tournament/StandingsTable";
 import { TeamsList } from "@/components/tournament/TeamsList";
+import { DeleteTournamentButton } from "@/components/tournament/DeleteTournamentButton";
 import { getQueueLabel } from "@/lib/utils";
 
 export const revalidate = 60;
 
-// Server Action — deletar torneio
 async function deleteTournament(tournamentId: string) {
   'use server'
   const supabase = await createClient()
@@ -41,7 +41,6 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
     { data: { user: userData } },
     { data: inscricoesCheckin },
   ] = await Promise.all([
-    // FIX: PostgREST nao suporta hint de FK com (count) — usar sem hint
     supabase
       .from("teams")
       .select("*, team_members(count)")
@@ -140,7 +139,6 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
 
   return (
     <div className="space-y-8">
-      {/* Hero Banner */}
       {tournament.banner_url && (
         <div
           className="relative h-56 overflow-hidden rounded-xl"
@@ -164,7 +162,6 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
         </div>
       )}
 
-      {/* Info + stats */}
       <div className="card-lol">
         <div className="flex items-start justify-between flex-wrap gap-4">
           <div>
@@ -191,7 +188,6 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
           </div>
         </div>
 
-        {/* Stats */}
         <div className="grid grid-cols-3 gap-4 mt-6 pt-6 border-t border-[#1E3A5F]">
           <div className="text-center">
             <p className="text-2xl font-bold text-white">{approvedCount ?? 0}</p>
@@ -209,7 +205,6 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
           </div>
         </div>
 
-        {/* Nav rápida */}
         <div className="flex flex-wrap gap-2 mt-6 pt-4 border-t border-[#1E3A5F]">
           <Link
             href={`/torneios/${slug}/partidas`}
@@ -251,7 +246,6 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
           )}
         </div>
 
-        {/* Painel organizador */}
         {isOrganizer && (
           <div className="mt-4 pt-4 border-t border-[#1E3A5F] flex flex-wrap items-center gap-3">
             <span className="text-xs text-gray-500 uppercase tracking-wider font-semibold">Organizador</span>
@@ -268,19 +262,7 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
               📋 Inscrições
             </Link>
             {isDraftOrCancelled ? (
-              <form action={deleteTournamentBound} className="ml-auto">
-                <button
-                  type="submit"
-                  className="text-xs px-3 py-1.5 rounded-lg border border-red-500/40 text-red-400 hover:border-red-400 hover:bg-red-400/10 transition-colors"
-                  onClick={(e) => {
-                    if (!confirm('Deletar este torneio permanentemente? Esta ação não pode ser desfeita.')) {
-                      e.preventDefault()
-                    }
-                  }}
-                >
-                  🗑️ Deletar Torneio
-                </button>
-              </form>
+              <DeleteTournamentButton action={deleteTournamentBound} />
             ) : (
               <span className="ml-auto text-xs text-gray-600 italic">
                 Para deletar, cancele o torneio primeiro.
@@ -289,7 +271,6 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
           </div>
         )}
 
-        {/* Inscrição para participantes */}
         {isOpen && (
           <>
             {userData && !isOrganizer && (
@@ -322,7 +303,6 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
         )}
       </div>
 
-      {/* Bracket + resultados + classificação + times */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">
           {matches && matches.length > 0 && (
