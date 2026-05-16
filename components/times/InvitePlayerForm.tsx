@@ -18,30 +18,31 @@ const TIER_COLORS: Record<string, string> = {
 };
 
 interface PlayerResult {
-  id: string;
+  id:           string;   // players.id
+  profileId:    string;   // profiles.id — usado no convite
   summonerName: string;
-  tagLine: string;
-  role: string;
-  tier: string;
-  rank: string;
-  lp: number;
-  hasTeam: boolean;
+  tagLine:      string;
+  role:         string | null;
+  tier:         string;
+  rank:         string;
+  lp:           number;
+  hasTeam:      boolean;
 }
 
 interface InvitePlayerFormProps {
-  teamId: string;
-  currentCount: number; // jogadores atuais no time
+  teamId:        string;
+  currentCount:  number;
   onInviteSent?: () => void;
 }
 
 export default function InvitePlayerForm({ teamId, currentCount, onInviteSent }: InvitePlayerFormProps) {
-  const [query, setQuery]           = useState('');
-  const [results, setResults]       = useState<PlayerResult[]>([]);
-  const [searching, setSearching]   = useState(false);
-  const [selected, setSelected]     = useState<PlayerResult | null>(null);
-  const [role, setRole]             = useState('TOP');
-  const [sending, setSending]       = useState(false);
-  const [feedback, setFeedback]     = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
+  const [query, setQuery]         = useState('');
+  const [results, setResults]     = useState<PlayerResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [selected, setSelected]   = useState<PlayerResult | null>(null);
+  const [role, setRole]           = useState('TOP');
+  const [sending, setSending]     = useState(false);
+  const [feedback, setFeedback]   = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
 
   const handleSearch = useCallback(async () => {
     if (query.trim().length < 2) return;
@@ -50,7 +51,7 @@ export default function InvitePlayerForm({ teamId, currentCount, onInviteSent }:
     setSelected(null);
     setFeedback(null);
     try {
-      const res = await fetch(`/api/jogadores/buscar?q=${encodeURIComponent(query.trim())}`);
+      const res  = await fetch(`/api/jogadores/buscar?q=${encodeURIComponent(query.trim())}`);
       const data = await res.json();
       setResults(Array.isArray(data) ? data : []);
     } catch {
@@ -62,12 +63,15 @@ export default function InvitePlayerForm({ teamId, currentCount, onInviteSent }:
 
   async function handleSendInvite() {
     if (!selected) return;
+    if (!selected.profileId) {
+      setFeedback({ type: 'error', msg: 'Jogador não possui conta vinculada no sistema.' });
+      return;
+    }
     setSending(true);
     setFeedback(null);
     const result = await enviarConvite({
       teamId,
-      summonerName: selected.summonerName,
-      tagline:      selected.tagLine,
+      profileId: selected.profileId, // sistema novo — usa profile_id
       role,
     });
     setSending(false);
@@ -117,12 +121,12 @@ export default function InvitePlayerForm({ teamId, currentCount, onInviteSent }:
           {results.length > 0 && (
             <div className="space-y-1 max-h-52 overflow-y-auto">
               {results.map(p => {
-                const tierColor = TIER_COLORS[p.tier?.toUpperCase()] ?? 'text-gray-400';
-                const isSelected = selected?.id === p.id;
+                const tierColor  = TIER_COLORS[p.tier?.toUpperCase()] ?? 'text-gray-400';
+                const isSelected = selected?.profileId === p.profileId;
                 return (
                   <button
-                    key={p.id}
-                    onClick={() => { setSelected(isSelected ? null : p); setRole(p.role || 'TOP'); }}
+                    key={p.profileId}
+                    onClick={() => { setSelected(isSelected ? null : p); setRole(p.role ?? 'TOP'); }}
                     disabled={p.hasTeam}
                     className={`w-full text-left flex items-center gap-3 px-3 py-2 rounded-lg border transition-colors ${
                       isSelected
@@ -131,7 +135,7 @@ export default function InvitePlayerForm({ teamId, currentCount, onInviteSent }:
                     } ${p.hasTeam ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
                   >
                     <div className="w-8 h-8 rounded-full bg-[#1E2A3A] border border-[#1E3A5F] flex items-center justify-center text-xs font-bold text-gray-400">
-                      {p.role?.slice(0, 1) || '?'}
+                      {(p.role ?? '?').slice(0, 1)}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-white text-sm font-medium truncate">
