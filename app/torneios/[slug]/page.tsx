@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { BracketView } from "@/components/tournament/BracketView";
 import { StandingsTable } from "@/components/tournament/StandingsTable";
@@ -7,6 +7,20 @@ import { TeamsList } from "@/components/tournament/TeamsList";
 import { getQueueLabel } from "@/lib/utils";
 
 export const revalidate = 60;
+
+// Server Action — deletar torneio
+async function deleteTournament(tournamentId: string) {
+  'use server'
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return
+  const { error } = await supabase
+    .from('tournaments')
+    .delete()
+    .eq('id', tournamentId)
+    .eq('organizer_id', user.id) // garante que só o dono deleta
+  if (!error) redirect('/torneios')
+}
 
 export default async function TournamentPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -53,6 +67,9 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
       .eq("status", "APPROVED"),
   ]);
 
+  // Verifica se o usuário logado é o organizador
+  const isOrganizer = !!userData && userData.id === tournament.organizer_id;
+
   const checkinMap = new Map(
     (inscricoesCheckin ?? []).map(
       (i: { team_id: string; checked_in_at: string | null }) => [
@@ -94,7 +111,7 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
   }
 
   const recentMatches = (matches ?? [])
-    .filter((m) => m.status === "finished")
+    .filter((m) => m.status === "finished" || m.status === "FINISHED")
     .sort((a, b) => {
       const dateA = new Date(a.played_at ?? a.scheduled_at ?? 0).getTime();
       const dateB = new Date(b.played_at ?? b.scheduled_at ?? 0).getTime();
@@ -102,8 +119,8 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
     })
     .slice(0, 5);
 
-  const matchTotal    = (matches ?? []).length;
-  const matchAoVivo   = (matches ?? []).filter(m => ['ongoing','IN_PROGRESS'].includes(m.status)).length;
+  const matchTotal  = (matches ?? []).length;
+  const matchAoVivo = (matches ?? []).filter(m => ['ongoing','IN_PROGRESS'].includes(m.status)).length;
 
   const statusColor: Record<string, string> = {
     open: "text-green-400", checkin: "text-blue-400", ongoing: "text-yellow-400",
@@ -117,6 +134,9 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
     OPEN: "Inscrições Abertas", CHECKIN: "Check-in", ONGOING: "Em Andamento",
     FINISHED: "Encerrado", DRAFT: "Rascunho", CANCELLED: "Cancelado",
   };
+
+  // Bind da server action com o ID do torneio
+  const deleteTournamentBound = deleteTournament.bind(null, tournament.id);
 
   return (
     <div className="space-y-8">
@@ -183,13 +203,13 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
           </div>
           <div className="text-center">
             <p className="text-2xl font-bold text-white">
-              {matches?.filter((m) => m.status === "finished" || m.status === "FINISHED").length ?? 0}
+              {(matches ?? []).filter((m) => m.status === "finished" || m.status === "FINISHED").length}
             </p>
             <p className="text-gray-400 text-xs">Partidas jogadas</p>
           </div>
         </div>
 
-        {/* Nav rápida de seções */}
+        {/* Nav rápida */}
         <div className="flex flex-wrap gap-2 mt-6 pt-4 border-t border-[#1E3A5F]">
           <Link
             href={`/torneios/${slug}/partidas`}
@@ -220,35 +240,89 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
           >
             🏆 Chaveamento
           </Link>
+
+          {/* Painel do organizador — editar */}
+          {isOrganizer && (
+            <Link
+              href={`/dashboard/torneios/${tournament.id}/editar`}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg border border-blue-500/40 text-sm text-blue-400 hover:border-blue-400 hover:bg-blue-400/10 transition-colors ml-auto"
+            >
+              ✏️ Editar Torneio
+            </Link>
+          )}
         </div>
 
-        {/* Inscrição */}
-        {tournament.status === "open" && userData && (
-          <div className="mt-4 pt-4 border-t border-[#1E3A5F]">
-            {userInscricao?.status === "APPROVED" ? (
-              <div className="flex items-center gap-2 text-green-400 text-sm">
-                <span>✅</span><span>Seu time está inscrito e aprovado neste torneio.</span>
-              </div>
-            ) : userInscricao?.status === "PENDING" ? (
-              <div className="flex items-center gap-2 text-yellow-400 text-sm">
-                <span>⏳</span><span>Inscrição enviada — aguardando aprovação do organizador.</span>
-              </div>
-            ) : userInscricao?.status === "REJECTED" ? (
-              <div className="flex items-center gap-2 text-red-400 text-sm">
-                <span>❌</span><span>Sua inscrição foi recusada. Entre em contato com o organizador.</span>
-              </div>
-            ) : (
-              <Link href={"/dashboard/times/criar?tournament=" + tournament.id} className="btn-gold">
-                + Inscrever Meu Time
-              </Link>
+        {/* Painel organizador — gerenciar + deletar */}
+        {isOrganizer && (
+          <div className="mt-4 pt-4 border-t border-[#1E3A5F] flex flex-wrap items-center gap-3">
+            <span className="text-xs text-gray-500 uppercase tracking-wider font-semibold">Organizador</span>
+            <Link
+              href={`/dashboard/torneios/${tournament.id}`}
+              className="text-xs px-3 py-1.5 rounded-lg border border-[#1E3A5F] text-gray-300 hover:border-[#C8A84B]/50 hover:text-[#C8A84B] transition-colors"
+            >
+              ⚙️ Painel de Gestão
+            </Link>
+            <Link
+              href={`/dashboard/torneios/${tournament.id}/inscricoes`}
+              className="text-xs px-3 py-1.5 rounded-lg border border-[#1E3A5F] text-gray-300 hover:border-[#C8A84B]/50 hover:text-[#C8A84B] transition-colors"
+            >
+              📋 Inscrições
+            </Link>
+            {/* Deletar — só em DRAFT ou CANCELLED */}
+            {(tournament.status === 'draft' || tournament.status === 'DRAFT' ||
+              tournament.status === 'cancelled' || tournament.status === 'CANCELLED') && (
+              <form action={deleteTournamentBound} className="ml-auto">
+                <button
+                  type="submit"
+                  className="text-xs px-3 py-1.5 rounded-lg border border-red-500/40 text-red-400 hover:border-red-400 hover:bg-red-400/10 transition-colors"
+                  onClick={(e) => {
+                    if (!confirm('Deletar este torneio permanentemente? Esta ação não pode ser desfeita.')) {
+                      e.preventDefault()
+                    }
+                  }}
+                >
+                  🗑️ Deletar Torneio
+                </button>
+              </form>
+            )}
+            {/* Status ativo — não permite deleção direta */}
+            {tournament.status !== 'draft' && tournament.status !== 'DRAFT' &&
+             tournament.status !== 'cancelled' && tournament.status !== 'CANCELLED' && (
+              <span className="ml-auto text-xs text-gray-600 italic">
+                Para deletar, cancele o torneio primeiro.
+              </span>
             )}
           </div>
         )}
-        {tournament.status === "open" && !userData && (
-          <div className="mt-4 pt-4 border-t border-[#1E3A5F]">
-            <Link href="/login" className="btn-gold inline-block">Entrar para Inscrever Meu Time</Link>
-          </div>
-        )}
+
+        {/* Inscrição para participantes */}
+        {tournament.status === "open" || tournament.status === "OPEN" ? (
+          userData && !isOrganizer ? (
+            <div className="mt-4 pt-4 border-t border-[#1E3A5F]">
+              {userInscricao?.status === "APPROVED" ? (
+                <div className="flex items-center gap-2 text-green-400 text-sm">
+                  <span>✅</span><span>Seu time está inscrito e aprovado neste torneio.</span>
+                </div>
+              ) : userInscricao?.status === "PENDING" ? (
+                <div className="flex items-center gap-2 text-yellow-400 text-sm">
+                  <span>⏳</span><span>Inscrição enviada — aguardando aprovação do organizador.</span>
+                </div>
+              ) : userInscricao?.status === "REJECTED" ? (
+                <div className="flex items-center gap-2 text-red-400 text-sm">
+                  <span>❌</span><span>Sua inscrição foi recusada. Entre em contato com o organizador.</span>
+                </div>
+              ) : (
+                <Link href={"/dashboard/times/criar?tournament=" + tournament.id} className="btn-gold">
+                  + Inscrever Meu Time
+                </Link>
+              )}
+            </div>
+          ) : !userData ? (
+            <div className="mt-4 pt-4 border-t border-[#1E3A5F]">
+              <Link href="/login" className="btn-gold inline-block">Entrar para Inscrever Meu Time</Link>
+            </div>
+          ) : null
+        ) : null}
       </div>
 
       {/* Bracket + resultados + classificação + times */}

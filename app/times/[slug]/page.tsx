@@ -14,8 +14,8 @@ export default async function TeamPage({ params }: Props) {
       id, name, tag, description, logo_url,
       team_members (
         id, profile_id, team_role, is_reserve, lane,
-        profiles (
-          id, username, riot_id_game_name, riot_id_tag_line, avatar_url
+        riot_account:riot_accounts (
+          id, game_name, tag_line
         )
       )
     `)
@@ -27,7 +27,8 @@ export default async function TeamPage({ params }: Props) {
   const { data: { user } } = await supabase.auth.getUser()
   const currentUserId = user?.id ?? null
 
-  const captain = team.team_members.find(m => m.team_role === 'captain')
+  // capitão = member com team_role 'captain'; profile_id referencia auth.users / profiles
+  const captain = (team.team_members as any[]).find(m => m.team_role === 'captain')
   const captainProfileId = captain?.profile_id ?? null
   const isCaptain = !!currentUserId && currentUserId === captainProfileId
 
