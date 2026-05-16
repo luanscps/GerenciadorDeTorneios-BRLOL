@@ -62,6 +62,26 @@ interface Invite {
   created_at: string;
 }
 
+// Tipo bruto do Supabase: join via FK retorna invited_profile como array
+interface _RawInvite {
+  id: string;
+  role: string;
+  status: string;
+  expires_at: string;
+  created_at: string;
+  invited_profile: InvitedProfile | InvitedProfile[] | null;
+}
+
+// Normaliza invited_profile de array para objeto — mesmo padrão do convites/page.tsx
+function normalizeInvites(raw: unknown[]): Invite[] {
+  return (raw as _RawInvite[]).map((inv) => ({
+    ...inv,
+    invited_profile: (Array.isArray(inv.invited_profile)
+      ? inv.invited_profile[0]
+      : inv.invited_profile) as InvitedProfile | null,
+  }));
+}
+
 interface Team {
   id: string;
   name: string;
@@ -110,7 +130,8 @@ export default function RosterPage() {
     setTeam(data as unknown as Team);
 
     const { data: invData } = await listarConvitesEnviados(teamId);
-    setInvites((invData as Invite[]) ?? []);
+    // Supabase retorna invited_profile como array via FK join — normaliza para objeto
+    setInvites(invData ? normalizeInvites(invData as unknown[]) : []);
     setLoading(false);
   }, [supabase, router, teamId]);
 
