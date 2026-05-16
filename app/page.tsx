@@ -5,11 +5,12 @@ import { TournamentCard } from "@/components/tournament/TournamentCard";
 export default async function HomePage() {
   const supabase = await createClient();
 
+  // FIX: start_date nao existe como coluna de ordenacao — usar starts_at
   const { data: tournaments } = await supabase
     .from("tournaments")
     .select("*")
     .in("status", ["OPEN", "IN_PROGRESS", "CHECKIN"])
-    .order("start_date", { ascending: true })
+    .order("starts_at", { ascending: true })
     .limit(6);
 
   const { count: totalPlayers } = await supabase

@@ -41,10 +41,10 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
     { data: { user: userData } },
     { data: inscricoesCheckin },
   ] = await Promise.all([
-    // FIX: team_members tem 4 FKs — hint obrigatório para evitar 500
+    // FIX: PostgREST nao suporta hint de FK com (count) — usar sem hint
     supabase
       .from("teams")
-      .select("*, team_members!team_members_team_id_fkey(count)")
+      .select("*, team_members(count)")
       .eq("tournament_id", tournament.id)
       .order("created_at"),
     supabase
@@ -289,7 +289,7 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
           </div>
         )}
 
-        {/* Inscrição para participantes — FIX: condição composta entre parênteses */}
+        {/* Inscrição para participantes */}
         {isOpen && (
           <>
             {userData && !isOrganizer && (
