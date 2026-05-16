@@ -1,11 +1,13 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 export default function CriarTorneioPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [riotIdRequired, setRiotIdRequired] = useState(false);
   const [form, setForm] = useState({
     name: "",
     slug: "",
@@ -23,7 +25,6 @@ export default function CriarTorneioPage() {
     setForm(p => ({
       ...p,
       [name]: value,
-      // auto-gera slug a partir do nome
       ...(name === "name" && !form.slug
         ? { slug: value.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "") }
         : {}),
@@ -34,6 +35,7 @@ export default function CriarTorneioPage() {
     e.preventDefault();
     setLoading(true);
     setError("");
+    setRiotIdRequired(false);
 
     const res = await fetch("/api/admin/torneios", {
       method: "POST",
@@ -52,8 +54,13 @@ export default function CriarTorneioPage() {
     });
 
     const json = await res.json();
+
     if (!res.ok || json.error) {
-      setError(json.error ?? "Erro ao criar torneio");
+      if (json.error === "RIOT_ID_REQUIRED") {
+        setRiotIdRequired(true);
+      } else {
+        setError(json.message ?? json.error ?? "Erro ao criar torneio");
+      }
       setLoading(false);
       return;
     }
@@ -66,6 +73,19 @@ export default function CriarTorneioPage() {
         <span className="text-3xl">🏆</span>
         <h1 className="text-2xl font-bold text-white">Criar Torneio</h1>
       </div>
+
+      {riotIdRequired && (
+        <div className="bg-yellow-500/10 border border-yellow-500/30 text-yellow-300 rounded-lg p-4 mb-4 text-sm space-y-2">
+          <p className="font-semibold">⚠️ Riot ID não vinculado</p>
+          <p>Para criar torneios, você precisa primeiro vincular sua conta Riot ID ao seu perfil.</p>
+          <Link
+            href="/dashboard/jogador/registrar"
+            className="inline-block mt-1 px-4 py-2 rounded-lg bg-yellow-500/20 border border-yellow-500/40 text-yellow-300 hover:bg-yellow-500/30 transition-colors font-medium"
+          >
+            🔗 Vincular Riot ID agora
+          </Link>
+        </div>
+      )}
 
       {error && (
         <div className="bg-red-500/10 border border-red-500/30 text-red-400 rounded-lg p-3 mb-4 text-sm">

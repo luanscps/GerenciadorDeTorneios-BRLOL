@@ -238,7 +238,7 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
 
           {isOrganizer && (
             <Link
-              href={`/dashboard/torneios/${tournament.id}/editar`}
+              href={`/admin/tournaments/${tournament.id}/editar`}
               className="flex items-center gap-2 px-4 py-2 rounded-lg border border-blue-500/40 text-sm text-blue-400 hover:border-blue-400 hover:bg-blue-400/10 transition-colors ml-auto"
             >
               ✏️ Editar Torneio
@@ -249,14 +249,15 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
         {isOrganizer && (
           <div className="mt-4 pt-4 border-t border-[#1E3A5F] flex flex-wrap items-center gap-3">
             <span className="text-xs text-gray-500 uppercase tracking-wider font-semibold">Organizador</span>
+            {/* FIX: links corrigidos de /dashboard/torneios → /admin/tournaments */}
             <Link
-              href={`/dashboard/torneios/${tournament.id}`}
+              href={`/admin/tournaments/${tournament.id}`}
               className="text-xs px-3 py-1.5 rounded-lg border border-[#1E3A5F] text-gray-300 hover:border-[#C8A84B]/50 hover:text-[#C8A84B] transition-colors"
             >
               ⚙️ Painel de Gestão
             </Link>
             <Link
-              href={`/dashboard/torneios/${tournament.id}/inscricoes`}
+              href={`/admin/tournaments/${tournament.id}/inscricoes`}
               className="text-xs px-3 py-1.5 rounded-lg border border-[#1E3A5F] text-gray-300 hover:border-[#C8A84B]/50 hover:text-[#C8A84B] transition-colors"
             >
               📋 Inscrições
