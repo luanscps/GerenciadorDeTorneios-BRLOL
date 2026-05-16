@@ -8,29 +8,34 @@ export default async function TeamPage({ params }: Props) {
   const { slug } = await params
   const supabase = await createClient()
 
-  // AMBIGUIDADE PostgREST: team_members tem 4 FKs (team_id, profile_id, invited_by, riot_account_id)
-  // Sem hint explícito em CADA nível, o PostgREST retorna 500.
-  // A query que funciona na página /times usa:
-  //   team_members!team_members_team_id_fkey + riot_account:riot_accounts!team_members_riot_account_id_fkey
+  // FKs em team_members: team_members_team_id_fkey | team_members_profile_id_fkey
+  //                       team_members_riot_account_id_fkey | team_members_invited_by_fkey
+  // Hint obrigatório em CADA nível com ambiguidade para evitar 500 do PostgREST.
   const { data: team, error } = await supabase
     .from('teams')
     .select(`
-      id, name, tag, description, logo_url,
+      id, name, tag, description, logo_url, slug,
       team_members!team_members_team_id_fkey (
         id,
         profile_id,
         team_role,
         is_reserve,
         lane,
+        status,
         riot_account:riot_accounts!team_members_riot_account_id_fkey (
-          id, game_name, tag_line
+          id, game_name, tag_line, profile_icon_id, summoner_level
         )
       )
     `)
     .eq('slug', slug)
-    .single()
+    .maybeSingle()
 
-  if (error || !team) notFound()
+  // maybeSingle() retorna null sem erro quando não encontra — mais seguro que single()
+  if (error) {
+    console.error('[TeamPage] Supabase error:', error.message)
+    notFound()
+  }
+  if (!team) notFound()
 
   const { data: { user } } = await supabase.auth.getUser()
   const currentUserId = user?.id ?? null

@@ -18,7 +18,7 @@ async function deleteTournament(tournamentId: string) {
     .from('tournaments')
     .delete()
     .eq('id', tournamentId)
-    .eq('organizer_id', user.id) // garante que só o dono deleta
+    .eq('organizer_id', user.id)
   if (!error) redirect('/torneios')
 }
 
@@ -41,9 +41,10 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
     { data: { user: userData } },
     { data: inscricoesCheckin },
   ] = await Promise.all([
+    // FIX: team_members tem 4 FKs — hint obrigatório para evitar 500
     supabase
       .from("teams")
-      .select("*, team_members(count)")
+      .select("*, team_members!team_members_team_id_fkey(count)")
       .eq("tournament_id", tournament.id)
       .order("created_at"),
     supabase
@@ -67,7 +68,6 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
       .eq("status", "APPROVED"),
   ]);
 
-  // Verifica se o usuário logado é o organizador
   const isOrganizer = !!userData && userData.id === tournament.organizer_id;
 
   const checkinMap = new Map(
@@ -111,7 +111,7 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
   }
 
   const recentMatches = (matches ?? [])
-    .filter((m) => m.status === "finished" || m.status === "FINISHED")
+    .filter((m) => m.status === "FINISHED")
     .sort((a, b) => {
       const dateA = new Date(a.played_at ?? a.scheduled_at ?? 0).getTime();
       const dateB = new Date(b.played_at ?? b.scheduled_at ?? 0).getTime();
@@ -120,23 +120,23 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
     .slice(0, 5);
 
   const matchTotal  = (matches ?? []).length;
-  const matchAoVivo = (matches ?? []).filter(m => ['ongoing','IN_PROGRESS'].includes(m.status)).length;
+  const matchAoVivo = (matches ?? []).filter(m => m.status === 'IN_PROGRESS').length;
 
   const statusColor: Record<string, string> = {
-    open: "text-green-400", checkin: "text-blue-400", ongoing: "text-yellow-400",
-    finished: "text-gray-400", draft: "text-gray-500", cancelled: "text-red-400",
     OPEN: "text-green-400", CHECKIN: "text-blue-400", ONGOING: "text-yellow-400",
-    FINISHED: "text-gray-400", DRAFT: "text-gray-500", CANCELLED: "text-red-400",
+    IN_PROGRESS: "text-yellow-400", FINISHED: "text-gray-400",
+    DRAFT: "text-gray-500", CANCELLED: "text-red-400",
   };
   const statusLabel: Record<string, string> = {
-    open: "Inscrições Abertas", checkin: "Check-in", ongoing: "Em Andamento",
-    finished: "Encerrado", draft: "Rascunho", cancelled: "Cancelado",
     OPEN: "Inscrições Abertas", CHECKIN: "Check-in", ONGOING: "Em Andamento",
-    FINISHED: "Encerrado", DRAFT: "Rascunho", CANCELLED: "Cancelado",
+    IN_PROGRESS: "Em Andamento", FINISHED: "Encerrado",
+    DRAFT: "Rascunho", CANCELLED: "Cancelado",
   };
 
-  // Bind da server action com o ID do torneio
   const deleteTournamentBound = deleteTournament.bind(null, tournament.id);
+  const tournamentStatus = tournament.status?.toUpperCase() ?? '';
+  const isOpen = tournamentStatus === 'OPEN';
+  const isDraftOrCancelled = tournamentStatus === 'DRAFT' || tournamentStatus === 'CANCELLED';
 
   return (
     <div className="space-y-8">
@@ -177,8 +177,8 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
             )}
           </div>
           <div className="text-right space-y-1">
-            <p className={"font-bold " + (statusColor[tournament.status] ?? "text-white")}>
-              ● {statusLabel[tournament.status] ?? tournament.status}
+            <p className={"font-bold " + (statusColor[tournamentStatus] ?? "text-white")}>
+              ● {statusLabel[tournamentStatus] ?? tournament.status}
             </p>
             {tournament.prize_pool && (
               <p className="text-[#C8A84B] font-bold">🏆 {tournament.prize_pool}</p>
@@ -203,7 +203,7 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
           </div>
           <div className="text-center">
             <p className="text-2xl font-bold text-white">
-              {(matches ?? []).filter((m) => m.status === "finished" || m.status === "FINISHED").length}
+              {(matches ?? []).filter((m) => m.status === "FINISHED").length}
             </p>
             <p className="text-gray-400 text-xs">Partidas jogadas</p>
           </div>
@@ -241,7 +241,6 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
             🏆 Chaveamento
           </Link>
 
-          {/* Painel do organizador — editar */}
           {isOrganizer && (
             <Link
               href={`/dashboard/torneios/${tournament.id}/editar`}
@@ -252,7 +251,7 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
           )}
         </div>
 
-        {/* Painel organizador — gerenciar + deletar */}
+        {/* Painel organizador */}
         {isOrganizer && (
           <div className="mt-4 pt-4 border-t border-[#1E3A5F] flex flex-wrap items-center gap-3">
             <span className="text-xs text-gray-500 uppercase tracking-wider font-semibold">Organizador</span>
@@ -268,9 +267,7 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
             >
               📋 Inscrições
             </Link>
-            {/* Deletar — só em DRAFT ou CANCELLED */}
-            {(tournament.status === 'draft' || tournament.status === 'DRAFT' ||
-              tournament.status === 'cancelled' || tournament.status === 'CANCELLED') && (
+            {isDraftOrCancelled ? (
               <form action={deleteTournamentBound} className="ml-auto">
                 <button
                   type="submit"
@@ -284,10 +281,7 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
                   🗑️ Deletar Torneio
                 </button>
               </form>
-            )}
-            {/* Status ativo — não permite deleção direta */}
-            {tournament.status !== 'draft' && tournament.status !== 'DRAFT' &&
-             tournament.status !== 'cancelled' && tournament.status !== 'CANCELLED' && (
+            ) : (
               <span className="ml-auto text-xs text-gray-600 italic">
                 Para deletar, cancele o torneio primeiro.
               </span>
@@ -295,34 +289,37 @@ export default async function TournamentPage({ params }: { params: Promise<{ slu
           </div>
         )}
 
-        {/* Inscrição para participantes */}
-        {tournament.status === "open" || tournament.status === "OPEN" ? (
-          userData && !isOrganizer ? (
-            <div className="mt-4 pt-4 border-t border-[#1E3A5F]">
-              {userInscricao?.status === "APPROVED" ? (
-                <div className="flex items-center gap-2 text-green-400 text-sm">
-                  <span>✅</span><span>Seu time está inscrito e aprovado neste torneio.</span>
-                </div>
-              ) : userInscricao?.status === "PENDING" ? (
-                <div className="flex items-center gap-2 text-yellow-400 text-sm">
-                  <span>⏳</span><span>Inscrição enviada — aguardando aprovação do organizador.</span>
-                </div>
-              ) : userInscricao?.status === "REJECTED" ? (
-                <div className="flex items-center gap-2 text-red-400 text-sm">
-                  <span>❌</span><span>Sua inscrição foi recusada. Entre em contato com o organizador.</span>
-                </div>
-              ) : (
-                <Link href={"/dashboard/times/criar?tournament=" + tournament.id} className="btn-gold">
-                  + Inscrever Meu Time
-                </Link>
-              )}
-            </div>
-          ) : !userData ? (
-            <div className="mt-4 pt-4 border-t border-[#1E3A5F]">
-              <Link href="/login" className="btn-gold inline-block">Entrar para Inscrever Meu Time</Link>
-            </div>
-          ) : null
-        ) : null}
+        {/* Inscrição para participantes — FIX: condição composta entre parênteses */}
+        {isOpen && (
+          <>
+            {userData && !isOrganizer && (
+              <div className="mt-4 pt-4 border-t border-[#1E3A5F]">
+                {userInscricao?.status === "APPROVED" ? (
+                  <div className="flex items-center gap-2 text-green-400 text-sm">
+                    <span>✅</span><span>Seu time está inscrito e aprovado neste torneio.</span>
+                  </div>
+                ) : userInscricao?.status === "PENDING" ? (
+                  <div className="flex items-center gap-2 text-yellow-400 text-sm">
+                    <span>⏳</span><span>Inscrição enviada — aguardando aprovação do organizador.</span>
+                  </div>
+                ) : userInscricao?.status === "REJECTED" ? (
+                  <div className="flex items-center gap-2 text-red-400 text-sm">
+                    <span>❌</span><span>Sua inscrição foi recusada. Entre em contato com o organizador.</span>
+                  </div>
+                ) : (
+                  <Link href={"/dashboard/times/criar?tournament=" + tournament.id} className="btn-gold">
+                    + Inscrever Meu Time
+                  </Link>
+                )}
+              </div>
+            )}
+            {!userData && (
+              <div className="mt-4 pt-4 border-t border-[#1E3A5F]">
+                <Link href="/login" className="btn-gold inline-block">Entrar para Inscrever Meu Time</Link>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       {/* Bracket + resultados + classificação + times */}
