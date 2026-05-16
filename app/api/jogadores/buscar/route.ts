@@ -4,9 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 /**
  * GET /api/jogadores/buscar?q=SummonerName%23BR1
  *
- * Busca jogadores por summoner_name (e opcionalmente tag_line).
- * Aceita formato "Nome#TAG" ou apenas "Nome".
- * Retorna até 10 resultados para o InvitePlayerForm.
+ * Busca jogadores por game_name (e opcionalmente tag_line) via riot_accounts.
+ * Retorna profileId para que o InvitePlayerForm passe ao enviarConvite().
  * Não expõe dados sensíveis — apenas campos públicos.
  */
 export async function GET(req: NextRequest) {
@@ -18,27 +17,38 @@ export async function GET(req: NextRequest) {
 
     const supabase = await createClient();
 
-    // Verifica autenticação — rota semiprivada (apenas usuários logados)
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
     }
 
-    // Suporta formato "Nome#TAG"
     let nameQuery = q;
     let tagQuery: string | null = null;
     if (q.includes("#")) {
-      const [name, tag] = q.split("#");
-      nameQuery = name.trim();
-      tagQuery = tag.trim();
+      const parts = q.split("#");
+      nameQuery = parts[0].trim();
+      tagQuery  = parts[1]?.trim() ?? null;
     }
 
-    // Fix 1: removido team_id do select — coluna foi dropada na migration
-    // hasTeam agora é verificado via team_members se necessário
+    // Busca em riot_accounts (fonte de verdade de game_name/tag_line)
+    // com join em players para stats de ranking
     let query = supabase
-      .from("players")
-      .select("id, summoner_name, tag_line, role, tier, rank, lp, puuid")
-      .ilike("summoner_name", `%${nameQuery}%`)
+      .from("riot_accounts")
+      .select(`
+        id,
+        profile_id,
+        game_name,
+        tag_line,
+        player:players (
+          id,
+          role,
+          tier,
+          rank,
+          lp,
+          puuid
+        )
+      `)
+      .ilike("game_name", `%${nameQuery}%`)
       .limit(10);
 
     if (tagQuery) {
@@ -48,16 +58,33 @@ export async function GET(req: NextRequest) {
     const { data, error } = await query;
     if (error) throw error;
 
-    const results = (data ?? []).map((p) => ({
-      id:           p.id,
-      summonerName: p.summoner_name,
-      tagLine:      p.tag_line,
-      role:         p.role,
-      tier:         p.tier,
-      rank:         p.rank,
-      lp:           p.lp,
-      puuid:        p.puuid,
-    }));
+    // Verifica quais profiles já têm time ativo
+    const profileIds = (data ?? []).map(r => r.profile_id).filter(Boolean);
+    let profilesWithTeam = new Set<string>();
+    if (profileIds.length > 0) {
+      const { data: members } = await supabase
+        .from("team_members")
+        .select("profile_id")
+        .in("profile_id", profileIds)
+        .eq("status", "active");
+      profilesWithTeam = new Set((members ?? []).map((m: any) => m.profile_id));
+    }
+
+    const results = (data ?? []).map((r: any) => {
+      const player = Array.isArray(r.player) ? r.player[0] : r.player;
+      return {
+        id:           player?.id ?? r.id,
+        profileId:    r.profile_id,
+        summonerName: r.game_name,
+        tagLine:      r.tag_line,
+        role:         player?.role ?? null,
+        tier:         player?.tier ?? "UNRANKED",
+        rank:         player?.rank ?? "",
+        lp:           player?.lp ?? 0,
+        puuid:        player?.puuid ?? null,
+        hasTeam:      profilesWithTeam.has(r.profile_id),
+      };
+    });
 
     return NextResponse.json(results);
   } catch (err) {
