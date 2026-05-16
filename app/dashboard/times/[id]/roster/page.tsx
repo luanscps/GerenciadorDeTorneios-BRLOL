@@ -48,10 +48,14 @@ interface TeamMember {
   riot_account: RiotAccount | null;
 }
 
+interface InvitedProfile {
+  riot_game_name: string | null;
+  riot_tagline: string | null;
+}
+
 interface Invite {
   id: string;
-  summoner_name: string;
-  tagline: string;
+  invited_profile: InvitedProfile | null;
   role: string;
   status: string;
   expires_at: string;
@@ -238,29 +242,33 @@ export default function RosterPage() {
             <h2 className="text-gray-400 text-xs uppercase tracking-wider font-semibold mb-3">
               ⏳ Convites Aguardando Resposta ({pendingInvites.length})
             </h2>
-            {pendingInvites.map(inv => (
-              <div key={inv.id} className="flex items-center gap-3 bg-[#0D1E35] border border-yellow-400/20 rounded-lg px-3 py-2">
-                <div className="flex-1 min-w-0">
-                  <p className="text-white text-sm font-medium truncate">
-                    {inv.summoner_name}
-                    <span className="text-gray-500 font-normal"> #{inv.tagline}</span>
-                  </p>
-                  <p className="text-gray-500 text-xs">
-                    {ROLE_LABELS[inv.role] ?? inv.role} · Expira {new Date(inv.expires_at).toLocaleDateString('pt-BR')}
-                  </p>
+            {pendingInvites.map(inv => {
+              const gameName = inv.invited_profile?.riot_game_name ?? '—';
+              const tagline  = inv.invited_profile?.riot_tagline ?? '';
+              return (
+                <div key={inv.id} className="flex items-center gap-3 bg-[#0D1E35] border border-yellow-400/20 rounded-lg px-3 py-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white text-sm font-medium truncate">
+                      {gameName}
+                      <span className="text-gray-500 font-normal"> #{tagline}</span>
+                    </p>
+                    <p className="text-gray-500 text-xs">
+                      {ROLE_LABELS[inv.role] ?? inv.role} · Expira {new Date(inv.expires_at).toLocaleDateString('pt-BR')}
+                    </p>
+                  </div>
+                  <span className="text-xs text-yellow-400 bg-yellow-400/10 border border-yellow-400/30 px-2 py-0.5 rounded-full">
+                    Aguardando
+                  </span>
+                  <button
+                    onClick={() => handleCancelInvite(inv.id)}
+                    disabled={cancelling === inv.id}
+                    className="text-xs text-gray-500 hover:text-red-400 transition-colors disabled:opacity-40"
+                  >
+                    {cancelling === inv.id ? '...' : 'Cancelar'}
+                  </button>
                 </div>
-                <span className="text-xs text-yellow-400 bg-yellow-400/10 border border-yellow-400/30 px-2 py-0.5 rounded-full">
-                  Aguardando
-                </span>
-                <button
-                  onClick={() => handleCancelInvite(inv.id)}
-                  disabled={cancelling === inv.id}
-                  className="text-xs text-gray-500 hover:text-red-400 transition-colors disabled:opacity-40"
-                >
-                  {cancelling === inv.id ? '...' : 'Cancelar'}
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
@@ -271,13 +279,15 @@ export default function RosterPage() {
               📋 Histórico de Convites
             </h2>
             {historyInvites.map(inv => {
-              const style = INVITE_STATUS_STYLE[inv.status] ?? 'text-gray-400';
+              const style    = INVITE_STATUS_STYLE[inv.status] ?? 'text-gray-400';
+              const gameName = inv.invited_profile?.riot_game_name ?? '—';
+              const tagline  = inv.invited_profile?.riot_tagline ?? '';
               return (
                 <div key={inv.id} className="flex items-center gap-3 bg-[#0D1E35] border border-[#1E3A5F] rounded-lg px-3 py-2 opacity-70">
                   <div className="flex-1 min-w-0">
                     <p className="text-white text-sm font-medium truncate">
-                      {inv.summoner_name}
-                      <span className="text-gray-500 font-normal"> #{inv.tagline}</span>
+                      {gameName}
+                      <span className="text-gray-500 font-normal"> #{tagline}</span>
                     </p>
                     <p className="text-gray-500 text-xs">
                       {ROLE_LABELS[inv.role] ?? inv.role} · {new Date(inv.created_at).toLocaleDateString('pt-BR')}
