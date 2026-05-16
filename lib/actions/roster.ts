@@ -3,13 +3,16 @@ import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 
 // ─────────────────────────────────────────────
-// Enviar convite (capitão → jogador por nick)
+// Enviar convite (capitão → jogador por profileId)
+// Usa invited_profile_id como identificador único.
+// summoner_name e tag_line ficam NULL (colunas legadas mantidas temporariamente).
 // ─────────────────────────────────────────────
 export async function enviarConvite(params: {
-  teamId: string;
-  summonerName: string;
-  tagline: string;
-  role: string;
+  teamId:     string;
+  profileId:  string; // profile_id do jogador (vem do /api/jogadores/buscar)
+  role:       string;
+  isReserve?: boolean;
+  message?:   string;
 }) {
   try {
     const supabase = await createClient();
@@ -25,21 +28,24 @@ export async function enviarConvite(params: {
     if (teamErr || !team) return { error: "Time não encontrado" };
     if (team.owner_id !== user.id) return { error: "Apenas o capitão pode convidar jogadores" };
 
-    // Valida vagas: max 5 membros aceitos em team_members
+    // Não pode convidar a si mesmo
+    if (params.profileId === user.id) return { error: "Você não pode se convidar" };
+
+    // Valida vagas: max 5 membros ativos
     const { count } = await supabase
       .from("team_members")
       .select("id", { count: "exact", head: true })
       .eq("team_id", params.teamId)
-      .eq("status", "accepted");
+      .eq("status", "active");
 
     if ((count ?? 0) >= 5) return { error: "Time já possui 5 jogadores" };
 
+    // Verifica convite PENDING já existente para este profile
     const { data: existing } = await supabase
       .from("team_invites")
       .select("id")
       .eq("team_id", params.teamId)
-      .eq("summoner_name", params.summonerName)
-      .eq("tagline", params.tagline)
+      .eq("invited_profile_id", params.profileId)
       .eq("status", "PENDING")
       .maybeSingle();
 
@@ -50,13 +56,15 @@ export async function enviarConvite(params: {
     const { data: invite, error: insertErr } = await supabase
       .from("team_invites")
       .insert({
-        team_id:       params.teamId,
-        invited_by:    user.id,
-        summoner_name: params.summonerName,
-        tagline:       params.tagline,
-        role:          params.role,
-        status:        "PENDING",
-        expires_at:    expiresAt,
+        team_id:            params.teamId,
+        invited_by:         user.id,
+        invited_profile_id: params.profileId,
+        role:               params.role,
+        is_reserve:         params.isReserve ?? false,
+        message:            params.message ?? null,
+        status:             "PENDING",
+        expires_at:         expiresAt,
+        // summoner_name e tag_line: NULL — colunas legadas, removidas em próxima migration
       })
       .select("id")
       .single();
@@ -104,8 +112,6 @@ export async function cancelarConvite(inviteId: string, teamId: string) {
 
 // ─────────────────────────────────────────────
 // Remover jogador do time (capitão)
-// Remove o registro em team_members via profile_id
-// lookup: players.id → riot_accounts → profile_id
 // ─────────────────────────────────────────────
 export async function removerJogador(playerId: string, teamId: string) {
   try {
@@ -121,7 +127,6 @@ export async function removerJogador(playerId: string, teamId: string) {
 
     if (team?.owner_id !== user.id) return { error: "Apenas o capitão pode remover jogadores" };
 
-    // Resolve profile_id: players.id → riot_accounts.id → riot_accounts.profile_id
     const { data: player, error: playerErr } = await supabase
       .from("players")
       .select("riot_account_id")
@@ -140,7 +145,6 @@ export async function removerJogador(playerId: string, teamId: string) {
     if (raErr || !riotAccount?.profile_id)
       return { error: "Conta Riot não vinculada a um perfil" };
 
-    // Deleta o vínculo em team_members
     const { error } = await supabase
       .from("team_members")
       .delete()
@@ -159,6 +163,7 @@ export async function removerJogador(playerId: string, teamId: string) {
 
 // ─────────────────────────────────────────────
 // Listar convites enviados pelo time (capitão)
+// Inclui display name do convidado via join em profiles
 // ─────────────────────────────────────────────
 export async function listarConvitesEnviados(teamId: string) {
   try {
@@ -168,9 +173,22 @@ export async function listarConvitesEnviados(teamId: string) {
 
     const { data, error } = await supabase
       .from("team_invites")
-      .select("id, summoner_name, tagline, role, status, expires_at, created_at")
+      .select(`
+        id,
+        role,
+        is_reserve,
+        status,
+        expires_at,
+        created_at,
+        message,
+        invited_profile:profiles!invited_profile_id (
+          id,
+          riot_game_name,
+          riot_tagline
+        )
+      `)
       .eq("team_id", teamId)
-      .in("status", ["PENDING", "ACCEPTED", "REJECTED"])
+      .in("status", ["PENDING", "ACCEPTED", "REJECTED", "CANCELLED"])
       .order("created_at", { ascending: false })
       .limit(20);
 
