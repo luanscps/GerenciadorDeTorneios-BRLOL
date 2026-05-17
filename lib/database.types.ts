@@ -84,6 +84,13 @@ export type Database = {
             referencedRelation: "v_stage_standings"
             referencedColumns: ["team_id"]
           },
+          {
+            foreignKeyName: "active_team_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "v_tournament_standings"
+            referencedColumns: ["team_id"]
+          },
         ]
       }
       audit_log: {
@@ -338,11 +345,25 @@ export type Database = {
             referencedColumns: ["team_id"]
           },
           {
+            foreignKeyName: "inscricoes_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "v_tournament_standings"
+            referencedColumns: ["team_id"]
+          },
+          {
             foreignKeyName: "inscricoes_tournament_id_fkey"
             columns: ["tournament_id"]
             isOneToOne: false
             referencedRelation: "tournaments"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inscricoes_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "v_tournament_standings"
+            referencedColumns: ["tournament_id"]
           },
         ]
       }
@@ -400,6 +421,13 @@ export type Database = {
             columns: ["winner_id"]
             isOneToOne: false
             referencedRelation: "v_stage_standings"
+            referencedColumns: ["team_id"]
+          },
+          {
+            foreignKeyName: "match_games_winner_id_fkey"
+            columns: ["winner_id"]
+            isOneToOne: false
+            referencedRelation: "v_tournament_standings"
             referencedColumns: ["team_id"]
           },
         ]
@@ -528,6 +556,13 @@ export type Database = {
             referencedColumns: ["team_id"]
           },
           {
+            foreignKeyName: "matches_team_a_id_fkey"
+            columns: ["team_a_id"]
+            isOneToOne: false
+            referencedRelation: "v_tournament_standings"
+            referencedColumns: ["team_id"]
+          },
+          {
             foreignKeyName: "matches_team_b_id_fkey"
             columns: ["team_b_id"]
             isOneToOne: false
@@ -542,11 +577,25 @@ export type Database = {
             referencedColumns: ["team_id"]
           },
           {
+            foreignKeyName: "matches_team_b_id_fkey"
+            columns: ["team_b_id"]
+            isOneToOne: false
+            referencedRelation: "v_tournament_standings"
+            referencedColumns: ["team_id"]
+          },
+          {
             foreignKeyName: "matches_tournament_id_fkey"
             columns: ["tournament_id"]
             isOneToOne: false
             referencedRelation: "tournaments"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "matches_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "v_tournament_standings"
+            referencedColumns: ["tournament_id"]
           },
           {
             foreignKeyName: "matches_winner_id_fkey"
@@ -560,6 +609,13 @@ export type Database = {
             columns: ["winner_id"]
             isOneToOne: false
             referencedRelation: "v_stage_standings"
+            referencedColumns: ["team_id"]
+          },
+          {
+            foreignKeyName: "matches_winner_id_fkey"
+            columns: ["winner_id"]
+            isOneToOne: false
+            referencedRelation: "v_tournament_standings"
             referencedColumns: ["team_id"]
           },
         ]
@@ -728,6 +784,13 @@ export type Database = {
             referencedRelation: "v_stage_standings"
             referencedColumns: ["team_id"]
           },
+          {
+            foreignKeyName: "player_stats_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "v_tournament_standings"
+            referencedColumns: ["team_id"]
+          },
         ]
       }
       players: {
@@ -835,6 +898,13 @@ export type Database = {
             referencedRelation: "tournaments"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "prize_distribution_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "v_tournament_standings"
+            referencedColumns: ["tournament_id"]
+          },
         ]
       }
       profiles: {
@@ -927,12 +997,82 @@ export type Database = {
           },
         ]
       }
+      riot_account_lock_logs: {
+        Row: {
+          action: string
+          changed_by: string
+          created_at: string
+          id: string
+          lock_reason: string | null
+          lock_until: string | null
+          previous_status: string | null
+          previous_until: string | null
+          riot_account_id: string
+        }
+        Insert: {
+          action: string
+          changed_by: string
+          created_at?: string
+          id?: string
+          lock_reason?: string | null
+          lock_until?: string | null
+          previous_status?: string | null
+          previous_until?: string | null
+          riot_account_id: string
+        }
+        Update: {
+          action?: string
+          changed_by?: string
+          created_at?: string
+          id?: string
+          lock_reason?: string | null
+          lock_until?: string | null
+          previous_status?: string | null
+          previous_until?: string | null
+          riot_account_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "riot_account_lock_logs_changed_by_fkey"
+            columns: ["changed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "riot_account_lock_logs_changed_by_fkey"
+            columns: ["changed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_with_riot"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "riot_account_lock_logs_riot_account_id_fkey"
+            columns: ["riot_account_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_with_riot"
+            referencedColumns: ["riot_account_id"]
+          },
+          {
+            foreignKeyName: "riot_account_lock_logs_riot_account_id_fkey"
+            columns: ["riot_account_id"]
+            isOneToOne: false
+            referencedRelation: "riot_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       riot_accounts: {
         Row: {
           created_at: string
           game_name: string
           id: string
           is_primary: boolean
+          lock_reason: string | null
+          lock_status: string
+          lock_until: string | null
+          locked_at: string | null
+          locked_by: string | null
           profile_icon_id: number | null
           profile_id: string
           puuid: string
@@ -945,6 +1085,11 @@ export type Database = {
           game_name: string
           id?: string
           is_primary?: boolean
+          lock_reason?: string | null
+          lock_status?: string
+          lock_until?: string | null
+          locked_at?: string | null
+          locked_by?: string | null
           profile_icon_id?: number | null
           profile_id: string
           puuid: string
@@ -957,6 +1102,11 @@ export type Database = {
           game_name?: string
           id?: string
           is_primary?: boolean
+          lock_reason?: string | null
+          lock_status?: string
+          lock_until?: string | null
+          locked_at?: string | null
+          locked_by?: string | null
           profile_icon_id?: number | null
           profile_id?: string
           puuid?: string
@@ -965,6 +1115,20 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "riot_accounts_locked_by_fkey"
+            columns: ["locked_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "riot_accounts_locked_by_fkey"
+            columns: ["locked_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_with_riot"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "riot_accounts_profile_id_fkey"
             columns: ["profile_id"]
@@ -1034,6 +1198,13 @@ export type Database = {
             referencedRelation: "tournaments"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "riot_tournament_registrations_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: true
+            referencedRelation: "v_tournament_standings"
+            referencedColumns: ["tournament_id"]
+          },
         ]
       }
       seedings: {
@@ -1077,11 +1248,25 @@ export type Database = {
             referencedColumns: ["team_id"]
           },
           {
+            foreignKeyName: "seedings_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "v_tournament_standings"
+            referencedColumns: ["team_id"]
+          },
+          {
             foreignKeyName: "seedings_tournament_id_fkey"
             columns: ["tournament_id"]
             isOneToOne: false
             referencedRelation: "tournaments"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "seedings_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "v_tournament_standings"
+            referencedColumns: ["tournament_id"]
           },
         ]
       }
@@ -1130,10 +1315,13 @@ export type Database = {
           expires_at: string | null
           id: string
           invited_by: string | null
+          invited_profile_id: string | null
+          is_reserve: boolean
+          message: string | null
           role: Database["public"]["Enums"]["player_role"] | null
           status: Database["public"]["Enums"]["invite_status"] | null
-          summoner_name: string
-          tag_line: string
+          summoner_name: string | null
+          tag_line: string | null
           team_id: string
         }
         Insert: {
@@ -1141,10 +1329,13 @@ export type Database = {
           expires_at?: string | null
           id?: string
           invited_by?: string | null
+          invited_profile_id?: string | null
+          is_reserve?: boolean
+          message?: string | null
           role?: Database["public"]["Enums"]["player_role"] | null
           status?: Database["public"]["Enums"]["invite_status"] | null
-          summoner_name: string
-          tag_line?: string
+          summoner_name?: string | null
+          tag_line?: string | null
           team_id: string
         }
         Update: {
@@ -1152,10 +1343,13 @@ export type Database = {
           expires_at?: string | null
           id?: string
           invited_by?: string | null
+          invited_profile_id?: string | null
+          is_reserve?: boolean
+          message?: string | null
           role?: Database["public"]["Enums"]["player_role"] | null
           status?: Database["public"]["Enums"]["invite_status"] | null
-          summoner_name?: string
-          tag_line?: string
+          summoner_name?: string | null
+          tag_line?: string | null
           team_id?: string
         }
         Relationships: [
@@ -1174,6 +1368,20 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "team_invites_invited_profile_id_fkey"
+            columns: ["invited_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "team_invites_invited_profile_id_fkey"
+            columns: ["invited_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_with_riot"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "team_invites_team_id_fkey"
             columns: ["team_id"]
             isOneToOne: false
@@ -1187,6 +1395,13 @@ export type Database = {
             referencedRelation: "v_stage_standings"
             referencedColumns: ["team_id"]
           },
+          {
+            foreignKeyName: "team_invites_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "v_tournament_standings"
+            referencedColumns: ["team_id"]
+          },
         ]
       }
       team_members: {
@@ -1194,6 +1409,7 @@ export type Database = {
           id: string
           invited_at: string
           invited_by: string | null
+          is_reserve: boolean
           lane: Database["public"]["Enums"]["player_role"] | null
           profile_id: string
           responded_at: string | null
@@ -1206,6 +1422,7 @@ export type Database = {
           id?: string
           invited_at?: string
           invited_by?: string | null
+          is_reserve?: boolean
           lane?: Database["public"]["Enums"]["player_role"] | null
           profile_id: string
           responded_at?: string | null
@@ -1218,6 +1435,7 @@ export type Database = {
           id?: string
           invited_at?: string
           invited_by?: string | null
+          is_reserve?: boolean
           lane?: Database["public"]["Enums"]["player_role"] | null
           profile_id?: string
           responded_at?: string | null
@@ -1281,6 +1499,13 @@ export type Database = {
             columns: ["team_id"]
             isOneToOne: false
             referencedRelation: "v_stage_standings"
+            referencedColumns: ["team_id"]
+          },
+          {
+            foreignKeyName: "team_members_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "v_tournament_standings"
             referencedColumns: ["team_id"]
           },
         ]
@@ -1352,6 +1577,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "tournaments"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "teams_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "v_tournament_standings"
+            referencedColumns: ["tournament_id"]
           },
         ]
       }
@@ -1429,6 +1661,13 @@ export type Database = {
             referencedRelation: "tournaments"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "tournament_rules_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "v_tournament_standings"
+            referencedColumns: ["tournament_id"]
+          },
         ]
       }
       tournament_stages: {
@@ -1470,6 +1709,13 @@ export type Database = {
             referencedRelation: "tournaments"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "tournament_stages_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "v_tournament_standings"
+            referencedColumns: ["tournament_id"]
+          },
         ]
       }
       tournaments: {
@@ -1491,6 +1737,7 @@ export type Database = {
           name: string
           organizer_id: string | null
           prize_pool: string | null
+          queue_type: string
           registration_deadline: string | null
           rules: string | null
           slug: string
@@ -1517,6 +1764,7 @@ export type Database = {
           name: string
           organizer_id?: string | null
           prize_pool?: string | null
+          queue_type?: string
           registration_deadline?: string | null
           rules?: string | null
           slug: string
@@ -1543,6 +1791,7 @@ export type Database = {
           name?: string
           organizer_id?: string | null
           prize_pool?: string | null
+          queue_type?: string
           registration_deadline?: string | null
           rules?: string | null
           slug?: string
@@ -1645,6 +1894,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "matches_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "v_tournament_standings"
+            referencedColumns: ["tournament_id"]
+          },
+          {
             foreignKeyName: "player_stats_player_id_fkey"
             columns: ["player_id"]
             isOneToOne: false
@@ -1687,7 +1943,29 @@ export type Database = {
             referencedRelation: "tournaments"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "tournament_stages_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "v_tournament_standings"
+            referencedColumns: ["tournament_id"]
+          },
         ]
+      }
+      v_tournament_standings: {
+        Row: {
+          losses: number | null
+          matches_played: number | null
+          points: number | null
+          position: number | null
+          team_id: string | null
+          team_logo: string | null
+          team_name: string | null
+          team_tag: string | null
+          tournament_id: string | null
+          wins: number | null
+        }
+        Relationships: []
       }
     }
     Functions: {
@@ -1702,6 +1980,10 @@ export type Database = {
       call_edge_function: {
         Args: { function_name: string; payload: Json }
         Returns: undefined
+      }
+      can_user_edit_riot_account: {
+        Args: { p_riot_account_id: string }
+        Returns: boolean
       }
       has_call_edge_function: { Args: never; Returns: boolean }
       is_admin: { Args: { uid: string }; Returns: boolean }
