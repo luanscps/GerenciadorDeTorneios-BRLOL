@@ -166,6 +166,7 @@ export default async function DashboardPage({
   return (
     <div className="space-y-8">
 
+      {/* ── Banners de erro ─────────────────────────────────────────────────── */}
       {params.error === "acesso_negado" && (
         <div className="flex items-start gap-3 bg-red-950/60 border border-red-700/50 rounded-xl px-5 py-4">
           <span className="text-red-400 text-xl shrink-0">🚫</span>
@@ -176,13 +177,41 @@ export default async function DashboardPage({
         </div>
       )}
 
-      {/* ── Perfil ────────────────────────────────────────────────────────── */}
+      {params.error === "riot_necessaria_para_criar_torneio" && (
+        <div className="flex items-start gap-3 bg-yellow-950/60 border border-yellow-700/50 rounded-xl px-5 py-4">
+          <span className="text-yellow-400 text-xl shrink-0">⚠️</span>
+          <div>
+            <p className="text-yellow-300 font-semibold text-sm">Conta Riot necessária</p>
+            <p className="text-yellow-400/80 text-sm mt-0.5">
+              Para criar ou gerenciar torneios, você precisa primeiro vincular sua conta Riot.
+            </p>
+            <Link
+              href="/dashboard/jogador/registrar"
+              className="text-[#C8A84B] text-sm underline mt-1 inline-block hover:text-[#e8c86b]"
+            >
+              Vincular agora →
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {params.error === "conta_suspensa" && (
+        <div className="flex items-start gap-3 bg-red-950/60 border border-red-700/50 rounded-xl px-5 py-4">
+          <span className="text-red-400 text-xl shrink-0">🚫</span>
+          <div>
+            <p className="text-red-300 font-semibold text-sm">Conta suspensa</p>
+            <p className="text-red-400/80 text-sm mt-0.5">
+              Sua conta foi suspensa. Entre em contato com o suporte.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Perfil ────────────────────────────────────────────────────────────── */}
       <div className="card-lol flex items-center gap-6 flex-wrap">
-        {/* Ícone + Moldura real por nível */}
         <div style={{ position:"relative", width:96, height:112, flexShrink:0 }}>
           {profileIcon ? (
             <>
-              {/* Ícone de perfil — fica embaixo da moldura */}
               <img
                 src={profileIcon}
                 width={80}
@@ -197,7 +226,6 @@ export default async function DashboardPage({
                   zIndex:1,
                 }}
               />
-              {/* Moldura real CDragon — PNG transparente por cima */}
               {borderImg && (
                 <img
                   src={borderImg}
@@ -215,7 +243,6 @@ export default async function DashboardPage({
                   }}
                 />
               )}
-              {/* Badge de nível */}
               <span
                 style={{
                   position:"absolute",
@@ -259,7 +286,7 @@ export default async function DashboardPage({
         </Link>
       </div>
 
-      {/* ── Conta Riot ────────────────────────────────────────────────────── */}
+      {/* ── Conta Riot ────────────────────────────────────────────────────────── */}
       {riotAccount && (
         <div className="card-lol space-y-4">
           <h2 className="text-lg font-bold text-white">⚔️ Conta Riot Vinculada</h2>
@@ -401,7 +428,7 @@ export default async function DashboardPage({
         </div>
       )}
 
-      {/* ── Meus Times ────────────────────────────────────────────────────── */}
+      {/* ── Meus Times ───────────────────────────────────────────────────────────── */}
       <div className="card-lol">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold text-white">🛡️ Meus Times</h2>
@@ -472,7 +499,7 @@ export default async function DashboardPage({
         )}
       </div>
 
-      {/* ── Torneios Abertos ──────────────────────────────────────────────── */}
+      {/* ── Torneios Abertos ─────────────────────────────────────────────────────── */}
       {openTournaments && openTournaments.length > 0 && (
         <div className="card-lol">
           <div className="flex items-center justify-between mb-4">
