@@ -1989,6 +1989,7 @@ export type Database = {
       is_admin: { Args: { uid: string }; Returns: boolean }
       is_current_user_admin: { Args: never; Returns: boolean }
       is_organizer_or_admin: { Args: { uid: string }; Returns: boolean }
+      is_team_member: { Args: { p_team_id: string }; Returns: boolean }
       is_tournament_organizer: {
         Args: { tid: string; uid: string }
         Returns: boolean
