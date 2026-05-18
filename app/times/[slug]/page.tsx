@@ -115,11 +115,12 @@ export default async function TeamPage({ params }: Props) {
   const captainProfileId = captain?.profile_id ?? null
   const isCaptain = !!currentUserId && currentUserId === captainProfileId
 
-  return (
+ return (
     <TeamPageClient
       team={teamWithSnapshots as any}
       isCaptain={isCaptain}
       captainProfileId={captainProfileId}
+      currentUserId={currentUserId}
     />
   )
 }
