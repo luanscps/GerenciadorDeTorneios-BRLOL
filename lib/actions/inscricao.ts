@@ -62,12 +62,59 @@ export async function desfazerCheckin(inscricaoId: string) {
 
     if (fetchErr || !insc) return { error: 'Inscrição não encontrada' };
 
-    // Revalida permissão agora que temos o tournament_id
     await requireTournamentOrganizerOrAdmin(insc.tournament_id);
 
     const { error } = await supabase
       .from('inscricoes')
       .update({ checked_in: false, checked_in_at: null, checked_in_by: null })
+      .eq('id', inscricaoId);
+
+    if (error) return { error: error.message };
+
+    revalidatePath(`/organizador/torneios/${insc.tournament_id}/checkin`);
+    revalidatePath(`/admin/tournaments/${insc.tournament_id}/checkin`);
+    revalidatePath(`/admin/tournaments/${insc.tournament_id}`);
+    return { success: true };
+  } catch (e: any) {
+    return { error: e.message };
+  }
+}
+
+// ─── ORGANIZER/ADMIN: Fazer check-in manual ──────────────────────────────────
+/**
+ * Permite que o organizador ou admin faça check-in de um time manualmente.
+ * Diferente de `fazerCheckin` (que exige ser o capitão do time),
+ * esta action verifica apenas se o caller é organizador/admin do torneio.
+ *
+ * A validação de "jogador em partida" (spectator-v5) é feita no Client
+ * antes desta action ser chamada (best-effort, não bloqueia aqui no servidor).
+ */
+export async function fazerCheckinOrganizador(inscricaoId: string) {
+  try {
+    const { supabase, profile } = await requireAuth();
+
+    const { data: insc, error: fetchErr } = await supabase
+      .from('inscricoes')
+      .select('id, status, tournament_id')
+      .eq('id', inscricaoId)
+      .single();
+
+    if (fetchErr || !insc) return { error: 'Inscrição não encontrada' };
+
+    // Verifica permissão agora que temos o tournament_id
+    await requireTournamentOrganizerOrAdmin(insc.tournament_id);
+
+    if (insc.status !== 'APPROVED') {
+      return { error: 'Inscrição precisa estar APROVADA para check-in' };
+    }
+
+    const { error } = await supabase
+      .from('inscricoes')
+      .update({
+        checked_in:    true,
+        checked_in_at: new Date().toISOString(),
+        checked_in_by: profile.id,
+      })
       .eq('id', inscricaoId);
 
     if (error) return { error: error.message };
