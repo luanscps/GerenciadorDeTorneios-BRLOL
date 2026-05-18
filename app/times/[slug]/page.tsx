@@ -8,9 +8,6 @@ export default async function TeamPage({ params }: Props) {
   const { slug } = await params
   const supabase = await createClient()
 
-  // FKs em team_members: team_members_team_id_fkey | team_members_profile_id_fkey
-  //                       team_members_riot_account_id_fkey | team_members_invited_by_fkey
-  // Hint obrigatório em CADA nível com ambiguidade para evitar 500 do PostgREST.
   const { data: team, error } = await supabase
     .from('teams')
     .select(`
@@ -23,14 +20,16 @@ export default async function TeamPage({ params }: Props) {
         lane,
         status,
         riot_account:riot_accounts!team_members_riot_account_id_fkey (
-          id, game_name, tag_line, profile_icon_id, summoner_level
+          id, game_name, tag_line, profile_icon_id, summoner_level,
+          rank_snapshots (
+            queue_type, tier, rank, lp, wins, losses, hot_streak, snapshotted_at
+          )
         )
       )
     `)
     .eq('slug', slug)
     .maybeSingle()
 
-  // maybeSingle() retorna null sem erro quando não encontra — mais seguro que single()
   if (error) {
     console.error('[TeamPage] Supabase error:', error.message)
     notFound()
