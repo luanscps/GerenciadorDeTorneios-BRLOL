@@ -29,12 +29,11 @@ export default async function FasesPage({ params }: { params: Promise<{ id: stri
   if (!isOwner && !isAdmin) redirect('/dashboard?error=acesso_negado')
 
   const { data: fases } = await supabase
-    .from('fases')
+    .from('tournament_stages')
     .select('*')
     .eq('tournament_id', id)
-    .order('order', { ascending: true })
+    .order('stage_order', { ascending: true })
 
-  // Times aprovados para referência
   const { count: timesAprovados } = await supabase
     .from('inscricoes')
     .select('id', { count: 'exact', head: true })

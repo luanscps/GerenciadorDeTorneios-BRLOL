@@ -3,11 +3,16 @@ import { requireTournamentOrganizerOrAdmin } from '@/lib/supabase/permissions';
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
+const BracketTypeEnum = z.enum([
+  "SINGLE_ELIMINATION",
+  "DOUBLE_ELIMINATION",
+  "ROUND_ROBIN",
+  "SWISS",
+]);
+
 const FaseSchema = z.object({
   nome:                    z.string().min(1, "Nome é obrigatório").max(80),
-  tipo:                    z.enum(["grupos", "playoffs", "pontos_corridos", "suíço"], {
-                             errorMap: () => ({ message: "Tipo inválido" }),
-                           }),
+  tipo:                    BracketTypeEnum,
   ordem:                   z.coerce.number().min(1).max(20),
   num_grupos:              z.coerce.number().min(1).max(16).optional(),
   times_por_grupo:         z.coerce.number().min(2).max(16).optional(),
@@ -23,17 +28,17 @@ export async function createFase(tournamentId: string, formData: FormData) {
     if (!parsed.success) return { error: parsed.error.errors[0].message };
 
     const { data, error } = await supabase
-      .from("fases")
+      .from("tournament_stages")
       .insert({
-        tournament_id:         tournamentId,
-        name:                  parsed.data.nome,
-        type:                  parsed.data.tipo,
-        order:                 parsed.data.ordem,
-        num_groups:            parsed.data.num_grupos ?? 1,
-        teams_per_group:       parsed.data.times_por_grupo ?? 4,
-        qualifiers_per_group:  parsed.data.classificados_por_grupo ?? 2,
-        best_of:               parsed.data.melhor_de ?? 1,
-        status:                "pending",
+        tournament_id:          tournamentId,
+        name:                   parsed.data.nome,
+        bracket_type:           parsed.data.tipo,
+        stage_order:            parsed.data.ordem,
+        num_groups:             parsed.data.num_grupos ?? 1,
+        teams_per_group:        parsed.data.times_por_grupo ?? 4,
+        qualifiers_per_group:   parsed.data.classificados_por_grupo ?? 2,
+        best_of:                parsed.data.melhor_de ?? 1,
+        status:                 "pending",
       })
       .select()
       .single();
@@ -54,15 +59,15 @@ export async function updateFase(faseId: string, tournamentId: string, formData:
     if (!parsed.success) return { error: parsed.error.errors[0].message };
 
     const { error } = await supabase
-      .from("fases")
+      .from("tournament_stages")
       .update({
-        name:                  parsed.data.nome,
-        type:                  parsed.data.tipo,
-        order:                 parsed.data.ordem,
-        num_groups:            parsed.data.num_grupos ?? 1,
-        teams_per_group:       parsed.data.times_por_grupo ?? 4,
-        qualifiers_per_group:  parsed.data.classificados_por_grupo ?? 2,
-        best_of:               parsed.data.melhor_de ?? 1,
+        name:                   parsed.data.nome,
+        bracket_type:           parsed.data.tipo,
+        stage_order:            parsed.data.ordem,
+        num_groups:             parsed.data.num_grupos ?? 1,
+        teams_per_group:        parsed.data.times_por_grupo ?? 4,
+        qualifiers_per_group:   parsed.data.classificados_por_grupo ?? 2,
+        best_of:                parsed.data.melhor_de ?? 1,
       })
       .eq("id", faseId);
 
@@ -79,7 +84,7 @@ export async function deleteFase(faseId: string, tournamentId: string) {
     const { supabase } = await requireTournamentOrganizerOrAdmin(tournamentId);
 
     const { data: fase } = await supabase
-      .from("fases")
+      .from("tournament_stages")
       .select("status")
       .eq("id", faseId)
       .single();
@@ -88,7 +93,11 @@ export async function deleteFase(faseId: string, tournamentId: string) {
       return { error: "Não é possível excluir uma fase em andamento ou finalizada" };
     }
 
-    const { error } = await supabase.from("fases").delete().eq("id", faseId);
+    const { error } = await supabase
+      .from("tournament_stages")
+      .delete()
+      .eq("id", faseId);
+
     if (error) return { error: error.message };
     revalidatePath(`/organizador/torneios/${tournamentId}/fases`);
     return { success: true };
@@ -100,10 +109,10 @@ export async function deleteFase(faseId: string, tournamentId: string) {
 export async function getFasesByTorneio(tournamentId: string) {
   const { supabase } = await requireTournamentOrganizerOrAdmin(tournamentId);
   const { data, error } = await supabase
-    .from("fases")
+    .from("tournament_stages")
     .select("*")
     .eq("tournament_id", tournamentId)
-    .order("order", { ascending: true });
+    .order("stage_order", { ascending: true });
   if (error) return { error: error.message, data: null };
   return { data, error: null };
 }
@@ -114,13 +123,13 @@ export async function ativarFase(faseId: string, tournamentId: string) {
 
     // Finaliza fase anterior se existir
     await supabase
-      .from("fases")
+      .from("tournament_stages")
       .update({ status: "finished" })
       .eq("tournament_id", tournamentId)
       .eq("status", "active");
 
     const { error } = await supabase
-      .from("fases")
+      .from("tournament_stages")
       .update({ status: "active", started_at: new Date().toISOString() })
       .eq("id", faseId);
 
