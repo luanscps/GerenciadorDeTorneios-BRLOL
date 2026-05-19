@@ -66,7 +66,6 @@ export async function abrirDisputa(matchId: string, formData: FormData) {
       .from('disputes')
       .select('id, status')
       .eq('match_id', matchId)
-      .eq('team_id', myTeam.id)
       .in('status', ['OPEN', 'UNDER_REVIEW'])
       .maybeSingle();
 
@@ -74,16 +73,16 @@ export async function abrirDisputa(matchId: string, formData: FormData) {
       return { error: 'Já existe uma disputa aberta para esta partida' };
     }
 
+    // FK real do banco: reported_by (não opened_by)
+    // disputes só tem: match_id, reported_by, resolved_by, status, reason, evidence_url, resolution_notes
     const { error: insertErr } = await supabase
       .from('disputes')
       .insert({
-        match_id:      matchId,
-        tournament_id: match.tournament_id,
-        team_id:       myTeam.id,
-        opened_by:     profile.id,
-        reason:        parsed.data.reason,
-        evidence_url:  parsed.data.evidence_url || null,
-        status:        'OPEN',   // dispute_status enum: OPEN
+        match_id:     matchId,
+        reported_by:  profile.id,
+        reason:       parsed.data.reason,
+        evidence_url: parsed.data.evidence_url || null,
+        status:       'OPEN',
       });
 
     if (insertErr) return { error: insertErr.message };
@@ -125,12 +124,22 @@ export async function resolverDisputa(
 
     const { data: disputa, error: fetchErr } = await supabase
       .from('disputes')
-      .select('id, status, tournament_id')
+      .select('id, status, match_id')
       .eq('id', disputaId)
-      .eq('tournament_id', tournamentId)
       .single();
 
     if (fetchErr || !disputa) return { error: 'Disputa não encontrada' };
+
+    // Valida que a partida pertence ao torneio informado
+    const { data: match, error: matchErr } = await supabase
+      .from('matches')
+      .select('id, tournament_id')
+      .eq('id', disputa.match_id)
+      .eq('tournament_id', tournamentId)
+      .single();
+
+    if (matchErr || !match) return { error: 'Disputa não pertence a este torneio' };
+
     // Já resolvida ou descartada
     if (disputa.status === 'RESOLVED' || disputa.status === 'DISMISSED') {
       return { error: 'Esta disputa já foi resolvida' };
@@ -139,7 +148,7 @@ export async function resolverDisputa(
     const { error: updateErr } = await supabase
       .from('disputes')
       .update({
-        status:           parsed.data.status,  // RESOLVED | DISMISSED
+        status:           parsed.data.status,
         resolution_notes: parsed.data.resolution_notes,
         resolved_by:      profile.id,
         resolved_at:      new Date().toISOString(),
@@ -169,6 +178,17 @@ export async function listarDisputasPorTorneio(tournamentId: string) {
   try {
     const { supabase } = await requireTournamentOrganizerOrAdmin(tournamentId);
 
+    // Busca todas as partidas do torneio para filtrar disputas
+    const { data: matchIds, error: matchIdsErr } = await supabase
+      .from('matches')
+      .select('id')
+      .eq('tournament_id', tournamentId);
+
+    if (matchIdsErr) return { error: matchIdsErr.message, data: null };
+
+    const ids = (matchIds ?? []).map((m) => m.id);
+    if (ids.length === 0) return { data: [], error: null };
+
     const { data, error } = await supabase
       .from('disputes')
       .select(`
@@ -179,11 +199,10 @@ export async function listarDisputasPorTorneio(tournamentId: string) {
           team_a:teams!team_a_id ( id, name, tag ),
           team_b:teams!team_b_id ( id, name, tag )
         ),
-        team:teams ( id, name, tag ),
-        opened_by_profile:profiles!opened_by ( id, username, display_name ),
+        reported_by_profile:profiles!reported_by ( id, username, display_name ),
         resolved_by_profile:profiles!resolved_by ( id, username, display_name )
       `)
-      .eq('tournament_id', tournamentId)
+      .in('match_id', ids)
       .order('created_at', { ascending: false });
 
     if (error) return { error: error.message, data: null };
@@ -198,7 +217,6 @@ export async function listarDisputasPorTime(teamId: string) {
   try {
     const { supabase, profile } = await requireAuth();
 
-    // team_member_status enum real: pending | accepted | rejected | left
     // Garante que o solicitante é owner do time
     const { data: myTeam, error: teamErr } = await supabase
       .from('teams')
@@ -209,18 +227,30 @@ export async function listarDisputasPorTime(teamId: string) {
 
     if (teamErr || !myTeam) return { error: 'Time não encontrado ou sem permissão', data: null };
 
+    // Busca as partidas do time
+    const { data: matchRows, error: matchErr } = await supabase
+      .from('matches')
+      .select('id')
+      .or(`team_a_id.eq.${teamId},team_b_id.eq.${teamId}`);
+
+    if (matchErr) return { error: matchErr.message, data: null };
+
+    const ids = (matchRows ?? []).map((m) => m.id);
+    if (ids.length === 0) return { data: [], error: null };
+
     const { data, error } = await supabase
       .from('disputes')
       .select(`
         id, status, reason, evidence_url, resolution_notes, created_at, resolved_at,
         match:matches (
           id, round, match_number,
+          tournament:tournaments ( id, name, slug ),
           team_a:teams!team_a_id ( id, name, tag ),
           team_b:teams!team_b_id ( id, name, tag )
         ),
-        tournament:tournaments ( id, name, slug )
+        reported_by_profile:profiles!reported_by ( id, username, display_name )
       `)
-      .eq('team_id', teamId)
+      .in('match_id', ids)
       .order('created_at', { ascending: false });
 
     if (error) return { error: error.message, data: null };
