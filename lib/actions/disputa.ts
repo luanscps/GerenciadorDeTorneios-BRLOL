@@ -9,19 +9,21 @@ const AbrirDisputaSchema = z.object({
   evidence_url: z.string().url('URL de evidência inválida').optional().or(z.literal('')),
 });
 
+// dispute_status reais: OPEN | UNDER_REVIEW | RESOLVED | DISMISSED
 const ResolverDisputaSchema = z.object({
-  status:           z.enum(['ACCEPTED', 'REJECTED']),
+  status:           z.enum(['RESOLVED', 'DISMISSED'], {
+    errorMap: () => ({ message: 'Status inválido: use RESOLVED ou DISMISSED' }),
+  }),
   resolution_notes: z.string().min(5, 'Informe a decisão com pelo menos 5 caracteres').max(1000),
 });
 
 // ─── CAPITÃO: Abrir disputa de resultado ─────────────────────────────────────
 /**
  * Apenas o capitão (owner_id) do time envolvido na partida pode abrir disputa.
- * Valida que a partida pertence ao torneio e que o time está nela (team_a ou team_b).
+ * Valida que a partida está FINISHED e que o time está nela (team_a ou team_b).
  *
  * Política Riot: disputas devem ser resolvidas pelo organizador de forma justa e
- * transparente antes de avançar para a próxima rodada. Este action garante o
- * registro rastreável necessário para conformidade com as Tournament Policies.
+ * transparente antes de avançar para a próxima rodada.
  * Ref: https://developer.riotgames.com/policies/general
  */
 export async function abrirDisputa(matchId: string, formData: FormData) {
@@ -35,7 +37,7 @@ export async function abrirDisputa(matchId: string, formData: FormData) {
     });
     if (!parsed.success) return { error: parsed.error.errors[0].message };
 
-    // Busca a partida e valida que o time do capitão está nela
+    // Busca a partida
     const { data: match, error: matchErr } = await supabase
       .from('matches')
       .select('id, tournament_id, team_a_id, team_b_id, status')
@@ -47,7 +49,7 @@ export async function abrirDisputa(matchId: string, formData: FormData) {
       return { error: 'Disputas só podem ser abertas em partidas já finalizadas' };
     }
 
-    // Verifica que o usuário é capitão (owner) de um dos times da partida
+    // Verifica que o usuário é owner de um dos times da partida
     const { data: myTeam, error: teamErr } = await supabase
       .from('teams')
       .select('id')
@@ -59,13 +61,13 @@ export async function abrirDisputa(matchId: string, formData: FormData) {
       return { error: 'Apenas o capitão de um dos times da partida pode abrir disputa' };
     }
 
-    // Verifica se já existe disputa aberta para esta partida deste time
+    // Verifica se já existe disputa aberta (OPEN) ou em análise (UNDER_REVIEW) para esta partida
     const { data: existente } = await supabase
       .from('disputes')
       .select('id, status')
       .eq('match_id', matchId)
       .eq('team_id', myTeam.id)
-      .in('status', ['PENDING', 'REVIEWING'])
+      .in('status', ['OPEN', 'UNDER_REVIEW'])
       .maybeSingle();
 
     if (existente) {
@@ -75,18 +77,17 @@ export async function abrirDisputa(matchId: string, formData: FormData) {
     const { error: insertErr } = await supabase
       .from('disputes')
       .insert({
-        match_id:       matchId,
-        tournament_id:  match.tournament_id,
-        team_id:        myTeam.id,
-        opened_by:      profile.id,
-        reason:         parsed.data.reason,
-        evidence_url:   parsed.data.evidence_url || null,
-        status:         'PENDING',
+        match_id:      matchId,
+        tournament_id: match.tournament_id,
+        team_id:       myTeam.id,
+        opened_by:     profile.id,
+        reason:        parsed.data.reason,
+        evidence_url:  parsed.data.evidence_url || null,
+        status:        'OPEN',   // dispute_status enum: OPEN
       });
 
     if (insertErr) return { error: insertErr.message };
 
-    // Busca slug para revalidar paths corretos
     const { data: torneio } = await supabase
       .from('tournaments')
       .select('slug')
@@ -103,10 +104,10 @@ export async function abrirDisputa(matchId: string, formData: FormData) {
   }
 }
 
-// ─── ORGANIZADOR/ADMIN: Resolver disputa ────────────────────────────────────
+// ─── ORGANIZADOR/ADMIN: Resolver disputa ─────────────────────────────────────
 /**
- * Organizador ou admin resolve a disputa registrando decisão e notas.
- * A decisão é auditada: quem resolveu, quando e com qual justificativa.
+ * Organizador ou admin resolve a disputa com RESOLVED (aceita) ou DISMISSED (rejeitada).
+ * Registra resolved_by, resolved_at e resolution_notes para auditoria.
  */
 export async function resolverDisputa(
   disputaId: string,
@@ -130,14 +131,15 @@ export async function resolverDisputa(
       .single();
 
     if (fetchErr || !disputa) return { error: 'Disputa não encontrada' };
-    if (disputa.status === 'ACCEPTED' || disputa.status === 'REJECTED') {
+    // Já resolvida ou descartada
+    if (disputa.status === 'RESOLVED' || disputa.status === 'DISMISSED') {
       return { error: 'Esta disputa já foi resolvida' };
     }
 
     const { error: updateErr } = await supabase
       .from('disputes')
       .update({
-        status:           parsed.data.status,
+        status:           parsed.data.status,  // RESOLVED | DISMISSED
         resolution_notes: parsed.data.resolution_notes,
         resolved_by:      profile.id,
         resolved_at:      new Date().toISOString(),
@@ -162,7 +164,7 @@ export async function resolverDisputa(
   }
 }
 
-// ─── ORGANIZADOR/ADMIN: Listar disputas por torneio ─────────────────────────
+// ─── ORGANIZADOR/ADMIN: Listar disputas por torneio ──────────────────────────
 export async function listarDisputasPorTorneio(tournamentId: string) {
   try {
     const { supabase } = await requireTournamentOrganizerOrAdmin(tournamentId);
@@ -191,11 +193,12 @@ export async function listarDisputasPorTorneio(tournamentId: string) {
   }
 }
 
-// ─── CAPITÃO: Listar disputas abertas pelo meu time ─────────────────────────
+// ─── CAPITÃO: Listar disputas do meu time ────────────────────────────────────
 export async function listarDisputasPorTime(teamId: string) {
   try {
     const { supabase, profile } = await requireAuth();
 
+    // team_member_status enum real: pending | accepted | rejected | left
     // Garante que o solicitante é owner do time
     const { data: myTeam, error: teamErr } = await supabase
       .from('teams')

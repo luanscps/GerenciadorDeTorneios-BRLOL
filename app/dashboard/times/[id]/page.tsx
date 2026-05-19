@@ -15,15 +15,18 @@ const TIER_COLORS: Record<string, string> = {
   CHALLENGER: 'text-yellow-300', UNRANKED: 'text-gray-500',
 };
 
+// dispute_status enum real: OPEN | UNDER_REVIEW | RESOLVED | DISMISSED
 const DISPUTE_STATUS_LABEL: Record<string, string> = {
-  PENDING: 'Pendente', REVIEWING: 'Em análise',
-  ACCEPTED: 'Aceita', REJECTED: 'Rejeitada',
+  OPEN:         'Aberta',
+  UNDER_REVIEW: 'Em análise',
+  RESOLVED:     'Resolvida',
+  DISMISSED:    'Indeferida',
 };
 const DISPUTE_STATUS_COLOR: Record<string, string> = {
-  PENDING:   'text-yellow-400 bg-yellow-400/10 border-yellow-500/30',
-  REVIEWING: 'text-blue-400 bg-blue-400/10 border-blue-500/30',
-  ACCEPTED:  'text-green-400 bg-green-400/10 border-green-500/30',
-  REJECTED:  'text-red-400 bg-red-400/10 border-red-500/30',
+  OPEN:         'text-yellow-400 bg-yellow-400/10 border-yellow-500/30',
+  UNDER_REVIEW: 'text-blue-400 bg-blue-400/10 border-blue-500/30',
+  RESOLVED:     'text-green-400 bg-green-400/10 border-green-500/30',
+  DISMISSED:    'text-red-400 bg-red-400/10 border-red-500/30',
 };
 
 const INSC_STATUS_COLOR: Record<string, string> = {
@@ -113,21 +116,20 @@ export default function PainelCapitaoPage() {
   const router   = useRouter();
   const supabase = useMemo(() => createClient(), []);
 
-  const [team, setTeam]                   = useState<Team | null>(null);
-  const [playerMap, setPlayerMap]         = useState<Record<string, PlayerInfo>>({});
-  const [proximasPartidas, setProximas]   = useState<ProximaPartida[]>([]);
-  const [disputas, setDisputas]           = useState<Disputa[]>([]);
-  const [loading, setLoading]             = useState(true);
-  const [error, setError]                 = useState('');
-  const [savingLane, setSavingLane]       = useState<string | null>(null);
-  const [savedLane, setSavedLane]         = useState<string | null>(null);
+  const [team, setTeam]                 = useState<Team | null>(null);
+  const [playerMap, setPlayerMap]       = useState<Record<string, PlayerInfo>>({});
+  const [proximasPartidas, setProximas] = useState<ProximaPartida[]>([]);
+  const [disputas, setDisputas]         = useState<Disputa[]>([]);
+  const [loading, setLoading]           = useState(true);
+  const [error, setError]               = useState('');
+  const [savingLane, setSavingLane]     = useState<string | null>(null);
+  const [savedLane, setSavedLane]       = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.push('/login'); return; }
 
-      // Time + roster + todas as inscrições (multi-torneio)
       const { data, error: err } = await supabase
         .from('teams')
         .select(`
@@ -144,13 +146,12 @@ export default function PainelCapitaoPage() {
         .eq('id', teamId)
         .single();
 
-      if (err || !data) { setError('Time n\u00e3o encontrado.'); setLoading(false); return; }
-      if (data.owner_id !== user.id) { setError('Apenas o capit\u00e3o pode acessar este painel.'); setLoading(false); return; }
+      if (err || !data) { setError('Time não encontrado.'); setLoading(false); return; }
+      if (data.owner_id !== user.id) { setError('Apenas o capitão pode acessar este painel.'); setLoading(false); return; }
 
       const teamData = data as unknown as Team;
       setTeam(teamData);
 
-      // Busca players por profile_id
       const profileIds = (teamData.team_members ?? [])
         .map(m => m.profile_id)
         .filter(Boolean) as string[];
@@ -181,7 +182,7 @@ export default function PainelCapitaoPage() {
         setPlayerMap(map);
       }
 
-      // Próximas partidas SCHEDULED envolvendo este time
+      // Próximas partidas SCHEDULED
       const { data: partidas } = await supabase
         .from('matches')
         .select(`
@@ -197,7 +198,7 @@ export default function PainelCapitaoPage() {
 
       setProximas((partidas ?? []) as unknown as ProximaPartida[]);
 
-      // Disputas abertas/em análise do time
+      // Disputas do time — dispute_status enum: OPEN | UNDER_REVIEW | RESOLVED | DISMISSED
       const { data: disp } = await supabase
         .from('disputes')
         .select(`
@@ -258,16 +259,19 @@ export default function PainelCapitaoPage() {
 
   if (!team) return null;
 
-  const members   = team.team_members ?? [];
+  const members    = team.team_members ?? [];
   const inscricoes = (team.inscricoes ?? []) as Inscricao[];
-  // Separa inscrições ativas (aprovadas primeiro, depois pendentes)
   const inscAtivas = inscricoes
     .filter(i => i.status !== 'REJECTED')
     .sort((a, b) => {
       const order: Record<string, number> = { APPROVED: 0, PENDING: 1 };
       return (order[a.status] ?? 2) - (order[b.status] ?? 2);
     });
-  const disputasAbertas = disputas.filter(d => d.status === 'PENDING' || d.status === 'REVIEWING');
+
+  // dispute_status abertas: OPEN | UNDER_REVIEW
+  const disputasAbertas   = disputas.filter(d => d.status === 'OPEN' || d.status === 'UNDER_REVIEW');
+  // dispute_status resolvidas: RESOLVED | DISMISSED
+  const disputasResolvidas = disputas.filter(d => d.status === 'RESOLVED' || d.status === 'DISMISSED');
 
   return (
     <main className="min-h-screen bg-[#050E1A] py-10 px-4">
@@ -284,7 +288,7 @@ export default function PainelCapitaoPage() {
           </div>
         </div>
 
-        {/* Inscrições (todos os torneios) */}
+        {/* Inscrições */}
         {inscAtivas.length > 0 && (
           <div className="space-y-2">
             <h2 className="text-white font-bold text-sm uppercase tracking-wider">🏆 Torneios</h2>
@@ -400,39 +404,36 @@ export default function PainelCapitaoPage() {
           </div>
         )}
 
-        {/* Disputas resolvidas recentes */}
-        {disputas.filter(d => d.status === 'ACCEPTED' || d.status === 'REJECTED').length > 0 && (
+        {/* Disputas resolvidas */}
+        {disputasResolvidas.length > 0 && (
           <details className="card-lol cursor-pointer">
             <summary className="text-white font-bold text-sm select-none">
-              📜 Disputas Resolvidas
+              📜 Disputas Resolvidas ({disputasResolvidas.length})
             </summary>
             <div className="mt-3 space-y-2">
-              {disputas
-                .filter(d => d.status === 'ACCEPTED' || d.status === 'REJECTED')
-                .map(d => (
-                  <div
-                    key={d.id}
-                    className={`border rounded-lg p-3 text-sm ${
-                      DISPUTE_STATUS_COLOR[d.status] ?? 'text-gray-400 bg-[#1E2A3A] border-[#1E3A5F]'
-                    }`}
-                  >
-                    <p className="font-semibold">
-                      {DISPUTE_STATUS_LABEL[d.status]}
-                      {d.tournament?.name && (
-                        <span className="text-xs font-normal opacity-70 ml-2">{d.tournament.name}</span>
-                      )}
-                    </p>
-                    {d.resolution_notes && (
-                      <p className="text-xs opacity-70 mt-1">{d.resolution_notes}</p>
+              {disputasResolvidas.map(d => (
+                <div
+                  key={d.id}
+                  className={`border rounded-lg p-3 text-sm ${
+                    DISPUTE_STATUS_COLOR[d.status] ?? 'text-gray-400 bg-[#1E2A3A] border-[#1E3A5F]'
+                  }`}
+                >
+                  <p className="font-semibold">
+                    {DISPUTE_STATUS_LABEL[d.status]}
+                    {d.tournament?.name && (
+                      <span className="text-xs font-normal opacity-70 ml-2">{d.tournament.name}</span>
                     )}
-                  </div>
-                ))
-              }
+                  </p>
+                  {d.resolution_notes && (
+                    <p className="text-xs opacity-70 mt-1">{d.resolution_notes}</p>
+                  )}
+                </div>
+              ))}
             </div>
           </details>
         )}
 
-        {/* Jogadores / Roster */}
+        {/* Roster */}
         <div className="card-lol space-y-3">
           <h2 className="text-white font-bold mb-2">👥 Jogadores ({members.length}/5)</h2>
 
