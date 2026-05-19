@@ -31,7 +31,6 @@ export default async function TorneioPainelPage({ params }: { params: Promise<{ 
 
   if (!torneio) redirect('/organizador')
 
-  // Contadores via inscricoes (tabela correta do schema)
   const { count: totalInscritos } = await supabase
     .from('inscricoes')
     .select('id', { count: 'exact', head: true })
@@ -49,14 +48,22 @@ export default async function TorneioPainelPage({ params }: { params: Promise<{ 
     .eq('tournament_id', id)
     .eq('status', 'APPROVED')
 
+  // Contador de disputas abertas para badge no card
+  const { count: disputasAbertas } = await supabase
+    .from('disputes')
+    .select('id', { count: 'exact', head: true })
+    .eq('tournament_id', id)
+    .in('status', ['PENDING', 'REVIEWING'])
+
   const statusClass = STATUS_COLOR[torneio.status] ?? STATUS_COLOR.DRAFT
 
   const navCards = [
-    { href: `/organizador/torneios/${id}/editar`,     emoji: '✏️',  label: 'Editar',    desc: 'Dados, regras e status' },
-    { href: `/organizador/torneios/${id}/inscricoes`, emoji: '📋',  label: 'Inscrições', desc: `${pendentes ?? 0} pendente(s)` },
-    { href: `/organizador/torneios/${id}/checkin`,    emoji: '✅',  label: 'Check-in',  desc: 'Confirmar presença' },
-    { href: `/organizador/torneios/${id}/fases`,      emoji: '🏗️', label: 'Fases',     desc: 'Bracket e grupos' },
-    { href: `/organizador/torneios/${id}/partidas`,   emoji: '⚔️',  label: 'Partidas',  desc: 'Acompanhar jogos' },
+    { href: `/organizador/torneios/${id}/editar`,       emoji: '✏️',  label: 'Editar',        desc: 'Dados, regras e status' },
+    { href: `/organizador/torneios/${id}/inscricoes`,   emoji: '📋',  label: 'Inscrições',     desc: `${pendentes ?? 0} pendente(s)` },
+    { href: `/organizador/torneios/${id}/checkin`,      emoji: '✅',  label: 'Check-in',      desc: 'Confirmar presença' },
+    { href: `/organizador/torneios/${id}/fases`,        emoji: '🏗️', label: 'Fases',         desc: 'Bracket e grupos' },
+    { href: `/organizador/torneios/${id}/partidas`,     emoji: '⚔️',  label: 'Partidas',      desc: `${disputasAbertas ?? 0} disputa(s)` },
+    { href: `/organizador/torneios/${id}/comunicados`,  emoji: '📣',  label: 'Comunicados',   desc: 'Avisos para os times' },
   ]
 
   return (
@@ -96,14 +103,16 @@ export default async function TorneioPainelPage({ params }: { params: Promise<{ 
             <p className="text-[10px] text-gray-500 uppercase tracking-wider mt-0.5">Vagas totais</p>
           </div>
           <div className="bg-[#0A1628] rounded-xl p-3 text-center">
-            <p className={`text-2xl font-black ${(pendentes ?? 0) > 0 ? 'text-yellow-400' : 'text-white'}`}>
-              {pendentes ?? 0}
-            </p>
+            <p className={`text-2xl font-black ${
+              (pendentes ?? 0) > 0 ? 'text-yellow-400' : 'text-white'
+            }`}>{pendentes ?? 0}</p>
             <p className="text-[10px] text-gray-500 uppercase tracking-wider mt-0.5">Pendentes</p>
           </div>
           <div className="bg-[#0A1628] rounded-xl p-3 text-center">
-            <p className="text-2xl font-black text-white">{totalInscritos ?? 0}</p>
-            <p className="text-[10px] text-gray-500 uppercase tracking-wider mt-0.5">Total inscritos</p>
+            <p className={`text-2xl font-black ${
+              (disputasAbertas ?? 0) > 0 ? 'text-red-400' : 'text-white'
+            }`}>{disputasAbertas ?? 0}</p>
+            <p className="text-[10px] text-gray-500 uppercase tracking-wider mt-0.5">Disputas abertas</p>
           </div>
         </div>
 
@@ -124,7 +133,7 @@ export default async function TorneioPainelPage({ params }: { params: Promise<{ 
       </div>
 
       {/* Cards de navegação */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {navCards.map((card) => (
           <Link
             key={card.href}
