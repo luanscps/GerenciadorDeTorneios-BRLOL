@@ -196,26 +196,44 @@ export default function PainelCapitaoPage() {
         .order('scheduled_at', { ascending: true })
         .limit(5);
 
-      setProximas((partidas ?? []) as unknown as ProximaPartida[]);
+      const partidasData = (partidas ?? []) as unknown as ProximaPartida[];
+      setProximas(partidasData);
 
-      // Disputas do time — dispute_status enum: OPEN | UNDER_REVIEW | RESOLVED | DISMISSED
-      const { data: disp } = await supabase
-        .from('disputes')
-        .select(`
-          id, status, reason, evidence_url, resolution_notes,
-          created_at, resolved_at,
-          match:matches (
-            id, round, match_number,
-            team_a:teams!team_a_id ( name, tag ),
-            team_b:teams!team_b_id ( name, tag )
-          ),
-          tournament:tournaments ( id, name, slug )
-        `)
-        .eq('team_id', teamId)
-        .order('created_at', { ascending: false })
-        .limit(10);
+      // ----------------------------------------------------------------
+      // Disputas do time — disputes NÃO tem coluna team_id.
+      // Filtro correto: busca matches do time → usa os IDs em disputes.match_id
+      // ----------------------------------------------------------------
+      const matchIds = partidasData.map(p => p.id);
 
-      setDisputas((disp ?? []) as unknown as Disputa[]);
+      // Também buscamos partidas já finalizadas (para disputas de resultados)
+      const { data: todasPartidas } = await supabase
+        .from('matches')
+        .select('id')
+        .or(`team_a_id.eq.${teamId},team_b_id.eq.${teamId}`);
+
+      const todosMatchIds = (todasPartidas ?? []).map((p: any) => p.id);
+
+      if (todosMatchIds.length > 0) {
+        const { data: disp } = await supabase
+          .from('disputes')
+          .select(`
+            id, status, reason, evidence_url, resolution_notes,
+            created_at, resolved_at,
+            match:matches (
+              id, round, match_number,
+              team_a:teams!team_a_id ( name, tag ),
+              team_b:teams!team_b_id ( name, tag )
+            ),
+            tournament:tournaments ( id, name, slug )
+          `)
+          .in('match_id', todosMatchIds)
+          .order('created_at', { ascending: false })
+          .limit(10);
+
+        setDisputas((disp ?? []) as unknown as Disputa[]);
+      }
+      // Se o time não tem partidas ainda, disputas fica vazio (estado inicial [])
+
       setLoading(false);
     }
     load();
