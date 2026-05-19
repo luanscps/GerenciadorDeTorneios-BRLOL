@@ -1,7 +1,8 @@
 # Schema Real do Banco — GerenciadorDeTorneios-BRLOL
 
-> **Fonte:** Supabase projeto `awbieglbwhfavxlghuvy` — gerado direto do banco via `information_schema` e `pg_enum`.  
-> **Regra:** Este arquivo é a fonte da verdade. Não seguir README, .txt ou .sql antigos.
+> **Fonte:** Supabase projeto `awbieglbwhfavxlghuvy` — sincronizado via MCP Tool em 2026-05-19.
+> **Regra:** Este arquivo é a **fonte da verdade**. Não seguir README, .txt ou .sql antigos.
+> **Atualização:** Revisão completa — 21 tabelas corrigidas/ampliadas em relação à versão anterior.
 
 ---
 
@@ -27,96 +28,115 @@
 ### `profiles`
 Espelha `auth.users`. Um registro por usuário autenticado.
 
+> ⚠️ **Diff v anterior:** removidos `username`, `display_name`, `riot_game_name`, `riot_tag_line`.
+> Adicionados `full_name` e `notification_preferences` (jsonb com defaults por canal/evento).
+
 | Coluna | Tipo | Nullable | Default |
 |---|---|---|---|
-| `id` | uuid | NO | `auth.uid()` |
-| `email` | text | YES | — |
-| `username` | text | YES | — |
-| `display_name` | text | YES | — |
+| `id` | uuid | NO | FK `auth.users.id` |
+| `email` | text | NO | — |
+| `full_name` | text | YES | — |
 | `avatar_url` | text | YES | — |
-| `role` | `user_role` | YES | `'player'` |
-| `is_admin` | bool | YES | `false` |
-| `is_banned` | bool | YES | `false` |
-| `riot_game_name` | text | YES | — |
-| `riot_tag_line` | text | YES | — |
-| `created_at` | timestamptz | YES | `now()` |
-| `updated_at` | timestamptz | YES | `now()` |
+| `role` | `user_role` | NO | `'player'` |
+| `is_admin` | bool | NO | `false` |
+| `is_banned` | bool | NO | `false` |
+| `created_at` | timestamptz | NO | `now()` |
+| `updated_at` | timestamptz | NO | `now()` |
+| `notification_preferences` | jsonb | YES | `{"email_team_invite":true,"email_match_result":true,"email_new_tournament":false,"discord_bracket_update":true,"email_checkin_reminder":true}` |
 
 ---
 
 ### `riot_accounts`
-Contas Riot vinculadas a um perfil (uma pode ser primária).
+Contas Riot vinculadas a um perfil. Uma pode ser primária.
 
-| Coluna | Tipo | Nullable | Default |
+> ⚠️ **Diff v anterior:** removidos `summoner_id`, `account_id`, `is_locked` (bool), `region`.
+> Adicionados `lock_status` (3 estados), `lock_until`, `lock_reason`, `summoner_level`, `profile_icon_id`.
+> O sistema de lock foi **refatorado** de `bool is_locked` para enum de 3 estados.
+
+| Coluna | Tipo | Nullable | Default / Check |
 |---|---|---|---|
-| `id` | uuid | NO | `gen_random_uuid()` |
-| `profile_id` | uuid | YES | — → FK `profiles.id` |
-| `puuid` | text | YES | — |
-| `game_name` | text | YES | — |
-| `tag_line` | text | YES | — |
-| `summoner_id` | text | YES | — |
-| `account_id` | text | YES | — |
-| `is_primary` | bool | YES | `false` |
-| `is_locked` | bool | YES | `false` |
-| `locked_by` | uuid | YES | — → FK `profiles.id` |
-| `locked_at` | timestamptz | YES | — |
-| `region` | text | YES | — |
-| `created_at` | timestamptz | YES | `now()` |
-| `updated_at` | timestamptz | YES | `now()` |
+| `id` | uuid | NO | `uuid_generate_v4()` |
+| `profile_id` | uuid | NO | FK `profiles.id` |
+| `puuid` | text | NO | UNIQUE |
+| `game_name` | text | NO | — |
+| `tag_line` | text | NO | — |
+| `summoner_level` | int4 | YES | — |
+| `profile_icon_id` | int4 | YES | — |
+| `is_primary` | bool | NO | `false` |
+| `lock_status` | text | NO | `'locked_until'` — check: `unlocked\|locked_permanent\|locked_until` |
+| `lock_until` | timestamptz | YES | `now() + 30 days` |
+| `locked_by` | uuid | YES | FK `profiles.id` |
+| `locked_at` | timestamptz | YES | `now()` |
+| `lock_reason` | text | YES | — |
+| `created_at` | timestamptz | NO | `now()` |
+| `updated_at` | timestamptz | NO | `now()` |
 
 ---
 
 ### `riot_account_lock_logs`
-Auditoria de bloqueio/desbloqueio de contas Riot.
+Log auditável de todas as alterações de lock em `riot_accounts`.
+
+> ⚠️ **Diff v anterior:** adicionados `lock_until`, `lock_reason`, `previous_status`, `previous_until`.
+> Coluna `reason` da v anterior foi renomeada para `lock_reason`.
 
 | Coluna | Tipo | Nullable |
 |---|---|---|
 | `id` | uuid | NO |
-| `riot_account_id` | uuid | YES → FK `riot_accounts.id` |
-| `changed_by` | uuid | YES → FK `profiles.id` |
-| `action` | text | YES |
-| `reason` | text | YES |
-| `created_at` | timestamptz | YES |
+| `riot_account_id` | uuid | NO — FK `riot_accounts.id` |
+| `changed_by` | uuid | NO — FK `profiles.id` |
+| `action` | text | NO — check: `locked_permanent\|locked_until\|unlocked` |
+| `lock_until` | timestamptz | YES |
+| `lock_reason` | text | YES |
+| `previous_status` | text | YES |
+| `previous_until` | timestamptz | YES |
+| `created_at` | timestamptz | NO — `now()` |
 
 ---
 
 ### `players`
 Dados de jogador sincronizados via Riot API (summoner + rank snapshot atual).
 
+> ⚠️ **Diff v anterior:** removido `profile_id` direto.
+> Adicionados `puuid` (UNIQUE) e `last_synced`. Vínculo com perfil é via `riot_accounts.profile_id`.
+
 | Coluna | Tipo | Nullable |
 |---|---|---|
 | `id` | uuid | NO |
-| `riot_account_id` | uuid | YES → FK `riot_accounts.id` |
-| `summoner_name` | text | YES |
-| `tag_line` | text | YES |
+| `riot_account_id` | uuid | YES — FK `riot_accounts.id` UNIQUE |
+| `summoner_name` | text | NO |
+| `tag_line` | text | NO — default `'BR1'` |
+| `puuid` | text | YES — UNIQUE |
+| `role` | `player_role` | YES |
+| `tier` | text | NO — default `'UNRANKED'` |
+| `rank` | text | NO — default `''` |
+| `lp` | int4 | NO — default `0`, check `>= 0` |
+| `wins` | int4 | NO — default `0`, check `>= 0` |
+| `losses` | int4 | NO — default `0`, check `>= 0` |
+| `profile_icon` | int4 | YES |
 | `summoner_level` | int4 | YES |
-| `profile_icon_id` | int4 | YES |
-| `tier` | text | YES |
-| `rank` | text | YES |
-| `lp` | int4 | YES |
-| `wins` | int4 | YES |
-| `losses` | int4 | YES |
-| `role` | text | YES |
-| `profile_id` | uuid | YES |
-| `created_at` | timestamptz | YES |
-| `updated_at` | timestamptz | YES |
+| `last_synced` | timestamptz | YES |
+| `created_at` | timestamptz | NO — `now()` |
+| `updated_at` | timestamptz | NO — `now()` |
 
 ---
 
 ### `rank_snapshots`
 Histórico de tier/rank/LP por conta Riot ao longo do tempo.
 
+> ⚠️ **Diff v anterior:** `captured_at` renomeado para `snapshotted_at`. Adicionado `hot_streak`.
+
 | Coluna | Tipo | Nullable |
 |---|---|---|
 | `id` | uuid | NO |
-| `riot_account_id` | uuid | YES → FK `riot_accounts.id` |
-| `queue_type` | text | YES |
-| `tier` | text | YES |
-| `rank` | text | YES |
-| `lp` | int4 | YES |
-| `wins` | int4 | YES |
-| `losses` | int4 | YES |
-| `captured_at` | timestamptz | YES |
+| `riot_account_id` | uuid | NO — FK `riot_accounts.id` |
+| `queue_type` | text | NO |
+| `tier` | text | NO |
+| `rank` | text | NO |
+| `lp` | int4 | NO — default `0` |
+| `wins` | int4 | NO — default `0` |
+| `losses` | int4 | NO — default `0` |
+| `hot_streak` | bool | NO — default `false` |
+| `snapshotted_at` | timestamptz | NO — default `now()` |
 
 ---
 
@@ -126,354 +146,437 @@ Maestrias de campeões sincronizadas da Riot API.
 | Coluna | Tipo | Nullable |
 |---|---|---|
 | `id` | uuid | NO |
-| `riot_account_id` | uuid | YES → FK `riot_accounts.id` |
-| `champion_id` | int4 | YES |
+| `riot_account_id` | uuid | NO — FK `riot_accounts.id` |
+| `champion_id` | int4 | NO |
 | `champion_name` | text | YES |
-| `mastery_level` | int4 | YES |
-| `mastery_points` | int8 | YES |
+| `mastery_level` | int4 | NO — default `0` |
+| `mastery_points` | int4 | NO — default `0` |
 | `last_play_time` | timestamptz | YES |
-| `created_at` | timestamptz | YES |
-| `updated_at` | timestamptz | YES |
+| `created_at` | timestamptz | NO — `now()` |
+| `updated_at` | timestamptz | NO — `now()` |
 
 ---
 
 ### `teams`
 Times cadastrados na plataforma.
 
+> ⚠️ **Diff v anterior:** adicionados `description`, `slug` (UNIQUE), `is_active`. Sem `updated_at`.
+
 | Coluna | Tipo | Nullable |
 |---|---|---|
 | `id` | uuid | NO |
 | `name` | text | NO |
-| `tag` | text | NO |
+| `tag` | text | NO — check: 1–6 chars |
 | `logo_url` | text | YES |
 | `banner_url` | text | YES |
-| `owner_id` | uuid | YES → FK `profiles.id` |
-| `tournament_id` | uuid | YES → FK `tournaments.id` |
-| `region` | text | YES |
-| `is_active` | bool | YES |
-| `is_eliminated` | bool | YES |
-| `created_at` | timestamptz | YES |
-| `updated_at` | timestamptz | YES |
+| `description` | text | YES |
+| `slug` | text | YES — UNIQUE |
+| `owner_id` | uuid | YES — FK `profiles.id` |
+| `tournament_id` | uuid | YES — FK `tournaments.id` |
+| `region` | text | YES — default `'BR1'` |
+| `is_active` | bool | NO — default `true` |
+| `is_eliminated` | bool | NO — default `false` |
+| `created_at` | timestamptz | NO — `now()` |
 
 ---
 
 ### `team_members`
 Relacionamento jogador ↔ time com papel e status.
 
+> ⚠️ **Diff v anterior:** `created_at` é `invited_at` no banco. Adicionado `is_reserve`.
+
 | Coluna | Tipo / Enum | Nullable |
 |---|---|---|
 | `id` | uuid | NO |
-| `team_id` | uuid | YES → FK `teams.id` |
-| `profile_id` | uuid | YES → FK `profiles.id` |
-| `riot_account_id` | uuid | YES → FK `riot_accounts.id` |
-| `team_role` | `team_member_role` (`captain`\|`member`\|`substitute`) | YES |
-| `lane` | `player_role` (`TOP`\|`JUNGLE`\|`MID`\|`ADC`\|`SUPPORT`) | YES |
-| `status` | `team_member_status` (`pending`\|`accepted`\|`rejected`\|`left`) | YES |
-| `invited_by` | uuid | YES → FK `profiles.id` |
-| `invited_at` | timestamptz | YES |
+| `team_id` | uuid | NO — FK `teams.id` |
+| `profile_id` | uuid | NO — FK `profiles.id` |
+| `riot_account_id` | uuid | YES — FK `riot_accounts.id` |
+| `team_role` | `team_member_role` (`captain\|member\|substitute`) | NO — default `member` |
+| `lane` | `player_role` | YES |
+| `status` | `team_member_status` (`pending\|accepted\|rejected\|left`) | NO — default `pending` |
+| `invited_by` | uuid | YES — FK `profiles.id` |
+| `invited_at` | timestamptz | NO — `now()` |
 | `responded_at` | timestamptz | YES |
-| `created_at` | timestamptz | YES |
+| `is_reserve` | bool | NO — default `false` |
 
 ---
 
 ### `team_invites`
 Convites enviados para jogadores entrarem em times.
 
+> ⚠️ **Diff v anterior:** `role` usa `player_role` (não `team_member_role`). Adicionado `message`.
+
 | Coluna | Tipo / Enum | Nullable |
 |---|---|---|
 | `id` | uuid | NO |
-| `team_id` | uuid | YES → FK `teams.id` |
-| `invited_by` | uuid | YES → FK `profiles.id` |
-| `invited_profile_id` | uuid | YES → FK `profiles.id` |
+| `team_id` | uuid | NO — FK `teams.id` |
+| `invited_by` | uuid | YES — FK `profiles.id` |
+| `invited_profile_id` | uuid | YES — FK `profiles.id` |
 | `summoner_name` | text | YES |
 | `tag_line` | text | YES |
-| `role` | `team_member_role` | YES |
-| `is_reserve` | bool | YES |
-| `status` | `invite_status` (`PENDING`\|`ACCEPTED`\|`DECLINED`\|`EXPIRED`) | YES |
-| `expires_at` | timestamptz | YES |
-| `created_at` | timestamptz | YES |
+| `role` | `player_role` (`TOP\|JUNGLE\|MID\|ADC\|SUPPORT`) | YES |
+| `is_reserve` | bool | NO — default `false` |
+| `message` | text | YES |
+| `status` | `invite_status` (`PENDING\|ACCEPTED\|DECLINED\|EXPIRED`) | YES — default `PENDING` |
+| `expires_at` | timestamptz | YES — default `now() + 48h` |
+| `created_at` | timestamptz | YES — `now()` |
 
 ---
 
 ### `active_team`
-Define qual time está "ativo" para um dado perfil.
+Define qual time está "ativo" para um dado perfil (chave primária = `profile_id`).
 
 | Coluna | Tipo | Nullable |
 |---|---|---|
-| `profile_id` | uuid | NO → FK `profiles.id` |
-| `team_id` | uuid | YES → FK `teams.id` |
-| `updated_at` | timestamptz | YES |
+| `profile_id` | uuid | NO — PK, FK `profiles.id` |
+| `team_id` | uuid | YES — FK `teams.id` |
+| `updated_at` | timestamptz | NO — `now()` |
 
 ---
 
 ### `tournaments`
 Torneios cadastrados na plataforma.
 
-| Coluna | Tipo / Enum | Nullable |
-|---|---|---|
-| `id` | uuid | NO |
-| `name` | text | NO |
-| `slug` | text | YES |
-| `description` | text | YES |
-| `status` | `tournament_status` (`DRAFT`\|`OPEN`\|`IN_PROGRESS`\|`FINISHED`\|`CANCELLED`) | YES |
-| `bracket_type` | `bracket_type` | YES |
-| `max_teams` | int4 | YES |
-| `min_members` | int4 | YES |
-| `max_members` | int4 | YES |
-| `min_tier` | text | YES |
-| `start_date` | timestamptz | YES |
-| `end_date` | timestamptz | YES |
-| `rules` | text | YES |
-| `prize_pool` | text | YES |
-| `banner_url` | text | YES |
-| `is_featured` | bool | YES |
-| `discord_webhook` | text | YES |
-| `organizer_id` | uuid | YES → FK `profiles.id` |
-| `created_by` | uuid | YES → FK `profiles.id` |
-| `created_at` | timestamptz | YES |
-| `updated_at` | timestamptz | YES |
+> ⚠️ **Diff v anterior:** `is_featured` → `featured`; `discord_webhook` → `discord_webhook_url`.
+> Adicionados `registration_deadline`, `starts_at` (generated), `ends_at`, `queue_type`, `min_members`, `max_members`.
+
+| Coluna | Tipo / Enum | Nullable | Default / Check |
+|---|---|---|---|
+| `id` | uuid | NO | `uuid_generate_v4()` |
+| `name` | text | NO | — |
+| `slug` | text | NO | UNIQUE |
+| `description` | text | YES | — |
+| `status` | `tournament_status` | NO | `'DRAFT'` |
+| `bracket_type` | `bracket_type` | NO | `'SINGLE_ELIMINATION'` |
+| `max_teams` | int4 | NO | `8` — check `>= 2` |
+| `min_members` | int4 | NO | `1` |
+| `max_members` | int4 | NO | `10` |
+| `min_tier` | text | YES | — |
+| `queue_type` | text | NO | `'SUMMONERS_RIFT_5v5'` — check: `SR_5v5\|SR_DRAFT\|SR_BLIND\|SR_ARAM\|HOWLING_ABYSS_ARAM` |
+| `prize_pool` | text | YES | — |
+| `rules` | text | YES | — |
+| `start_date` | timestamptz | YES | — |
+| `end_date` | timestamptz | YES | — |
+| `ends_at` | timestamptz | YES | — |
+| `starts_at` | timestamptz | YES | GENERATED = `start_date` |
+| `registration_deadline` | timestamptz | YES | — |
+| `banner_url` | text | YES | — |
+| `featured` | bool | YES | `false` |
+| `discord_webhook_url` | text | YES | — |
+| `organizer_id` | uuid | YES | FK `profiles.id` |
+| `created_by` | uuid | YES | FK `profiles.id` |
+| `created_at` | timestamptz | NO | `now()` |
+| `updated_at` | timestamptz | NO | `now()` |
 
 ---
 
 ### `tournament_rules`
 Seções de regras detalhadas por torneio.
 
+> ⚠️ **Diff v anterior:** coluna `order` renomeada para `rule_order`.
+
 | Coluna | Tipo | Nullable |
 |---|---|---|
 | `id` | uuid | NO |
-| `tournament_id` | uuid | YES → FK `tournaments.id` |
-| `section` | text | YES |
-| `content` | text | YES |
-| `order` | int4 | YES |
-| `created_at` | timestamptz | YES |
+| `tournament_id` | uuid | NO — FK `tournaments.id` |
+| `section` | text | NO |
+| `content` | text | NO |
+| `rule_order` | int4 | YES — default `1` |
+| `created_at` | timestamptz | YES — `now()` |
 
 ---
 
 ### `tournament_stages`
 Fases de um torneio (grupos, quartas, semifinais, etc.).
 
-| Coluna | Tipo / Enum | Nullable |
-|---|---|---|
-| `id` | uuid | NO |
-| `tournament_id` | uuid | YES → FK `tournaments.id` |
-| `name` | text | YES |
-| `stage_order` | int4 | YES |
-| `bracket_type` | `bracket_type` | YES |
-| `best_of` | int4 | YES |
-| `is_current` | bool | YES |
-| `created_at` | timestamptz | YES |
+> ⚠️ **Diff v anterior:** removido `is_current`. Adicionados `status`, `num_groups`, `teams_per_group`, `qualifiers_per_group`, `started_at`, `updated_at`.
+
+| Coluna | Tipo / Enum | Nullable | Default / Check |
+|---|---|---|---|
+| `id` | uuid | NO | `uuid_generate_v4()` |
+| `tournament_id` | uuid | NO — FK `tournaments.id` | |
+| `name` | text | NO | |
+| `stage_order` | int4 | NO | `1` |
+| `bracket_type` | `bracket_type` | YES | |
+| `best_of` | int4 | NO | `1` — check: `1\|3\|5` |
+| `status` | text | NO | `'pending'` — check: `pending\|active\|finished` |
+| `num_groups` | int4 | NO | `1` |
+| `teams_per_group` | int4 | NO | `4` |
+| `qualifiers_per_group` | int4 | NO | `2` |
+| `started_at` | timestamptz | YES | |
+| `created_at` | timestamptz | NO | `now()` |
+| `updated_at` | timestamptz | NO | `now()` |
 
 ---
 
 ### `seedings`
 Seed numérico de cada time por torneio.
 
-| Coluna | Tipo | Nullable |
-|---|---|---|
-| `id` | uuid | NO |
-| `tournament_id` | uuid | YES → FK `tournaments.id` |
-| `team_id` | uuid | YES → FK `teams.id` |
-| `seed` | int4 | YES |
-| `method` | text | YES | `-- MANUAL | RANKING | RANDOM` |
-| `created_at` | timestamptz | YES |
+| Coluna | Tipo | Nullable | Default / Check |
+|---|---|---|---|
+| `id` | uuid | NO | |
+| `tournament_id` | uuid | NO — FK `tournaments.id` | |
+| `team_id` | uuid | NO — FK `teams.id` | |
+| `seed` | int4 | NO | check `>= 1` |
+| `method` | text | NO | `'MANUAL'` — check: `MANUAL\|RANKING\|RANDOM` |
+| `created_at` | timestamptz | YES | `now()` |
 
 ---
 
 ### `inscricoes`
-Inscrições de times em torneios.
+Inscrições de times em torneios com check-in integrado.
 
-| Coluna | Tipo / Enum | Nullable |
-|---|---|---|
-| `id` | uuid | NO |
-| `tournament_id` | uuid | YES → FK `tournaments.id` |
-| `team_id` | uuid | YES → FK `teams.id` |
-| `status` | `inscricao_status` (`PENDING`\|`APPROVED`\|`REJECTED`) | YES |
-| `requested_by` | uuid | YES → FK `profiles.id` |
-| `reviewed_by` | uuid | YES → FK `profiles.id` |
-| `checked_in` | bool | YES |
-| `checked_in_at` | timestamptz | YES |
-| `checked_in_by` | uuid | YES |
-| `created_at` | timestamptz | YES |
-| `updated_at` | timestamptz | YES |
+| Coluna | Tipo / Enum | Nullable | Default |
+|---|---|---|---|
+| `id` | uuid | NO | `uuid_generate_v4()` |
+| `tournament_id` | uuid | NO — FK `tournaments.id` | |
+| `team_id` | uuid | NO — FK `teams.id` | |
+| `status` | `inscricao_status` | NO | `'PENDING'` |
+| `requested_by` | uuid | YES — FK `profiles.id` | |
+| `reviewed_by` | uuid | YES — FK `profiles.id` | |
+| `reviewed_at` | timestamptz | YES | |
+| `notes` | text | YES | |
+| `checked_in` | bool | NO | `false` |
+| `checked_in_at` | timestamptz | YES | |
+| `checked_in_by` | uuid | YES — FK `auth.users.id` | |
+| `created_at` | timestamptz | NO | `now()` |
 
 ---
 
 ### `matches`
-Séries (BO1/3/5) dentro de uma fase do torneio.
+Séries (BO1/3/5) dentro de uma fase do torneio. **Integração Tournament API completa embutida.**
 
-| Coluna | Tipo / Enum | Nullable |
-|---|---|---|
-| `id` | uuid | NO |
-| `tournament_id` | uuid | YES → FK `tournaments.id` |
-| `stage_id` | uuid | YES → FK `tournament_stages.id` |
-| `team_a_id` | uuid | YES → FK `teams.id` |
-| `team_b_id` | uuid | YES → FK `teams.id` |
-| `winner_id` | uuid | YES → FK `teams.id` |
-| `status` | `match_status` (`SCHEDULED`\|`IN_PROGRESS`\|`FINISHED`\|`CANCELLED`\|`WALKOVER`) | YES |
-| `best_of` | int4 | YES |
-| `round` | int4 | YES |
-| `match_number` | int4 | YES |
-| `score_a` | int4 | YES |
-| `score_b` | int4 | YES |
-| `scheduled_at` | timestamptz | YES |
-| `started_at` | timestamptz | YES |
-| `finished_at` | timestamptz | YES |
-| `tournament_code` | text | YES |
-| `created_at` | timestamptz | YES |
+> ⚠️ **Diff v anterior:** massivamente expandido. Adicionados `live_game_data`, `tournament_codes` (array jsonb),
+> `codes_generated_at`, `codes_expire_at`, `riot_tournament_id`, `riot_provider_id`, `match_order`, `notes`.
+
+| Coluna | Tipo / Enum | Nullable | Default / Check |
+|---|---|---|---|
+| `id` | uuid | NO | `uuid_generate_v4()` |
+| `tournament_id` | uuid | NO — FK `tournaments.id` | |
+| `stage_id` | uuid | YES — FK `tournament_stages.id` | |
+| `team_a_id` | uuid | YES — FK `teams.id` | |
+| `team_b_id` | uuid | YES — FK `teams.id` | |
+| `winner_id` | uuid | YES — FK `teams.id` | |
+| `status` | `match_status` | NO | `'SCHEDULED'` |
+| `format` | text | NO | `'BO1'` — check: `BO1\|BO3\|BO5` |
+| `best_of` | int4 | NO | `1` |
+| `round` | int4 | NO | `1`, check `>= 1` |
+| `match_number` | int4 | NO | `1` |
+| `match_order` | int4 | NO | `1` |
+| `score_a` | int4 | YES | check `>= 0` |
+| `score_b` | int4 | YES | check `>= 0` |
+| `notes` | text | YES | |
+| `riot_match_id` | text | YES | |
+| `tournament_code` | text | YES | legado — preferir `tournament_codes` jsonb |
+| `tournament_codes` | jsonb | YES | `'[]'` — `[{code,game_number,used,used_at}]` |
+| `codes_generated_at` | timestamptz | YES | null = não gerado ainda |
+| `codes_expire_at` | timestamptz | YES | `codes_generated_at + 90d` |
+| `riot_tournament_id` | int8 | YES | |
+| `riot_provider_id` | int8 | YES | |
+| `live_game_data` | jsonb | YES | cache Spectator v5 |
+| `scheduled_at` | timestamptz | YES | |
+| `started_at` | timestamptz | YES | preenchido via Spectator v5 |
+| `played_at` | timestamptz | YES | |
+| `finished_at` | timestamptz | YES | |
+| `created_at` | timestamptz | NO | `now()` |
+| `updated_at` | timestamptz | NO | `now()` |
 
 ---
 
 ### `match_games`
-Jogos individuais dentro de uma série (cada game de um BO3, por ex.).
+Jogos individuais dentro de uma série.
+
+> ⚠️ **Diff v anterior:** `duration` renomeado para `duration_sec`. Adicionado `picks_bans` (jsonb).
 
 | Coluna | Tipo | Nullable |
 |---|---|---|
 | `id` | uuid | NO |
-| `match_id` | uuid | YES → FK `matches.id` |
-| `game_number` | int4 | YES |
-| `winner_id` | uuid | YES → FK `teams.id` |
+| `match_id` | uuid | NO — FK `matches.id` |
+| `game_number` | int4 | NO — check `>= 1` |
+| `winner_id` | uuid | YES — FK `teams.id` |
 | `riot_game_id` | text | YES |
-| `duration` | int4 | YES |
+| `duration_sec` | int4 | YES — check `>= 0` |
+| `picks_bans` | jsonb | YES |
 | `played_at` | timestamptz | YES |
-| `created_at` | timestamptz | YES |
+| `created_at` | timestamptz | NO — `now()` |
 
 ---
 
 ### `tournament_match_results`
 Payload bruto JSON retornado pela Riot Tournament API após cada jogo.
 
-| Coluna | Tipo | Nullable |
-|---|---|---|
-| `id` | uuid | NO |
-| `match_id` | uuid | YES → FK `matches.id` |
-| `tournament_code` | text | YES |
-| `riot_match_id` | text | YES |
-| `game_data` | jsonb | YES |
-| `processed` | bool | YES |
-| `created_at` | timestamptz | YES |
+> ⚠️ **Diff v anterior:** removido `riot_match_id`. Adicionados `game_id` (bigint), `origin_ip`, `processing_at`.
+
+| Coluna | Tipo | Nullable | Default |
+|---|---|---|---|
+| `id` | uuid | NO | `gen_random_uuid()` |
+| `tournament_code` | text | NO — UNIQUE | |
+| `match_id` | uuid | YES — FK `matches.id` | |
+| `game_id` | int8 | YES | |
+| `game_data` | jsonb | NO | |
+| `processed` | bool | YES | `false` |
+| `received_at` | timestamptz | YES | `now()` |
+| `origin_ip` | text | YES | |
+| `processing_at` | timestamptz | YES | null = disponível; não-null há > 10min = retry |
 
 ---
 
 ### `player_stats`
 Estatísticas de um jogador por game individual.
 
-| Coluna | Tipo | Nullable |
-|---|---|---|
-| `id` | uuid | NO |
-| `game_id` | uuid | YES → FK `match_games.id` |
-| `player_id` | uuid | YES → FK `players.id` |
-| `riot_account_id` | uuid | YES → FK `riot_accounts.id` |
-| `team_id` | uuid | YES → FK `teams.id` |
-| `kills` | int4 | YES |
-| `deaths` | int4 | YES |
-| `assists` | int4 | YES |
-| `cs` | int4 | YES |
-| `damage` | int4 | YES |
-| `vision_score` | int4 | YES |
-| `gold` | int4 | YES |
-| `wards_placed` | int4 | YES |
-| `win` | bool | YES |
-| `role` | text | YES |
-| `champion_id` | int4 | YES |
-| `champion_name` | text | YES |
-| `is_mvp` | bool | YES |
-| `created_at` | timestamptz | YES |
+> ⚠️ **Diff v anterior:** `damage` → `damage_dealt`; `gold` → `gold_earned`.
+> Removidos `champion_id` + `champion_name` separados — banco usa coluna única `champion` (text).
+> Adicionado `game_duration`.
+
+| Coluna | Tipo | Nullable | Default |
+|---|---|---|---|
+| `id` | uuid | NO | `uuid_generate_v4()` |
+| `game_id` | uuid | NO — FK `match_games.id` | |
+| `player_id` | uuid | YES — FK `players.id` | |
+| `riot_account_id` | uuid | YES — FK `riot_accounts.id` | |
+| `team_id` | uuid | YES — FK `teams.id` | |
+| `champion` | text | YES | nome do campeão |
+| `role` | `player_role` | YES | |
+| `kills` | int4 | NO | `0`, check `>= 0` |
+| `deaths` | int4 | NO | `0`, check `>= 0` |
+| `assists` | int4 | NO | `0`, check `>= 0` |
+| `cs` | int4 | NO | `0`, check `>= 0` |
+| `vision_score` | int4 | NO | `0`, check `>= 0` |
+| `damage_dealt` | int4 | NO | `0`, check `>= 0` |
+| `gold_earned` | int4 | NO | `0` |
+| `wards_placed` | int4 | NO | `0` |
+| `game_duration` | int4 | YES | segundos |
+| `win` | bool | NO | `false` |
+| `is_mvp` | bool | NO | `false` |
+| `created_at` | timestamptz | NO | `now()` |
 
 ---
 
 ### `disputes`
 Disputas de resultado abertas por capitão, resolvidas por organizador/admin.
 
+> ⚠️ **Diff v anterior:** `resolved_at` não existe no banco — usar `updated_at` para rastrear resolução.
+
 | Coluna | Tipo / Enum | Nullable |
 |---|---|---|
 | `id` | uuid | NO |
-| `match_id` | uuid | YES → FK `matches.id` |
-| `reported_by` | uuid | YES → FK `profiles.id` |
-| `resolved_by` | uuid | YES → FK `profiles.id` |
-| `status` | `dispute_status` (`OPEN`\|`UNDER_REVIEW`\|`RESOLVED`\|`DISMISSED`) | YES |
-| `reason` | text | YES |
+| `match_id` | uuid | NO — FK `matches.id` |
+| `reported_by` | uuid | YES — FK `profiles.id` |
+| `resolved_by` | uuid | YES — FK `profiles.id` |
+| `status` | `dispute_status` | YES — default `'OPEN'` |
+| `reason` | text | NO |
 | `evidence_url` | text | YES |
 | `resolution_notes` | text | YES |
-| `resolved_at` | timestamptz | YES |
-| `created_at` | timestamptz | YES |
-
-> **Atenção:** a FK real em `disputes` usa `reported_by` (não `opened_by`).  
-> Os actions `disputa.ts` precisam usar `reported_by` ao inserir.
+| `created_at` | timestamptz | YES — `now()` |
+| `updated_at` | timestamptz | YES — `now()` |
 
 ---
 
 ### `prize_distribution`
 Distribuição de prêmios por colocação.
 
+> ⚠️ **Diff v anterior:** adicionada coluna `value` (text) que estava faltando na doc.
+
 | Coluna | Tipo | Nullable |
 |---|---|---|
 | `id` | uuid | NO |
-| `tournament_id` | uuid | YES → FK `tournaments.id` |
-| `placement` | int4 | YES |
-| `description` | text | YES |
-| `created_at` | timestamptz | YES |
+| `tournament_id` | uuid | NO — FK `tournaments.id` |
+| `placement` | int4 | NO — check `>= 1` |
+| `description` | text | NO |
+| `value` | text | NO |
+| `created_at` | timestamptz | YES — `now()` |
 
 ---
 
 ### `notifications`
 Notificações por usuário, protegidas por RLS.
 
+> ⚠️ **Diff v anterior:** adicionados `type`, `message`, `expires_at`.
+
 | Coluna | Tipo | Nullable |
 |---|---|---|
 | `id` | uuid | NO |
-| `user_id` | uuid | YES → FK `profiles.id` |
-| `title` | text | YES |
+| `user_id` | uuid | NO — FK `profiles.id` |
+| `type` | text | NO |
+| `title` | text | NO |
 | `body` | text | YES |
+| `message` | text | YES |
 | `link` | text | YES |
 | `metadata` | jsonb | YES |
-| `read` | bool | YES |
-| `created_at` | timestamptz | YES |
+| `read` | bool | NO — default `false` |
+| `expires_at` | timestamptz | YES |
+| `created_at` | timestamptz | NO — `now()` |
 
 ---
 
 ### `site_terms_acceptance`
 Registro de aceite dos termos da plataforma.
 
+> ⚠️ **Diff v anterior:** coluna `user_agent` removida do banco.
+
 | Coluna | Tipo | Nullable |
 |---|---|---|
 | `id` | uuid | NO |
-| `profile_id` | uuid | YES → FK `profiles.id` |
-| `accepted_at` | timestamptz | YES |
+| `profile_id` | uuid | NO — FK `profiles.id` |
+| `terms_version` | text | NO — default `'v1'` |
+| `accepted_at` | timestamptz | NO — `now()` |
 | `ip_address` | text | YES |
-| `user_agent` | text | YES |
 
 ---
 
 ### `riot_tournament_registrations`
-Registros de provider/tournament criados na Riot Tournament API v5.
+Registro único de provider + tournament na Riot API por torneio BRLOL.
+
+> ⚠️ **Diff v anterior:** `riot_provider_id` e `riot_tournament_id` são **bigint** (int8), não int4.
 
 | Coluna | Tipo | Nullable |
 |---|---|---|
 | `id` | uuid | NO |
-| `tournament_id` | uuid | YES → FK `tournaments.id` |
-| `created_by` | uuid | YES → FK `profiles.id` |
-| `riot_provider_id` | int4 | YES |
-| `riot_tournament_id` | int4 | YES |
-| `region` | text | YES |
-| `callback_url` | text | YES |
-| `created_at` | timestamptz | YES |
+| `tournament_id` | uuid | NO — FK `tournaments.id` UNIQUE |
+| `riot_provider_id` | int8 | NO |
+| `riot_tournament_id` | int8 | NO |
+| `region` | text | NO — default `'BR'` |
+| `callback_url` | text | NO |
+| `created_by` | uuid | YES — FK `profiles.id` |
+| `created_at` | timestamptz | NO — `now()` |
 
 ---
 
-### `tournament_announcements` \_(nova)_
-Comunicados do organizador para os times do torneio.
+### `tournament_announcements`
+Comunicados do organizador para times do torneio, com suporte a canais e segmentação.
+
+> ⚠️ **Diff v anterior:** adicionado `target_team_id` — comunicado direcionado a um time específico.
+
+| Coluna | Tipo | Nullable | Default / Check |
+|---|---|---|---|
+| `id` | uuid | NO | `gen_random_uuid()` |
+| `tournament_id` | uuid | NO — FK `tournaments.id` | |
+| `sent_by` | uuid | YES — FK `profiles.id` | |
+| `title` | text | NO | check: 5–150 chars |
+| `body` | text | NO | check: 10–2000 chars |
+| `channel` | text[] | NO | `ARRAY['email']` |
+| `target` | text | NO | `'all'` — check: `all\|active\|eliminated` |
+| `target_team_id` | uuid | YES — FK `teams.id` | para comunicado direcionado |
+| `sent_at` | timestamptz | NO | `now()` |
+| `created_at` | timestamptz | NO | `now()` |
+
+---
+
+### `audit_log`
+Log de ações administrativas. Acessível apenas por admins via RLS.
 
 | Coluna | Tipo | Nullable |
 |---|---|---|
 | `id` | uuid | NO |
-| `tournament_id` | uuid | NO → FK `tournaments.id` |
-| `sent_by` | uuid | YES → FK `profiles.id` |
-| `title` | text | NO | `5“150 chars` |
-| `body` | text | NO | `10–2000 chars` |
-| `channel` | text[] | NO | `default '{email}'` |
-| `target` | text | NO | `'all'\|'active'\|'eliminated'` |
-| `sent_at` | timestamptz | NO | `now()` |
-| `created_at` | timestamptz | NO | `now()` |
+| `admin_id` | uuid | YES — FK `auth.users.id` |
+| `action` | text | NO |
+| `table_name` | text | NO |
+| `record_id` | text | YES |
+| `old_data` | jsonb | YES |
+| `new_data` | jsonb | YES |
+| `ip_address` | inet | YES |
+| `user_agent` | text | YES |
+| `created_at` | timestamptz | NO — `now()` |
 
 ---
 
@@ -483,10 +586,12 @@ Comunicados do organizador para os times do torneio.
 |---|---|---|
 | `active_team` | `profile_id` | `profiles.id` |
 | `active_team` | `team_id` | `teams.id` |
+| `audit_log` | `admin_id` | `auth.users.id` |
 | `champion_masteries` | `riot_account_id` | `riot_accounts.id` |
 | `disputes` | `match_id` | `matches.id` |
 | `disputes` | `reported_by` | `profiles.id` |
 | `disputes` | `resolved_by` | `profiles.id` |
+| `inscricoes` | `checked_in_by` | `auth.users.id` |
 | `inscricoes` | `requested_by` | `profiles.id` |
 | `inscricoes` | `reviewed_by` | `profiles.id` |
 | `inscricoes` | `team_id` | `teams.id` |
@@ -525,6 +630,7 @@ Comunicados do organizador para os times do torneio.
 | `teams` | `owner_id` | `profiles.id` |
 | `teams` | `tournament_id` | `tournaments.id` |
 | `tournament_announcements` | `sent_by` | `profiles.id` |
+| `tournament_announcements` | `target_team_id` | `teams.id` |
 | `tournament_announcements` | `tournament_id` | `tournaments.id` |
 | `tournament_match_results` | `match_id` | `matches.id` |
 | `tournament_rules` | `tournament_id` | `tournaments.id` |
@@ -534,15 +640,28 @@ Comunicados do organizador para os times do torneio.
 
 ---
 
-## Bug conhecido nos actions commitados
+## Bugs conhecidos nos actions
 
-Ao gerar o schema real, foi identificado que `disputes` usa `reported_by` como FK (não `opened_by`).  
-O arquivo `lib/actions/disputa.ts` usa `opened_by` no INSERT — isso precisa ser corrigido no próximo commit.
-
+### `disputa.ts` — campo errado no INSERT
 ```ts
-// ERRADO (atual em disputa.ts)
+// ❌ ERRADO (atual em disputa.ts)
 opened_by: profile.id
 
-// CORRETO (conforme FK real do banco)
+// ✅ CORRETO (conforme FK real do banco)
 reported_by: profile.id
 ```
+
+### Actions usando nomes de coluna desatualizados
+
+| Coluna antiga (doc v anterior) | Coluna correta (banco real) |
+|---|---|
+| `captured_at` em `rank_snapshots` | `snapshotted_at` |
+| `duration` em `match_games` | `duration_sec` |
+| `order` em `tournament_rules` | `rule_order` |
+| `is_featured` em `tournaments` | `featured` |
+| `discord_webhook` em `tournaments` | `discord_webhook_url` |
+| `damage` em `player_stats` | `damage_dealt` |
+| `gold` em `player_stats` | `gold_earned` |
+| `champion_id` / `champion_name` em `player_stats` | `champion` (coluna única, text) |
+| `is_locked` em `riot_accounts` | `lock_status` (3 estados: unlocked / locked_permanent / locked_until) |
+| `riot_provider_id`/`riot_tournament_id` como int4 | int8 (bigint) |
