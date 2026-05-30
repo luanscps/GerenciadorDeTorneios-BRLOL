@@ -1,10 +1,9 @@
 import type { Config } from "tailwindcss";
+import flattenColorPalette from "tailwindcss/lib/util/flattenColorPalette";
 
 // Plugin do Aceternity UI: expõe cada cor Tailwind como variável CSS
-// ex: var(--sky-500), var(--neutral-800) — necessário para BackgroundBeams e outros
+// ex: var(--sky-500), var(--neutral-800)
 function addVariablesForColors({ addBase, theme }: any) {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const flattenColorPalette = require("tailwindcss/lib/util/flattenColorPalette").default;
   const allColors = flattenColorPalette(theme("colors"));
   const newVars = Object.fromEntries(
     Object.entries(allColors).map(([key, val]) => [`--${key}`, val])
@@ -69,13 +68,12 @@ const config: Config = {
         body:    ["Inter", "sans-serif"],
       },
       animation: {
-        shimmer:           "shimmer 1.5s ease-in-out infinite",
-        float:             "float 3s ease-in-out infinite",
-        // Aceternity
-        "background-shine": "background-shine 2s linear infinite",
-        meteor:            "meteor 5s linear infinite",
-        spotlight:         "spotlight 2s ease .75s 1 forwards",
-        scroll:            "scroll var(--animation-duration, 40s) var(--animation-direction, forwards) linear infinite",
+        shimmer:             "shimmer 1.5s ease-in-out infinite",
+        float:               "float 3s ease-in-out infinite",
+        "background-shine":  "background-shine 2s linear infinite",
+        meteor:              "meteor 5s linear infinite",
+        spotlight:           "spotlight 2s ease .75s 1 forwards",
+        scroll:              "scroll var(--animation-duration, 40s) var(--animation-direction, forwards) linear infinite",
       },
       keyframes: {
         shimmer: {
@@ -86,7 +84,6 @@ const config: Config = {
           "0%, 100%": { transform: "translateY(0px)" },
           "50%":      { transform: "translateY(-6px)" },
         },
-        // Aceternity keyframes
         "background-shine": {
           from: { backgroundPosition: "0 0" },
           to:   { backgroundPosition: "-200% 0" },
