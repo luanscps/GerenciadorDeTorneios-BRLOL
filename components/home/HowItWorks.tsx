@@ -1,12 +1,13 @@
 "use client";
 import { motion } from "framer-motion";
 import { UserPlus, Shield, ClipboardList, Swords } from "lucide-react";
+import { CardSpotlight } from "@/components/ui/card-spotlight";
 
 const steps = [
   {
     step: "01",
     title: "Cadastre-se",
-    desc: "Crie sua conta e vincule seu Riot ID para importar stats reais.",
+    desc: "Crie sua conta e vincule seu Riot ID para importar stats reais diretamente da API da Riot Games.",
     icon: UserPlus,
     wide: true,
   },
@@ -78,57 +79,60 @@ export function HowItWorks() {
             <motion.div
               key={s.step}
               variants={item}
-              whileHover={{ y: -4, transition: { duration: 0.2 } }}
-              className={`card flex flex-col gap-4${
-                idx === 0 ? " md:col-span-3 md:flex-row md:items-center md:gap-8" : ""
-              }`}
+              className={idx === 0 ? "md:col-span-3" : ""}
             >
-              <div
-                style={{
-                  width: 52,
-                  height: 52,
-                  minWidth: 52,
-                  borderRadius: "var(--radius-lg)",
-                  background: "var(--gold-dim)",
-                  border: "1px solid var(--border-gold)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "var(--gold)",
-                }}
+              <CardSpotlight
+                className={`h-full flex flex-col gap-4${
+                  idx === 0 ? " md:flex-row md:items-center md:gap-8" : ""
+                }`}
               >
-                <Icon size={24} />
-              </div>
-              <div>
-                <span
+                <div
                   style={{
-                    fontFamily: "var(--font-display)",
-                    fontSize: "var(--text-xs)",
+                    width: 52,
+                    height: 52,
+                    minWidth: 52,
+                    borderRadius: "var(--radius-lg)",
+                    background: "var(--gold-dim)",
+                    border: "1px solid var(--border-gold)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
                     color: "var(--gold)",
-                    fontWeight: 700,
-                    letterSpacing: "0.1em",
-                    textTransform: "uppercase",
-                    display: "block",
-                    marginBottom: "var(--sp-1)",
                   }}
                 >
-                  PASSO {s.step}
-                </span>
-                <h3
-                  style={{
-                    fontFamily: "var(--font-display)",
-                    fontSize: "var(--text-lg)",
-                    color: "var(--text)",
-                    fontWeight: 700,
-                    marginBottom: "var(--sp-2)",
-                  }}
-                >
-                  {s.title}
-                </h3>
-                <p style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", maxWidth: "42ch" }}>
-                  {s.desc}
-                </p>
-              </div>
+                  <Icon size={24} />
+                </div>
+                <div>
+                  <span
+                    style={{
+                      fontFamily: "var(--font-display)",
+                      fontSize: "var(--text-xs)",
+                      color: "var(--gold)",
+                      fontWeight: 700,
+                      letterSpacing: "0.1em",
+                      textTransform: "uppercase",
+                      display: "block",
+                      marginBottom: "var(--sp-1)",
+                    }}
+                  >
+                    PASSO {s.step}
+                  </span>
+                  <h3
+                    style={{
+                      fontFamily: "var(--font-display)",
+                      fontSize: "var(--text-lg)",
+                      color: "var(--text)",
+                      fontWeight: 700,
+                      marginBottom: "var(--sp-2)",
+                    }}
+                  >
+                    {s.title}
+                  </h3>
+                  <p style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", maxWidth: "42ch" }}>
+                    {s.desc}
+                  </p>
+                </div>
+              </CardSpotlight>
             </motion.div>
           );
         })}
