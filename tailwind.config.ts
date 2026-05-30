@@ -1,5 +1,17 @@
 import type { Config } from "tailwindcss";
 
+// Plugin do Aceternity UI: expõe cada cor Tailwind como variável CSS
+// ex: var(--sky-500), var(--neutral-800) — necessário para BackgroundBeams e outros
+function addVariablesForColors({ addBase, theme }: any) {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const flattenColorPalette = require("tailwindcss/lib/util/flattenColorPalette").default;
+  const allColors = flattenColorPalette(theme("colors"));
+  const newVars = Object.fromEntries(
+    Object.entries(allColors).map(([key, val]) => [`--${key}`, val])
+  );
+  addBase({ ":root": newVars });
+}
+
 const config: Config = {
   darkMode: ["class"],
   content: [
@@ -22,7 +34,6 @@ const config: Config = {
           card:   "#112240",
           border: "#1E3A5F",
         },
-        /* ── Tremor custom theme (paleta ArenaGG) ────────────────── */
         tremor: {
           brand: {
             faint:    "#050D1A",
@@ -58,8 +69,13 @@ const config: Config = {
         body:    ["Inter", "sans-serif"],
       },
       animation: {
-        shimmer: "shimmer 1.5s ease-in-out infinite",
-        float:   "float 3s ease-in-out infinite",
+        shimmer:           "shimmer 1.5s ease-in-out infinite",
+        float:             "float 3s ease-in-out infinite",
+        // Aceternity
+        "background-shine": "background-shine 2s linear infinite",
+        meteor:            "meteor 5s linear infinite",
+        spotlight:         "spotlight 2s ease .75s 1 forwards",
+        scroll:            "scroll var(--animation-duration, 40s) var(--animation-direction, forwards) linear infinite",
       },
       keyframes: {
         shimmer: {
@@ -70,10 +86,27 @@ const config: Config = {
           "0%, 100%": { transform: "translateY(0px)" },
           "50%":      { transform: "translateY(-6px)" },
         },
+        // Aceternity keyframes
+        "background-shine": {
+          from: { backgroundPosition: "0 0" },
+          to:   { backgroundPosition: "-200% 0" },
+        },
+        meteor: {
+          "0%":   { transform: "rotate(215deg) translateX(0)", opacity: "1" },
+          "70%":  { opacity: "1" },
+          "100%": { transform: "rotate(215deg) translateX(-500px)", opacity: "0" },
+        },
+        spotlight: {
+          "0%":   { opacity: "0", transform: "translate(-72%, -62%) scale(0.5)" },
+          "100%": { opacity: "1", transform: "translate(-50%,-40%) scale(1)" },
+        },
+        scroll: {
+          to: { transform: "translate(calc(-50% - 0.5rem))" },
+        },
       },
     },
   },
-  plugins: [],
+  plugins: [addVariablesForColors],
 };
 
 export default config;
