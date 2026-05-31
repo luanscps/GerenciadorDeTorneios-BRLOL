@@ -10,9 +10,9 @@ Este documento descreve todas as Edge Functions ativas no projeto, seus contrato
 
 | Slug | Versão | `verify_jwt` | Status | Descrição |
 |---|---|---|---|---|
-| `riot-api-sync` | 21 | ❌ false | ACTIVE | Sync de rank/icon de contas Riot em lote |
+| `riot-api-sync` | 23 | ✅ true | ACTIVE | Sync de rank/icon de jogadores em lote |
 | `process-match-results` | 8 | ✅ true | ACTIVE | Processa resultados de partidas de torneio pendentes |
-| `bracket-generator` | 19 | ✅ true | ACTIVE | Gera chaveamento de torneio (Single Elimination) |
+| `bracket-generator` | 20 | ✅ true | ACTIVE | Gera chaveamento de torneio (Single Elimination) |
 | `discord-webhook` | 18 | ✅ true | ACTIVE | Dispara notificações Discord |
 | `send-email` | 18 | ✅ true | ACTIVE | Envio de e-mails transacionais |
 
@@ -22,36 +22,92 @@ Este documento descreve todas as Edge Functions ativas no projeto, seus contrato
 
 **Arquivo:** `supabase/functions/riot-api-sync/index.ts`
 
-**Segurança:** `verify_jwt: false` — autenticada via `SUPABASE_SERVICE_ROLE_KEY` internamente. Não requer JWT de usuário.
-
-> ⚠️ Por ter `verify_jwt: false`, a URL da função não deve ser exposta publicamente. Invocar apenas via cron ou chamada server-side com service role.
+**Segurança:** `verify_jwt: true`
 
 **Variáveis de ambiente necessárias:**
 - `RIOT_API_KEY`
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 
-**Parâmetros de configuração internos:**
+### Configuração interna
 
 | Constante | Valor | Descrição |
 |---|---|---|
-| `BATCH_SIZE` | 50 | Máximo de contas sincronizadas por execução |
-| `STALE_MINUTES` | 10 | Reprocessa contas com `updated_at` mais antigo que 10min |
-| `DELAY_MS` | 300 | Delay entre chamadas Riot API (anti-rate-limit) |
+| `BATCH_SIZE` (limit) | 20 | Máximo de jogadores sincronizados por execução |
+| Stale threshold | 6h | Reprocessa jogadores com `last_synced` há mais de 6h |
 
-**Fluxo:**
-1. Busca até 50 `riot_accounts` com `updated_at < now - 10min`
-2. Para cada conta:
-   - `summoner-v4/by-puuid` → atualiza `riot_accounts.profile_icon_id` e `summoner_level`
-   - `league-v4/entries/by-puuid` → insere em `rank_snapshots` (apenas `RANKED_SOLO_5x5` e `RANKED_FLEX_SR`)
-3. Retry em 429: sleep fixo de 6s (não lê o header `Retry-After` — melhoria pendente)
+### Fluxo
 
-**Tabelas afetadas:** `riot_accounts` (UPDATE), `rank_snapshots` (INSERT)
-
-**Resposta de sucesso:**
-```json
-{ "synced": 12, "total": 15, "results": [...] }
 ```
+POST supabase/functions/riot-api-sync
+  Body opcional: { player_id: uuid }  → sincroniza apenas 1 jogador
+  Sem body        → batch dos 20 jogadores com last_synced mais antigo
+
+Para cada jogador:
+  1. Se puuid ausente:
+     account-v1 (americas) /by-riot-id/{name}/{tag}  →  salva puuid
+  2. summoner-v4 (br1) /by-puuid/{puuid}             →  profileIconId, summonerLevel
+  3. league-v4  (br1) /entries/by-puuid/{puuid}      →  tier, rank, LP, wins, losses
+  4. UPDATE players (puuid, profile_icon, summoner_level, tier, rank, lp, wins, losses, last_synced)
+```
+
+> ⚠️ **BREAKING CHANGE (Jun/2025):** `league-v4/entries/by-summoner/{summonerId}` foi **removido** pela Riot.
+> O projeto usa `entries/by-puuid/{puuid}` desde esta versão. Não reverter.
+
+### Retry e rate limiting
+
+A função `riotGet()` trata 429 dinamicamente lendo o header `Retry-After`:
+
+```typescript
+if (res.status === 429) {
+  const retryAfter = res.headers.get('Retry-After')
+  const waitMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : 6_000
+  await new Promise((resolve) => setTimeout(resolve, waitMs))
+  // Uma segunda tentativa após o backoff
+  const retry = await fetch(url, { headers: { 'X-Riot-Token': RIOT_API_KEY } })
+  if (!retry.ok) return null
+  return retry.json()
+}
+```
+
+| Cenário | Comportamento |
+|---|---|
+| `Retry-After` presente | Aguarda exatamente o valor em segundos informado pela Riot |
+| `Retry-After` ausente | Fallback de 6s |
+| Segunda tentativa também falha | Retorna `null` — jogador marca status `error` no resultado |
+
+**Tipos de rate limit da Riot (`X-Rate-Limit-Type`):**
+- `method` — limite por endpoint específico (curto prazo)
+- `service` — limite global do serviço (mais longo)
+
+Ambos são tratados igualmente pela lógica acima, respeitando o `Retry-After` em ambos os casos.
+
+### Tabelas afetadas
+
+| Tabela | Operação | Campos atualizados |
+|---|---|---|
+| `players` | UPDATE | `puuid`, `profile_icon`, `summoner_level`, `tier`, `rank`, `lp`, `wins`, `losses`, `last_synced` |
+
+### Resposta de sucesso
+
+```json
+{
+  "synced": 12,
+  "results": [
+    { "id": "uuid", "summoner_name": "Faker", "tier": "DIAMOND", "status": "synced" },
+    { "id": "uuid", "summoner_name": "Desconhecido", "status": "not_found" }
+  ]
+}
+```
+
+**Possíveis valores de `status` por jogador:**
+
+| Status | Causa |
+|---|---|
+| `synced` | Sincronizado com sucesso |
+| `not_found` | Riot ID não encontrado na API |
+| `summoner_not_found` | PUUID não retornou summoner válido |
+| `error` | Exceção inesperada — ver campo `message` |
 
 ---
 
@@ -95,13 +151,6 @@ Este documento descreve todas as Edge Functions ativas no projeto, seus contrato
 
 **Segurança:** `verify_jwt: true`
 
-> 🔴 **Problemas identificados no código atual (v19) — correções pendentes:**
->
-> 1. **`serve` deprecado** — usa `serve` de `https://deno.land/std@0.168.0/http/server.ts`. Migrar para `Deno.serve()` (padrão atual).
-> 2. **`esm.sh` deprecado** — usa `https://esm.sh/@supabase/supabase-js@2`. Migrar para `jsr:@supabase/supabase-js@2`.
-> 3. **Enum inválido** — atualiza `tournaments.status` para `'ongoing'`, mas o enum `tournament_status` **não possui esse valor**. Valores válidos: `DRAFT | OPEN | IN_PROGRESS | FINISHED | CANCELLED`. **Corrigir para `'IN_PROGRESS'`**.
-> 4. **Notificação sem `user_id`** — o INSERT em `notifications` não passa `user_id` (coluna NOT NULL), causando falha silenciosa no fire-and-forget.
-
 **Body da requisição:**
 ```json
 { "tournament_id": "uuid" }
@@ -112,9 +161,11 @@ Este documento descreve todas as Edge Functions ativas no projeto, seus contrato
 2. Busca inscrições `APPROVED + checked_in = true`; fallback para todos `APPROVED` se < 2 times
 3. Fisher-Yates shuffle
 4. Monta confrontos (seed: 1 vs N, 2 vs N-1...) — arredonda para próxima potência de 2, BYEs ignorados
-5. INSERT em `matches` + atualiza status do torneio
+5. INSERT em `matches` com `status = 'SCHEDULED'`
+6. UPDATE `tournaments.status = 'IN_PROGRESS'`
+7. Busca capitães via `team_members` (role=captain, status=accepted) e insere notificações com `user_id`
 
-**Tabelas afetadas:** `matches` (INSERT), `tournaments` (UPDATE status)
+**Tabelas afetadas:** `matches` (INSERT), `tournaments` (UPDATE), `notifications` (INSERT)
 
 **Resposta:**
 ```json
