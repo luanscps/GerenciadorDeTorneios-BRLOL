@@ -71,16 +71,15 @@
   /* Transições */
   --ease-ui:     180ms cubic-bezier(0.16, 1, 0.3, 1);
   --ease-bounce: 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
-  /* alias legado */
   --ease-out:    180ms cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in:     180ms cubic-bezier(0.4, 0, 1, 1);
   --duration:    180ms;
 
-  /* Sombras — nomenclatura semântica */
+  /* Sombras */
   --shadow-sm:   0 1px 3px rgba(0, 0, 0, 0.4);
   --shadow-md:   0 4px 16px rgba(0, 0, 0, 0.5);
   --shadow-lg:   0 12px 40px rgba(0, 0, 0, 0.6);
   --shadow-gold: 0 0 20px rgba(200, 168, 75, 0.18);
-  /* aliases legado */
   --shadow-card:  0 4px 20px rgba(0, 0, 0, 0.45);
   --shadow-hover: 0 8px 32px rgba(0, 0, 0, 0.65);
 
@@ -186,10 +185,9 @@ p, li { text-wrap: pretty; max-width: 72ch; }
     box-shadow: var(--shadow-sm);
     border-color: var(--border-gold);
   }
-  /* Alias legado */
   .card-lol { @apply card; background: var(--surface-3); }
 
-  /* ── Botões — sistema unificado ── */
+  /* ── Botões ── */
   .btn {
     @apply inline-flex items-center justify-center gap-2 font-semibold;
     font-family: var(--font-display);
@@ -228,7 +226,6 @@ p, li { text-wrap: pretty; max-width: 72ch; }
 
   .btn-sm { padding: 6px 14px; font-size: var(--text-xs); }
 
-  /* Aliases legado */
   .btn-gold         { @apply btn-primary; }
   .btn-outline-gold { @apply btn-ghost; }
 
@@ -266,24 +263,11 @@ p, li { text-wrap: pretty; max-width: 72ch; }
     color: var(--gold);
     border: 1px solid rgba(200, 168, 75, 0.25);
   }
-  .badge-win {
-    @apply badge;
-    background: var(--win-dim);
-    color: var(--win);
-  }
-  .badge-loss {
-    @apply badge;
-    background: var(--loss-dim);
-    color: var(--loss);
-  }
-  .badge-blue {
-    @apply badge;
-    background: var(--blue-dim);
-    color: var(--blue-accent);
-  }
+  .badge-win  { @apply badge; background: var(--win-dim);  color: var(--win); }
+  .badge-loss { @apply badge; background: var(--loss-dim); color: var(--loss); }
+  .badge-blue { @apply badge; background: var(--blue-dim); color: var(--blue-accent); }
   .badge-tier { @apply badge; }
 
-  /* Aliases legado */
   .stat-pill  { @apply badge-gold; }
   .tag-win    { @apply badge-win; }
   .tag-loss   { @apply badge-loss; }
@@ -322,6 +306,20 @@ p, li { text-wrap: pretty; max-width: 72ch; }
   }
 
   /* ── Match row highlight ── */
-  .row-win  { background: linear-gradient(90deg, var(--win-dim) 0%, transparent 60%); }
+  .row-win  { background: linear-gradient(90deg, var(--win-dim)  0%, transparent 60%); }
   .row-loss { background: linear-gradient(90deg, var(--loss-dim) 0%, transparent 60%); }
+
+  /* ── Mastery card ── */
+  .mastery-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--sp-1);
+    background: rgba(10, 20, 40, 0.7);
+    border-radius: var(--radius-md);
+    padding: 10px 10px 8px;
+    min-width: 76px;
+    transition: transform 200ms var(--ease-out), border-color 200ms var(--ease-out);
+  }
+  .mastery-card:hover { transform: scale(1.05); }
 }

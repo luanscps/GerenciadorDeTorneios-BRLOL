@@ -1,43 +1,115 @@
 'use client';
 import React from 'react';
-import { rankEmblemUrl } from '@/lib/riot';
 
 interface Props {
   summonerName: string;
   tagLine: string;
   profileIconId: number;
   summonerLevel: number;
-  DD_VERSION: string;
+  /** true se o jogador tiver player_id vinculado no ArenaGG (riot_accounts + players) */
+  isLinked?: boolean;
 }
 
-export default function ProfileHeader({ summonerName, tagLine, profileIconId, summonerLevel, DD_VERSION }: Props) {
+export default function ProfileHeader({
+  summonerName,
+  tagLine,
+  profileIconId,
+  summonerLevel,
+  isLinked = false,
+}: Props) {
   return (
     <div className="flex items-end gap-6">
       {/* Avatar com moldura de nível */}
       <div className="relative flex-shrink-0 group">
-        <div className="w-32 h-32 rounded-3xl border-4 border-[#C89B3C] overflow-hidden shadow-2xl shadow-black relative z-10 bg-[#0A0E17]">
+        <div
+          style={{
+            width: 128,
+            height: 128,
+            borderRadius: "var(--radius-xl)",
+            border: "3px solid var(--gold)",
+            overflow: "hidden",
+            boxShadow: "0 0 32px rgba(200, 168, 75, 0.2)",
+            background: "var(--surface)",
+            position: "relative",
+            zIndex: 10,
+          }}
+        >
+          {/* CommunityDragon — padrão do projeto, sem depender de DD_VERSION */}
           <img
-            src={`https://ddragon.leagueoflegends.com/cdn/${DD_VERSION}/img/profileicon/${profileIconId}.png`}
-            alt={summonerName}
+            src={`https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/profile-icons/${profileIconId}.jpg`}
+            alt={`Ícone de perfil de ${summonerName}`}
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
           />
         </div>
-        <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-[#C89B3C] text-[#0A0E17] text-xs font-black px-4 py-1 rounded-full shadow-xl z-20 border-2 border-[#0A0E17] tracking-tighter">
+        <div
+          style={{
+            position: "absolute",
+            bottom: -12,
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "var(--gold)",
+            color: "var(--bg)",
+            fontSize: "var(--text-xs)",
+            fontWeight: 900,
+            padding: "2px 12px",
+            borderRadius: "var(--radius-full)",
+            border: "2px solid var(--bg)",
+            whiteSpace: "nowrap",
+            zIndex: 20,
+          }}
+        >
           LVL {summonerLevel}
         </div>
       </div>
 
-      {/* Nome + tag */}
+      {/* Nome + tag + status */}
       <div className="pb-4">
         <div className="flex items-baseline gap-3">
-          <h1 className="text-white font-black text-5xl leading-none tracking-tighter drop-shadow-lg">
+          <h1
+            style={{
+              color: "var(--text)",
+              fontFamily: "var(--font-display)",
+              fontSize: "var(--text-2xl)",
+              fontWeight: 900,
+              lineHeight: 1,
+              letterSpacing: "-0.03em",
+            }}
+          >
             {summonerName}
           </h1>
-          <span className="text-[#718096] font-bold text-2xl tracking-tight opacity-80">#{tagLine}</span>
+          <span
+            style={{
+              color: "var(--text-muted)",
+              fontWeight: 700,
+              fontSize: "var(--text-lg)",
+              opacity: 0.8,
+            }}
+          >
+            #{tagLine}
+          </span>
         </div>
         <div className="flex items-center gap-2 mt-2">
-           <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-           <p className="text-[#A0AEC0] text-sm font-bold uppercase tracking-widest">BR1 · Perfil Verificado</p>
+          <span
+            className="animate-pulse"
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: "var(--radius-full)",
+              background: "var(--win)",
+              display: "inline-block",
+            }}
+          />
+          <p
+            style={{
+              color: "var(--text-muted)",
+              fontSize: "var(--text-xs)",
+              fontWeight: 700,
+              textTransform: "uppercase",
+              letterSpacing: "0.1em",
+            }}
+          >
+            BR1 · {isLinked ? "Vinculado ao ArenaGG" : "Perfil Público"}
+          </p>
         </div>
       </div>
     </div>
