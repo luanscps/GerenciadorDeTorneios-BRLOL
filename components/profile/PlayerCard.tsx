@@ -1,39 +1,39 @@
 import React from 'react';
 import Link from 'next/link';
 
-const TIER_COLORS: Record<string, string> = {
-  IRON: 'text-gray-400',
-  BRONZE: 'text-amber-700',
-  SILVER: 'text-gray-300',
-  GOLD: 'text-yellow-400',
-  PLATINUM: 'text-teal-400',
-  EMERALD: 'text-emerald-400',
-  DIAMOND: 'text-blue-400',
-  MASTER: 'text-purple-400',
-  GRANDMASTER: 'text-red-400',
-  CHALLENGER: 'text-yellow-300',
+// Mapeamento tier → cor usando tokens CSS definidos em globals.css
+const TIER_COLOR_VAR: Record<string, string> = {
+  IRON:         'var(--text-muted)',
+  BRONZE:       '#CD7F32',
+  SILVER:       'var(--text-muted)',
+  GOLD:         'var(--gold)',
+  PLATINUM:     '#4FC3C3',
+  EMERALD:      '#50C878',
+  DIAMOND:      'var(--blue-lol)',
+  MASTER:       '#9B59B6',
+  GRANDMASTER:  'var(--loss)',
+  CHALLENGER:   'var(--gold-hover)',
 };
 
 const ROLE_LABELS: Record<string, string> = {
-  TOP: 'Top',
-  JUNGLE: 'Jungle',
-  MID: 'Mid',
-  ADC: 'ADC',
+  TOP:     'Top',
+  JUNGLE:  'Jungle',
+  MID:     'Mid',
+  ADC:     'ADC',
   SUPPORT: 'Suporte',
 };
 
-// Mapeia tier para o nome do emblema no Community Dragon
 const TIER_EMBLEM: Record<string, string> = {
-  IRON: 'iron',
-  BRONZE: 'bronze',
-  SILVER: 'silver',
-  GOLD: 'gold',
-  PLATINUM: 'platinum',
-  EMERALD: 'emerald',
-  DIAMOND: 'diamond',
-  MASTER: 'master',
-  GRANDMASTER: 'grandmaster',
-  CHALLENGER: 'challenger',
+  IRON:         'iron',
+  BRONZE:       'bronze',
+  SILVER:       'silver',
+  GOLD:         'gold',
+  PLATINUM:     'platinum',
+  EMERALD:      'emerald',
+  DIAMOND:      'diamond',
+  MASTER:       'master',
+  GRANDMASTER:  'grandmaster',
+  CHALLENGER:   'challenger',
 };
 
 interface PlayerCardProps {
@@ -52,6 +52,8 @@ interface PlayerCardProps {
   team?: { id: string; name: string; tag: string; logoUrl: string | null } | null;
   DD_VERSION: string;
   linkToProfile?: boolean;
+  // Props explícitas para montar a rota correta /jogadores/[gameName]/[tagLine]
+  gameName?: string | null;
 }
 
 export default function PlayerCard({
@@ -70,10 +72,16 @@ export default function PlayerCard({
   team,
   DD_VERSION,
   linkToProfile = true,
+  gameName,
 }: PlayerCardProps) {
-  const tierColor = TIER_COLORS[tier?.toUpperCase()] ?? 'text-white';
-  const roleLabel = ROLE_LABELS[role?.toUpperCase()] ?? role;
-  const tierKey = TIER_EMBLEM[tier?.toUpperCase()] ?? null;
+  const tierColor   = TIER_COLOR_VAR[tier?.toUpperCase()] ?? 'var(--text)';
+  const roleLabel   = ROLE_LABELS[role?.toUpperCase()] ?? role;
+  const tierKey     = TIER_EMBLEM[tier?.toUpperCase()] ?? null;
+
+  // Rota correta: /jogadores/[gameName]/[tagLine]
+  // Fallback para summonerName caso gameName não seja passado explicitamente
+  const routeName   = gameName ?? summonerName;
+  const profileHref = `/jogadores/${encodeURIComponent(routeName)}/${encodeURIComponent(tagLine)}`;
 
   const profileIconUrl = profileIconId
     ? `https://ddragon.leagueoflegends.com/cdn/${DD_VERSION}/img/profileicon/${profileIconId}.png`
@@ -88,17 +96,30 @@ export default function PlayerCard({
     : null;
 
   const nameEl = (
-    <span className="text-white font-semibold text-base">
+    <span style={{ color: 'var(--text)', fontWeight: 600, fontSize: 'var(--text-base)' }}>
       {summonerName}
-      <span className="text-gray-400 font-normal text-sm"> #{tagLine}</span>
+      <span style={{ color: 'var(--text-muted)', fontWeight: 400, fontSize: 'var(--text-sm)' }}>
+        {' '}#{tagLine}
+      </span>
     </span>
   );
 
   return (
-    <div className="bg-[#0A1628] border border-[#1E3A5F] rounded-xl p-4 flex items-start gap-4">
-
-      {/* Ícone de perfil com moldura */}
-      <div className="flex-shrink-0 relative w-14 h-14">
+    <div
+      style={{
+        background:    'var(--surface)',
+        border:        '1px solid var(--border)',
+        borderRadius:  'var(--radius-lg)',
+        padding:       'var(--sp-4)',
+        display:       'flex',
+        alignItems:    'flex-start',
+        gap:           'var(--sp-4)',
+        transition:    'box-shadow var(--ease-ui), border-color var(--ease-ui)',
+      }}
+      className="hover:border-[var(--border-gold)] hover:shadow-[var(--shadow-md)]"
+    >
+      {/* Ícone de perfil */}
+      <div style={{ flexShrink: 0, position: 'relative', width: 56, height: 56 }}>
         {profileIconUrl ? (
           <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -107,10 +128,8 @@ export default function PlayerCard({
               alt={`Ícone de ${summonerName}`}
               width={56}
               height={56}
-              className="rounded-full w-14 h-14 object-cover"
-              onError={(e) => {
-                (e.currentTarget as HTMLImageElement).style.display = 'none';
-              }}
+              style={{ borderRadius: '50%', width: 56, height: 56, objectFit: 'cover' }}
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
             />
             {/* Moldura sobreposta via Community Dragon */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -118,36 +137,53 @@ export default function PlayerCard({
               src="https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/images/regalia/regalia-profile-frame-gold.png"
               alt=""
               aria-hidden="true"
-              className="absolute inset-0 w-full h-full pointer-events-none select-none"
-              onError={(e) => {
-                (e.currentTarget as HTMLImageElement).style.display = 'none';
-              }}
+              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
             />
           </>
         ) : (
-          <div className="w-14 h-14 rounded-full bg-[#1E2A3A] border border-[#1E3A5F] flex items-center justify-center">
-            <span className="text-gray-400 text-sm font-bold">{role?.slice(0, 1) || '?'}</span>
+          <div
+            style={{
+              width: 56, height: 56,
+              borderRadius: '50%',
+              background: 'var(--surface-2)',
+              border: '1px solid var(--border)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', fontWeight: 700 }}>
+              {role?.slice(0, 1) || '?'}
+            </span>
           </div>
         )}
       </div>
 
-      <div className="flex-1 min-w-0">
+      <div style={{ flex: 1, minWidth: 0 }}>
         {/* Nome + role */}
-        <div className="flex items-center gap-2 mb-1">
-          {linkToProfile && puuid ? (
-            <Link href={`/jogadores/${puuid}`} className="hover:underline">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', marginBottom: 'var(--sp-1)', flexWrap: 'wrap' }}>
+          {linkToProfile ? (
+            <Link href={profileHref} style={{ textDecoration: 'none' }} className="hover:underline">
               {nameEl}
             </Link>
           ) : (
             nameEl
           )}
-          <span className="text-gray-500 text-xs bg-[#1E2A3A] px-2 py-0.5 rounded">
+          <span
+            style={{
+              color:         'var(--text-faint)',
+              fontSize:      'var(--text-xs)',
+              background:    'var(--surface-2)',
+              border:        '1px solid var(--border-soft)',
+              borderRadius:  'var(--radius-sm)',
+              padding:       '2px 8px',
+            }}
+          >
             {roleLabel}
           </span>
         </div>
 
         {/* Emblema de rank + stats */}
-        <div className="flex items-center gap-3 mb-2">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', marginBottom: 'var(--sp-2)' }}>
           {rankEmblemUrl && (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -155,48 +191,71 @@ export default function PlayerCard({
               alt={`Emblema ${tier}`}
               width={40}
               height={40}
-              className="w-10 h-10 object-contain flex-shrink-0"
-              onError={(e) => {
-                (e.currentTarget as HTMLImageElement).style.display = 'none';
-              }}
+              style={{ width: 40, height: 40, objectFit: 'contain', flexShrink: 0 }}
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
             />
           )}
-          <div className="flex flex-col">
-            <span className={`font-bold text-sm ${tierColor}`}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span style={{ fontWeight: 700, fontSize: 'var(--text-sm)', color: tierColor }}>
               {tier} {rank}
             </span>
-            <span className="text-gray-500 text-xs">{lp} LP</span>
+            <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>
+              {lp} LP
+            </span>
           </div>
-          <span className="text-gray-400 text-xs">{wins}W/{losses}L</span>
-          <span className={`text-xs font-semibold ${wr >= 50 ? 'text-blue-400' : 'text-red-400'}`}>
+          <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)' }}>
+            {wins}V/{losses}D
+          </span>
+          <span
+            style={{
+              fontSize:   'var(--text-xs)',
+              fontWeight: 600,
+              color:      wr >= 50 ? 'var(--win)' : 'var(--loss)',
+              background: wr >= 50 ? 'var(--win-dim)' : 'var(--loss-dim)',
+              border:     `1px solid ${wr >= 50 ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
+              borderRadius: 'var(--radius-full)',
+              padding:    '2px 8px',
+            }}
+          >
             {wr}% WR
           </span>
         </div>
 
         {/* Campeão mais jogado */}
         {championIconUrl && (
-          <div className="flex items-center gap-2 mb-1">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', marginBottom: 'var(--sp-1)' }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={championIconUrl}
               alt={topChampionId ?? 'campeão'}
               width={24}
               height={24}
-              className="w-6 h-6 rounded object-cover border border-[#1E3A5F]"
-              onError={(e) => {
-                (e.currentTarget as HTMLImageElement).style.display = 'none';
+              style={{
+                width: 24, height: 24,
+                borderRadius: 'var(--radius-sm)',
+                objectFit: 'cover',
+                border: '1px solid var(--border)',
               }}
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
             />
-            <span className="text-gray-400 text-xs">{topChampionId}</span>
+            <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)' }}>
+              {topChampionId}
+            </span>
           </div>
         )}
 
         {/* Time */}
         {team && (
-          <div className="mt-1">
+          <div style={{ marginTop: 'var(--sp-1)' }}>
             <Link
               href={`/times/${team.tag}`}
-              className="text-xs text-gray-400 hover:text-blue-400"
+              style={{
+                fontSize:       'var(--text-xs)',
+                color:          'var(--text-muted)',
+                textDecoration: 'none',
+                transition:     'color var(--ease-ui)',
+              }}
+              className="hover:text-[var(--blue-lol)]"
             >
               {team.name} [{team.tag}]
             </Link>
