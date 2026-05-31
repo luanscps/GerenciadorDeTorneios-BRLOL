@@ -916,6 +916,7 @@ export type Database = {
           id: string
           is_admin: boolean
           is_banned: boolean
+          notification_preferences: Json
           role: Database["public"]["Enums"]["user_role"]
           updated_at: string
         }
@@ -927,6 +928,7 @@ export type Database = {
           id: string
           is_admin?: boolean
           is_banned?: boolean
+          notification_preferences?: Json
           role?: Database["public"]["Enums"]["user_role"]
           updated_at?: string
         }
@@ -938,6 +940,7 @@ export type Database = {
           id?: string
           is_admin?: boolean
           is_banned?: boolean
+          notification_preferences?: Json
           role?: Database["public"]["Enums"]["user_role"]
           updated_at?: string
         }
@@ -1587,6 +1590,95 @@ export type Database = {
           },
         ]
       }
+      tournament_announcements: {
+        Row: {
+          body: string
+          channel: string[]
+          created_at: string
+          id: string
+          sent_at: string
+          sent_by: string | null
+          target: string
+          target_team_id: string | null
+          title: string
+          tournament_id: string
+        }
+        Insert: {
+          body: string
+          channel?: string[]
+          created_at?: string
+          id?: string
+          sent_at?: string
+          sent_by?: string | null
+          target?: string
+          target_team_id?: string | null
+          title: string
+          tournament_id: string
+        }
+        Update: {
+          body?: string
+          channel?: string[]
+          created_at?: string
+          id?: string
+          sent_at?: string
+          sent_by?: string | null
+          target?: string
+          target_team_id?: string | null
+          title?: string
+          tournament_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tournament_announcements_sent_by_fkey"
+            columns: ["sent_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_announcements_sent_by_fkey"
+            columns: ["sent_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_with_riot"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_announcements_target_team_id_fkey"
+            columns: ["target_team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_announcements_target_team_id_fkey"
+            columns: ["target_team_id"]
+            isOneToOne: false
+            referencedRelation: "v_stage_standings"
+            referencedColumns: ["team_id"]
+          },
+          {
+            foreignKeyName: "tournament_announcements_target_team_id_fkey"
+            columns: ["target_team_id"]
+            isOneToOne: false
+            referencedRelation: "v_tournament_standings"
+            referencedColumns: ["team_id"]
+          },
+          {
+            foreignKeyName: "tournament_announcements_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_announcements_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "v_tournament_standings"
+            referencedColumns: ["tournament_id"]
+          },
+        ]
+      }
       tournament_match_results: {
         Row: {
           game_data: Json
@@ -1595,6 +1687,7 @@ export type Database = {
           match_id: string | null
           origin_ip: string | null
           processed: boolean | null
+          processing_at: string | null
           received_at: string | null
           tournament_code: string
         }
@@ -1605,6 +1698,7 @@ export type Database = {
           match_id?: string | null
           origin_ip?: string | null
           processed?: boolean | null
+          processing_at?: string | null
           received_at?: string | null
           tournament_code: string
         }
@@ -1615,6 +1709,7 @@ export type Database = {
           match_id?: string | null
           origin_ip?: string | null
           processed?: boolean | null
+          processing_at?: string | null
           received_at?: string | null
           tournament_code?: string
         }
@@ -1677,7 +1772,12 @@ export type Database = {
           created_at: string
           id: string
           name: string
+          num_groups: number
+          qualifiers_per_group: number
           stage_order: number
+          started_at: string | null
+          status: string
+          teams_per_group: number
           tournament_id: string
           updated_at: string
         }
@@ -1687,7 +1787,12 @@ export type Database = {
           created_at?: string
           id?: string
           name: string
+          num_groups?: number
+          qualifiers_per_group?: number
           stage_order?: number
+          started_at?: string | null
+          status?: string
+          teams_per_group?: number
           tournament_id: string
           updated_at?: string
         }
@@ -1697,7 +1802,12 @@ export type Database = {
           created_at?: string
           id?: string
           name?: string
+          num_groups?: number
+          qualifiers_per_group?: number
           stage_order?: number
+          started_at?: string | null
+          status?: string
+          teams_per_group?: number
           tournament_id?: string
           updated_at?: string
         }
