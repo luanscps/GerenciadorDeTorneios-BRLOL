@@ -1,9 +1,19 @@
+"use client";
+import { useRef } from "react";
+import { motion, useMotionValue, useSpring, useTransform, animate } from "framer-motion";
+import { useEffect } from "react";
 import { rankEmblemUrl } from "@/lib/riot";
 
 const TIER_COLORS: Record<string, string> = {
-  IRON: "#8B7A6B",       BRONZE: "#CD7F32",   SILVER: "#A8A9AD",
-  GOLD: "#FFD700",       PLATINUM: "#00E5CC", EMERALD: "#50C878",
-  DIAMOND: "#99CCFF",    MASTER: "#9B59B6",   GRANDMASTER: "#E74C3C",
+  IRON: "#8B7A6B",
+  BRONZE: "#CD7F32",
+  SILVER: "#A8A9AD",
+  GOLD: "#FFD700",
+  PLATINUM: "#00E5CC",
+  EMERALD: "#50C878",
+  DIAMOND: "#99CCFF",
+  MASTER: "#9B59B6",
+  GRANDMASTER: "#E74C3C",
   CHALLENGER: "#00D4FF",
 };
 
@@ -18,88 +28,214 @@ interface RankEntry {
   veteran: boolean;
 }
 
+/** Contador de LP animado com spring */
+function AnimatedLP({ value }: { value: number }) {
+  const motionVal = useMotionValue(0);
+  const spring = useSpring(motionVal, { stiffness: 80, damping: 20 });
+  const display = useTransform(spring, (v) => Math.round(v).toString());
+
+  useEffect(() => {
+    const controls = animate(motionVal, value, { duration: 1.2, ease: "easeOut" });
+    return controls.stop;
+  }, [value, motionVal]);
+
+  return (
+    <motion.span className="font-semibold tabular-nums" style={{ color: "var(--text)", fontSize: "var(--text-sm)" }}>
+      {display}
+    </motion.span>
+  );
+}
+
+/** Barra de winrate com largura animada via framer-motion */
+function WinrateBar({ wr, color }: { wr: number; color: string }) {
+  return (
+    <div className="flex items-center gap-2" style={{ marginTop: "var(--sp-2)" }}>
+      <div
+        style={{
+          flex: 1,
+          height: 5,
+          borderRadius: 9999,
+          background: "rgba(30,58,95,0.6)",
+          overflow: "hidden",
+        }}
+      >
+        <motion.div
+          initial={{ width: 0 }}
+          animate={{ width: `${wr}%` }}
+          transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1], delay: 0.2 }}
+          style={{
+            height: "100%",
+            borderRadius: 9999,
+            background: wr >= 50 ? "#4ADE80" : "#F87171",
+          }}
+        />
+      </div>
+      <span
+        style={{
+          fontSize: "var(--text-xs)",
+          fontWeight: 700,
+          minWidth: 38,
+          color: wr >= 50 ? "#4ADE80" : "#F87171",
+        }}
+      >
+        {wr}%
+      </span>
+    </div>
+  );
+}
+
 export function RankCard({ r }: { r: RankEntry }) {
   const color = TIER_COLORS[r.tier] ?? "#fff";
   const total = r.wins + r.losses;
-  const wr    = total > 0 ? Math.round((r.wins / total) * 100) : 0;
+  const wr = total > 0 ? Math.round((r.wins / total) * 100) : 0;
+
+  const cardRef = useRef<HTMLDivElement>(null);
+  const mouseX = useMotionValue(0);
+  const mouseY = useMotionValue(0);
+
+  function handleMouseMove(e: React.MouseEvent<HTMLDivElement>) {
+    const rect = cardRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    mouseX.set(e.clientX - rect.left);
+    mouseY.set(e.clientY - rect.top);
+  }
+
+  const spotX = useSpring(mouseX, { stiffness: 150, damping: 20 });
+  const spotY = useSpring(mouseY, { stiffness: 150, damping: 20 });
+  const background = useTransform(
+    [spotX, spotY],
+    ([x, y]: number[]) =>
+      `radial-gradient(200px circle at ${x}px ${y}px, ${color}22, transparent 70%)`
+  );
 
   return (
-    <div
+    <motion.div
+      ref={cardRef}
+      onMouseMove={handleMouseMove}
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+      whileHover={{ scale: 1.015, transition: { duration: 0.2 } }}
       style={{
-        background: `linear-gradient(135deg, ${color}0D 0%, #0A1428 45%)`,
+        background: `linear-gradient(135deg, ${color}0D 0%, var(--surface) 45%)`,
         border: `1px solid ${color}33`,
-        borderRadius: 16,
-        padding: "20px",
-        display: "flex",
-        alignItems: "center",
-        gap: 16,
+        borderRadius: "var(--radius-lg)",
+        padding: "var(--sp-5)",
         position: "relative",
         overflow: "hidden",
-        transition: "box-shadow 200ms ease, transform 200ms ease",
+        cursor: "default",
+        boxShadow: `0 4px 20px rgba(0,0,0,0.35)`,
       }}
-      className="hover:scale-[1.01] hover:shadow-lg"
     >
-      {/* Brilho de canto */}
-      <div
+      {/* Spotlight glow — segue cursor */}
+      <motion.div
         style={{
-          position: "absolute", top: 0, right: 0,
-          width: 120, height: 120,
-          background: `radial-gradient(circle at top right, ${color}14, transparent 70%)`,
+          position: "absolute",
+          inset: 0,
+          background,
           pointerEvents: "none",
+          borderRadius: "inherit",
         }}
       />
 
-      <img
-        src={rankEmblemUrl(r.tier)}
-        width={80}
-        height={80}
-        alt={r.tier}
-        style={{ width: 80, height: 80, objectFit: "contain", flexShrink: 0 }}
-      />
-
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={{ color: "#9CA3AF", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>
-          {r.queueType === "RANKED_SOLO_5x5" ? "Solo / Duo" : "Flex 5v5"}
-        </p>
-        <p style={{ fontSize: 22, fontWeight: 800, color, lineHeight: 1.1, marginBottom: 2 }}>
-          {r.tier} <span style={{ fontSize: 18 }}>{r.rank}</span>
-        </p>
-        <p style={{ fontSize: 14, color: "#fff", fontWeight: 600, marginBottom: 6 }}>
-          {r.leaguePoints} LP
-        </p>
-
-        {/* Barra de winrate */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ flex: 1, height: 5, borderRadius: 9999, background: "#1E3A5F", overflow: "hidden" }}>
-            <div
-              style={{
-                width: `${wr}%`, height: "100%", borderRadius: 9999,
-                background: wr >= 50 ? "#4ADE80" : "#F87171",
-                transition: "width 600ms ease",
-              }}
-            />
-          </div>
-          <span style={{ fontSize: 12, color: wr >= 50 ? "#4ADE80" : "#F87171", fontWeight: 700, minWidth: 38 }}>
-            {wr}%
-          </span>
+      {/* Drop-shadow no emblema */}
+      <div className="flex items-center gap-4" style={{ position: "relative", zIndex: 1 }}>
+        <div
+          style={{
+            filter: `drop-shadow(0 0 12px ${color}55) drop-shadow(0 0 4px ${color}33)`,
+            flexShrink: 0,
+          }}
+        >
+          <img
+            src={rankEmblemUrl(r.tier)}
+            width={80}
+            height={80}
+            alt={r.tier}
+            style={{ width: 80, height: 80, objectFit: "contain" }}
+          />
         </div>
-        <p style={{ fontSize: 11, color: "#6B7280", marginTop: 4 }}>
-          {r.wins}V · {r.losses}D · {total} jogos
-        </p>
 
-        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 8 }}>
-          {r.hotStreak && (
-            <span style={{ fontSize: 10, background: "rgba(249,115,22,0.15)", color: "#FB923C", border: "1px solid rgba(249,115,22,0.3)", borderRadius: 9999, padding: "2px 7px", fontWeight: 700 }}>
-              🔥 Hot Streak
-            </span>
-          )}
-          {r.veteran && (
-            <span style={{ fontSize: 10, background: "rgba(200,168,75,0.12)", color: "#C8A84B", border: "1px solid rgba(200,168,75,0.3)", borderRadius: 9999, padding: "2px 7px", fontWeight: 700 }}>
-              ⚔️ Veterano
-            </span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {/* Label fila */}
+          <p
+            style={{
+              color: "var(--text-faint)",
+              fontSize: "var(--text-xs)",
+              fontWeight: 700,
+              textTransform: "uppercase",
+              letterSpacing: "0.08em",
+              marginBottom: "var(--sp-1)",
+            }}
+          >
+            {r.queueType === "RANKED_SOLO_5x5" ? "Solo / Duo" : "Flex 5v5"}
+          </p>
+
+          {/* Tier + Rank */}
+          <p
+            style={{
+              fontFamily: "var(--font-display)",
+              fontSize: "var(--text-xl)",
+              fontWeight: 800,
+              color,
+              lineHeight: 1.1,
+              marginBottom: "var(--sp-1)",
+            }}
+          >
+            {r.tier}{" "}
+            <span style={{ fontSize: "var(--text-lg)", fontWeight: 600 }}>{r.rank}</span>
+          </p>
+
+          {/* LP animado */}
+          <p style={{ marginBottom: "var(--sp-2)", display: "flex", alignItems: "baseline", gap: 4 }}>
+            <AnimatedLP value={r.leaguePoints} />
+            <span style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>LP</span>
+          </p>
+
+          {/* Barra winrate animada */}
+          <WinrateBar wr={wr} color={color} />
+
+          {/* Stats */}
+          <p style={{ fontSize: "var(--text-xs)", color: "var(--text-faint)", marginTop: "var(--sp-1)" }}>
+            {r.wins}V · {r.losses}D · {total} jogos
+          </p>
+
+          {/* Badges */}
+          {(r.hotStreak || r.veteran) && (
+            <div className="flex flex-wrap gap-1" style={{ marginTop: "var(--sp-2)" }}>
+              {r.hotStreak && (
+                <span
+                  style={{
+                    fontSize: "var(--text-xs)",
+                    background: "rgba(249,115,22,0.12)",
+                    color: "#FB923C",
+                    border: "1px solid rgba(249,115,22,0.28)",
+                    borderRadius: 9999,
+                    padding: "2px 8px",
+                    fontWeight: 700,
+                  }}
+                >
+                  🔥 Hot Streak
+                </span>
+              )}
+              {r.veteran && (
+                <span
+                  style={{
+                    fontSize: "var(--text-xs)",
+                    background: "var(--gold-dim)",
+                    color: "var(--gold)",
+                    border: "1px solid var(--border-gold)",
+                    borderRadius: 9999,
+                    padding: "2px 8px",
+                    fontWeight: 700,
+                  }}
+                >
+                  ⚔️ Veterano
+                </span>
+              )}
+            </div>
           )}
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }
