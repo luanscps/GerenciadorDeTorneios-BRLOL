@@ -1,5 +1,6 @@
 import React from 'react';
 import { notFound } from 'next/navigation';
+import { createClient } from '@/lib/supabase/server';
 import ProfileHeader from '@/components/profile/ProfileHeader';
 import RankedCards from '@/components/profile/RankedCards';
 import MatchHistoryRow from '@/components/profile/MatchHistoryRow';
@@ -28,11 +29,25 @@ export default async function ProfilePage({
   const data = await getPlayerProfile(summonerName);
   if (!data) return notFound();
 
+  // DD_VERSION ainda usado por MatchHistoryRow e ChampionStatsTable (migração futura)
   const DD_VERSION = await getDDVersion();
   const topChamp = data.topMasteries?.[0]?.championName;
   const splashUrl = championSplashUrl(topChamp);
 
-  // Calcula estatísticas agregadas por campeão
+  // isLinked: verifica se existe riot_account com puuid vinculado a um player no ArenaGG
+  // puuid é a fonte de verdade para identidade de conta (não summonerName)
+  let isLinked = false;
+  if (data.puuid) {
+    const supabase = await createClient();
+    const { data: riotAccount } = await supabase
+      .from('riot_accounts')
+      .select('puuid, players(id)')
+      .eq('puuid', data.puuid)
+      .maybeSingle();
+    isLinked = !!(riotAccount?.players);
+  }
+
+  // Estatísticas agregadas por campeão
   const champStats: Record<string, { games: number; wins: number; kills: number; deaths: number; assists: number }> = {};
   if (data.matchHistory) {
     for (const m of data.matchHistory) {
@@ -61,26 +76,27 @@ export default async function ProfilePage({
     .slice(0, 5);
 
   return (
-    <main className="min-h-screen bg-[#0A0E17]">
+    <main style={{ minHeight: '100vh', background: 'var(--bg)' }}>
       {/* Banner top */}
       <div className="h-64 w-full relative overflow-hidden">
         {splashUrl ? (
           <>
             <img
               src={splashUrl}
-              alt="Background"
+              alt="Background do campeão"
               className="w-full h-full object-cover object-[center_20%] opacity-40 blur-sm scale-105"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-[#0A0E17] via-transparent to-transparent" />
-            <div className="absolute inset-0 bg-gradient-to-r from-[#0A0E17] via-transparent to-[#0A0E17]" />
+            <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, var(--bg), transparent)' }} />
+            <div className="absolute inset-0" style={{ background: 'linear-gradient(to right, var(--bg), transparent, var(--bg))' }} />
           </>
         ) : (
-          <div className="h-full w-full bg-gradient-to-r from-[#0D1B2E] via-[#091528] to-[#0D1B2E]" />
+          <div className="h-full w-full" style={{ background: 'linear-gradient(to right, var(--surface-2), var(--surface), var(--surface-2))' }} />
         )}
-        <div className="absolute inset-0 opacity-10"
+        <div
+          className="absolute inset-0 opacity-10"
           style={{
-            backgroundImage: 'repeating-linear-gradient(45deg, #C89B3C 0, #C89B3C 1px, transparent 0, transparent 50%)',
-            backgroundSize: '20px 20px'
+            backgroundImage: 'repeating-linear-gradient(45deg, var(--gold) 0, var(--gold) 1px, transparent 0, transparent 50%)',
+            backgroundSize: '20px 20px',
           }}
         />
       </div>
@@ -92,7 +108,7 @@ export default async function ProfilePage({
           tagLine={data.tagLine}
           profileIconId={data.profileIconId}
           summonerLevel={data.summonerLevel}
-          DD_VERSION={DD_VERSION}
+          isLinked={isLinked}
         />
 
         {/* Ranked cards */}
@@ -105,18 +121,29 @@ export default async function ProfilePage({
           {/* Coluna Lateral: Maestrias e stats */}
           <div className="space-y-6">
             <div>
-              <h3 className="text-[#A0AEC0] text-xs font-semibold uppercase tracking-widest mb-3 px-1">Top Maestrias</h3>
-              <div className="bg-[#0D1421] border border-[#1E2D45] rounded-xl p-3 space-y-3">
+              <h3 style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 'var(--sp-3)', paddingInline: 'var(--sp-1)' }}>
+                Top Maestrias
+              </h3>
+              <div className="card-sm space-y-3">
                 {data.topMasteries?.map((m: any) => (
                   <div key={m.championId} className="flex items-center gap-3">
+                    {/* CommunityDragon — padrão do projeto */}
                     <img
-                      src={`https://ddragon.leagueoflegends.com/cdn/${DD_VERSION}/img/champion/${m.championName}.png`}
+                      src={`https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-icons/${m.championId}.png`}
                       alt={m.championName}
-                      className="w-10 h-10 rounded border border-[#C89B3C]/30"
+                      width={40}
+                      height={40}
+                      loading="lazy"
+                      className="rounded"
+                      style={{ border: '1px solid var(--border-gold)' }}
                     />
                     <div className="flex-1 min-w-0">
-                      <p className="text-white text-sm font-bold truncate">{m.championName}</p>
-                      <p className="text-[#718096] text-[10px] uppercase">Nv. {m.masteryLevel} · {m.masteryPoints.toLocaleString()} pts</p>
+                      <p style={{ color: 'var(--text)', fontSize: 'var(--text-sm)', fontWeight: 700 }} className="truncate">
+                        {m.championName}
+                      </p>
+                      <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)' }}>
+                        Nv. {m.masteryLevel} · {m.masteryPoints.toLocaleString()} pts
+                      </p>
                     </div>
                   </div>
                 ))}
@@ -124,14 +151,18 @@ export default async function ProfilePage({
             </div>
 
             <div>
-              <h3 className="text-[#A0AEC0] text-xs font-semibold uppercase tracking-widest mb-3 px-1">Campeões (últimas 10)</h3>
+              <h3 style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 'var(--sp-3)', paddingInline: 'var(--sp-1)' }}>
+                Campeões (últimas 10)
+              </h3>
               <ChampionStatsTable champions={champList} DD_VERSION={DD_VERSION} />
             </div>
           </div>
 
           {/* Histórico de partidas */}
           <div>
-            <h3 className="text-[#A0AEC0] text-xs font-semibold uppercase tracking-widest mb-3 px-1">Histórico de Partidas</h3>
+            <h3 style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 'var(--sp-3)', paddingInline: 'var(--sp-1)' }}>
+              Histórico de Partidas
+            </h3>
             <div className="space-y-2">
               {data.matchHistory?.length > 0 ? (
                 data.matchHistory.map((match: any) => (
@@ -152,11 +183,11 @@ export default async function ProfilePage({
                   />
                 ))
               ) : (
-                <div className="flex flex-col items-center justify-center py-12 text-[#4A5568]">
-                  <svg width="40" height="40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                <div className="flex flex-col items-center justify-center py-12" style={{ color: 'var(--text-faint)' }}>
+                  <svg width="40" height="40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l4 2m5-2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  <p className="mt-3 text-sm">Nenhuma partida encontrada.</p>
+                  <p className="mt-3" style={{ fontSize: 'var(--text-sm)' }}>Nenhuma partida encontrada.</p>
                 </div>
               )}
             </div>
