@@ -39,11 +39,15 @@ Brasil (`br1`) pertence à região `americas`. O projeto resolve isso automatica
 | `/riot/account/v1/accounts/by-puuid/{puuid}` — conta via PUUID | — |
 
 ### summoner-v4 (platform: br1)
-| Endpoint | Cache TTL |
-|---|---|
-| `/lol/summoner/v4/summoners/by-puuid/{puuid}` | 300 s |
+| Endpoint | Cache TTL | Notas |
+|---|---|---|
+| `/lol/summoner/v4/summoners/by-puuid/{puuid}` | 300 s | Retorna `profileIconId` e `summonerLevel`. O campo `id` (summonerId) **não é mais utilizado** — `entries/by-summoner` foi removido pela Riot em Jun/2025. |
 
 ### league-v4 (platform: br1)
+
+> ⚠️ **BREAKING CHANGE (Jun/2025):** O endpoint `entries/by-summoner/{summonerId}` foi **removido** pela Riot.
+> O projeto usa exclusivamente `entries/by-puuid/{puuid}` — confirme que nenhuma chamada legacy existe no código.
+
 | Endpoint | Cache TTL |
 |---|---|
 | `/lol/league/v4/entries/by-puuid/{puuid}` — tier, LP, winrate | 300 s |
@@ -60,6 +64,10 @@ Brasil (`br1`) pertence à região `americas`. O projeto resolve isso automatica
 | `/lol/champion-mastery/v4/champion-masteries/by-puuid/{puuid}/top` | 600 s |
 
 ### tournament-stub-v5 (platform: br1) — apenas ambiente de dev
+
+> ⚠️ **Stub vs. Produção:** `tournament-stub-v5` é exclusivo para chaves de Development/Personal.
+> Em produção (chave Production aprovada), use `tournament-v5` (sem "stub") com os mesmos endpoints.
+
 | Endpoint | Método | Uso |
 |---|---|---|
 | `/lol/tournament-stub/v5/providers` | POST | Registrar provider (URL callback) |
@@ -71,7 +79,7 @@ Brasil (`br1`) pertence à região `americas`. O projeto resolve isso automatica
 ### lol-status-v4 (platform: br1)
 | Endpoint | Frequência |
 |---|---|
-| `/lol/status/v4/platform-data` — manutenções e incidentes | Cron semanal |
+| `/lol/status/v4/platform-data` — manutenções e incidentes | Cron semanal (toda segunda às 12:00 UTC via `/api/cron/check-riot-status`) |
 
 ---
 
@@ -85,7 +93,7 @@ Brasil (`br1`) pertence à região `americas`. O projeto resolve isso automatica
 | 403 | Renovar chave em developer.riotgames.com |
 | 404 | Verificar Nome#TAG ou ID |
 | 415 | Enviar `Content-Type: application/json` |
-| 429 | Ler header `Retry-After` e `X-Rate-Limit-Type` (tratado em `lib/riot-rate-limiter.ts`) |
+| 429 | Ler header `Retry-After` e `X-Rate-Limit-Type`. Na Edge Function `riot-api-sync`, o retry é fixo em **6 segundos** (sleep hardcoded). Para produção, implementar leitura do header `Retry-After`. |
 | 500/503 | Retry após delay — consultar lol-status-v4 |
 
 ---
@@ -96,9 +104,44 @@ Brasil (`br1`) pertence à região `americas`. O projeto resolve isso automatica
 Nome#TAG
   └─▶ account-v1 (americas) ──▶ puuid
          └─▶ [paralelo via Promise.all()]
-               ├─▶ summoner-v4 (br1)  →  { id, level, profileIconId }
-               ├─▶ league-v4   (br1)  →  { tier, rank, LP, wins }
+               ├─▶ summoner-v4 (br1)  →  { level, profileIconId }  ← summonerId ignorado
+               ├─▶ league-v4   (br1)  →  entries/by-puuid → { tier, rank, LP, wins }
                └─▶ match-v5    (americas) → matchIds → detalhes
+```
+
+---
+
+## Fluxo de sync de rank (Edge Function `riot-api-sync`)
+
+```
+Chamada POST → supabase/functions/riot-api-sync
+  └─▶ riot_accounts onde updated_at < (now - 10min)  [BATCH_SIZE = 50]
+        ├─▶ summoner-v4/by-puuid  →  atualiza riot_accounts (icon, level)
+        └─▶ league-v4/entries/by-puuid
+              └─▶ rank_snapshots INSERT (RANKED_SOLO_5x5 e RANKED_FLEX_SR)
+
+Rate limit interno: DELAY_MS = 300ms entre contas
+Retry em 429: sleep fixo de 6s (não lê Retry-After — melhoria pendente)
+auth: verify_jwt = false (usa SUPABASE_SERVICE_ROLE_KEY internamente)
+```
+
+> 💡 `riot-api-sync` tem `verify_jwt: false` — é protegida apenas pelo `SUPABASE_SERVICE_ROLE_KEY` interno. Não expor a URL publicamente sem camada adicional de autenticação.
+
+---
+
+## Fluxo de processamento de resultados (Edge Function `process-match-results`)
+
+```
+Chamada POST → supabase/functions/process-match-results
+  └─▶ tournament_match_results WHERE processed = false
+        └─▶ lock atômico (processing_at = now)
+              └─▶ POST {SITE_URL}/api/internal/process-match  [timeout 25s]
+                    ├─▶ sucesso → processed = true
+                    └─▶ erro    → processing_at = null (libera para retry)
+
+Batch: até 50 registros por execução
+Segurança: header x-internal-secret (INTERNAL_SECRET env var)
+auth: verify_jwt = true
 ```
 
 ---
@@ -109,18 +152,22 @@ Nome#TAG
 
 | Função helper | Async | Descrição |
 |---|---|---|
-| `getDDVersion()` | sim | Versão atual do patch (cache 1 h) |
+| `getDDVersion()` | sim | Versão atual do patch — usa `realms/br.json` (região BR precisa), fallback para `versions.json`, fallback hardcoded `15.1.1` |
 | `profileIconUrl(id)` | sim | Ícone de perfil do invocador |
-| `championIconUrl(name)` | sim | Ícone quadrado do campeão |
-| `championSplashUrl(name, skinNum?)` | **não** | Splash art (skin 0 = base) |
+| `championIconUrl(name)` | sim | Ícone quadrado do campeão (DDragon) |
+| `championIconByCDragon(championId)` | **não** | Ícone por ID numérico via CommunityDragon — útil quando só há `championId` |
+| `championSplashUrl(name, skinNum?)` | **não** | Splash art (skin 0 = base). Fallback para CDragon quando `name` é null/vazio |
 | `championLoadingUrl(name, skinNum?)` | **não** | Loading screen |
 | `itemIconUrl(itemId)` | sim | Ícone de item |
 | `summonerSpellIconUrl(spellId)` | sim | Ícone de summoner spell |
-| `getAllChampions()` | sim | Todos os campeões em `pt_BR` |
+| `getAllChampions()` | sim | Todos os campeões em `pt_BR` — cache de 1h |
 
 **URLs diretas úteis:**
 
 ```
+# Versão do patch (regional BR)
+https://ddragon.leagueoflegends.com/realms/br.json
+
 # Ícone de perfil
 https://ddragon.leagueoflegends.com/cdn/{v}/img/profileicon/{id}.png
 
@@ -133,51 +180,39 @@ https://ddragon.leagueoflegends.com/cdn/img/champion/splash/{Name}_0.jpg
 # Ícone de item
 https://ddragon.leagueoflegends.com/cdn/{v}/img/item/{itemId}.png
 
-# Versão do patch
-https://ddragon.leagueoflegends.com/api/versions.json
-
 # JSON de campeões em pt_BR
 https://ddragon.leagueoflegends.com/cdn/{v}/data/pt_BR/champion.json
 ```
 
-> **{Name}** usa o nome interno sem espaços: `MissFortune`, `AurelionSol`. Use `getAllChampions()` para obter o nome correto.
-
-**Exemplo de uso em componente:**
-
-```tsx
-import { championSplashUrl, itemIconUrl, rankEmblemUrl } from "@/lib/riot";
-
-// Banner de perfil
-<img src={championSplashUrl("Jinx", 0)} alt="Jinx splash art" width={1215} height={717} />
-
-// Ícone de item no histórico
-{participant.item0 > 0 && (
-  <img src={await itemIconUrl(participant.item0)} alt={`Item ${participant.item0}`} width={32} height={32} />
-)}
-
-// Emblema de rank
-<img src={rankEmblemUrl(entry.tier)} alt={entry.tier} width={48} height={48} />
-```
+> **{Name}** usa o nome interno sem espaços: `MissFortune`, `AurelionSol`. As funções `championIconUrl()` e `championSplashUrl()` já aplicam `.replace(/[^a-zA-Z0-9]/g, '')` automaticamente.
 
 ---
 
 ### CommunityDragon (`raw.communitydragon.org`)
 
-Usado apenas para assets **não disponíveis** no Data Dragon oficial.
+Usado para assets **não disponíveis** no Data Dragon oficial e para fallback de championId numérico.
 
 | Função helper | Descrição |
 |---|---|
-| `rankEmblemUrl(tier)` | Emblema visual do rank (iron → challenger) |
-| `masteryIconUrl(level)` | Ícone de nível de maestria (1–10) |
+| `rankEmblemUrl(tier)` | Emblema visual do rank — URL: `game/assets/loadouts/regalia/crests/ranked/ranked-emblem-{tier}.png` |
+| `masteryIconUrl(level)` | Ícone de maestria — retorna `mastery-mark.png` (estático, nível não afeta URL atualmente) |
+| `championIconByCDragon(championId)` | Ícone por ID numérico: `v1/champion-icons/{id}.png`. ID `-1` = campeão desconhecido |
+| `profileBorderUrl(level)` | Borda de perfil por nível (7 tiers: 1–7 baseado em level) |
 
 **URLs diretas:**
 
 ```
-# Emblema de rank
-https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/ranked-mini-regalia/{tier}.png
+# Emblema de rank (tier em lowercase)
+https://raw.communitydragon.org/latest/game/assets/loadouts/regalia/crests/ranked/ranked-emblem-{tier}.png
 
-# Ícone de maestria
-https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-champion-mastery/global/default/mastery-{level}.png
+# Ícone de campeão por ID numérico
+https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-icons/{championId}.png
+
+# Borda de perfil (n = 1 a 7)
+https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/images/summoner-level-border-{n}.png
+
+# Maestria mark (estático)
+https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/champion-mastery/mastery-mark.png
 ```
 
 `rankEmblemUrl()` já aplica `.toLowerCase()` automaticamente — pode passar `entry.tier` diretamente.
@@ -196,4 +231,12 @@ export async function getChampionNameById(championId: number): Promise<string | 
 }
 ```
 
+Alternativamente, use `championIconByCDragon(championId)` para renderizar o ícone diretamente pelo ID numérico **sem precisar do JSON**.
+
 **Casos de uso:** seletor de campeão (ban/pick), filtro no histórico, nome em pt_BR no perfil.
+
+---
+
+## summonerName — campo deprecated
+
+O campo `summonerName` em `MatchParticipant` está **em processo de remoção pela Riot desde nov/2023**. Para contas novas retorna UUID aleatório. Use sempre `riotIdGameName + riotIdTagLine` para exibição de nome. O `MatchDtoSchema` (Zod) marca o campo como `optional` corretamente.

@@ -55,7 +55,7 @@ Lista IDs das partidas recentes de um jogador.
 
 ### `GET /api/riot/match`
 
-Detalhes completos de uma partida.
+Detalhes completos de uma partida. Resposta validada pelo `MatchDtoSchema` (Zod).
 
 **Query params:**
 | Parâmetro | Tipo | Obrigatório |
@@ -116,7 +116,7 @@ Polling de eventos de lobby de uma partida em andamento.
 
 ### `POST /api/riot/tournament`
 
-Cria torneio via tournament-stub-v5. Suporta 3 ações via campo `action`.
+Cria torneio via `tournament-stub-v5` (dev) ou `tournament-v5` (produção com chave Production aprovada). Suporta 3 ações via campo `action`.
 
 **Body (action = "setup" — fluxo completo):**
 ```json
@@ -174,11 +174,34 @@ Atualiza configurações de um code existente.
 
 ---
 
+## Rotas internas (server-to-server)
+
+### `POST /api/internal/process-match`
+
+Chamada interna feita exclusivamente pela Edge Function `process-match-results`. **Nunca exposta ao cliente.**
+
+**Headers obrigatórios:**
+```
+x-internal-secret: {INTERNAL_SECRET}
+Content-Type: application/json
+```
+
+**Body:**
+```json
+{ "tournamentCode": "BR1_XXX", "gameId": 123456 }
+```
+
+**Ação:** processa resultado de partida — atualiza `matches`, `match_games` e `player_stats`. Marca `tournament_match_results.processed = true` ao concluir.
+
+---
+
 ## Webhook (chamado pela Riot)
 
 ### `POST /api/riot/tournament/callback`
 
-Recebe resultado de partida de torneio diretamente da Riot Games. Grava automaticamente na tabela `tournament_match_results` do Supabase com `processed: false`.
+Recebe resultado de partida de torneio diretamente da Riot Games. Grava automaticamente na tabela `tournament_match_results` com `processed: false`. O processamento efetivo ocorre de forma **assíncrona** via Edge Function `process-match-results`.
+
+> ⚠️ Esta rota deve estar acessível publicamente para que a Riot consiga fazer o callback. Recomenda-se validar a origem por IP allowlist ou HMAC quando disponível.
 
 ---
 
