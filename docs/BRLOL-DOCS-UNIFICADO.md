@@ -1,32 +1,46 @@
 # 📚 Documentação Unificada — GerenciadorDeTorneios-BRLOL
 
-Este documento serve como a fonte principal e unificada de toda a documentação técnica e arquitetural do projeto GerenciadorDeTorneios-BRLOL. Ele consolida informações sobre a stack, arquitetura, padrões de código, integrações e diretrizes de desenvolvimento.
+Este documento é a **fonte única de verdade** da documentação técnica do projeto.
+Qualquer divergência entre este arquivo e o código-fonte deve ser resolvida **em favor do código**.
+
+> ⚠️ **Regra de ouro:** `lib/database.types.ts` é a fonte de verdade do banco. Nunca editar manualmente.
 
 ---
 
 ## 1. Contexto do Projeto
 
-Este é um sistema web de gerenciamento de torneios de League of Legends voltado para o Brasil (BRLOL). A aplicação é full-stack, com backend via **Supabase** (PostgreSQL + Auth + RLS) e deploy na **Vercel** com **Next.js App Router**. Toda interação com dados de jogadores é feita via **Riot Games API** (região `br1`, regional `americas`).
+Sistema web de gerenciamento de torneios de League of Legends voltado para o Brasil (BRLOL).
+Full-stack com backend via **Supabase** (PostgreSQL + Auth + RLS), deploy na **Vercel** com **Next.js App Router**.
+Toda interação com dados de jogadores é feita via **Riot Games API v5** (região `br1`, regional `americas`).
 
-O projeto é **open-source**, em desenvolvimento ativo, e o desenvolvedor principal é o único mantenedor.
+- **Produção:** https://arenagg.com.br
+- **Repositório:** https://github.com/luanscps/GerenciadorDeTorneios-BRLOL
+- **Supabase:** https://supabase.com/dashboard/project/awbieglbwhfavxlghuvy
+- **Vercel:** https://vercel.com/ludevbr/gerenciador-de-torneios-brlol
 
 ---
 
 ## 2. Stack Técnica Exata
 
+> Fonte de verdade: `package.json`
+
 | Camada | Tecnologia | Versão |
 |---|---|---|
-| Framework | Next.js (App Router) | 16.2.6 |
-| UI | React / React DOM | 19.0.1 |
+| Framework | Next.js (App Router) | ^16.2.6 |
+| UI | React / React DOM | ^19.0.1 |
 | Linguagem | TypeScript | ^5 |
 | Banco de dados | Supabase (PostgreSQL) | @supabase/supabase-js ^2.43.1 |
 | Auth SSR | @supabase/ssr | ^0.6.1 |
 | Estilo | Tailwind CSS | ^3.4.1 |
-| Formulários | React Hook Form + Zod | ^7.51.4 / ^3.23.8 |
-| Validação | @hookform/resolvers | ^3.4.0 |
+| Utilitários CSS | tailwind-merge / clsx / class-variance-authority | ^2.3.0 / ^2.1.1 / ^0.7.0 |
+| Animações | framer-motion | ^11.3.0 |
+| Formulários | React Hook Form | ^7.51.4 |
+| Validação | Zod + @hookform/resolvers | ^3.23.8 / ^3.4.0 |
 | Ícones | lucide-react | ^0.511.0 |
 | Gráficos | Recharts | ^2.12.7 |
 | Datas | date-fns | ^3.6.0 |
+| Dev server | Turbopack (`next dev --turbo`) | — |
+| Runtime (Vercel) | Node.js | 24.x |
 | Deploy | Vercel (Serverless + Edge) | — |
 
 ---
@@ -35,60 +49,65 @@ O projeto é **open-source**, em desenvolvimento ativo, e o desenvolvedor princi
 
 ```
 GerenciadorDeTorneios-BRLOL/
-├── app/                         # Next.js App Router
-│   ├── (auth)/                  # Grupo de rotas: login, registro, callback
-│   ├── admin/                   # Painel administrativo (requer is_admin = true)
+├── app/                              # Next.js App Router
+│   ├── (auth)/                       # Grupo de rotas: login, registro, callback OAuth
+│   ├── admin/                        # Painel administrativo (requer is_admin = true)
 │   ├── api/
-│   │   ├── admin/               # Endpoints admin protegidos
-│   │   ├── auth/                # Callback OAuth Supabase
-│   │   ├── cron/                # Jobs agendados (Vercel Cron)
-│   │   ├── internal/            # Endpoints internos (server-to-server)
-│   │   ├── jogadores/           # Busca de jogadores via Riot API
-│   │   ├── player/              # Perfil de jogador
-│   │   ├── profile/             # Perfil do usuário autenticado
-│   │   └── riot/                # Proxy Riot API
-│   ├── dashboard/               # Dashboard do usuário logado
-│   ├── jogadores/               # Listagem e perfil público de jogadores
-│   ├── organizador/             # Área do organizador de torneios
-│   ├── profile/                 # Perfil do usuário
-│   ├── ranking/                 # Ranking geral
-│   ├── times/                   # Gerenciamento de times
-│   └── torneios/                # Listagem, detalhes e inscrição em torneios
+│   │   ├── admin/                    # Endpoints admin (service_role + is_admin)
+│   │   ├── auth/                     # Callback OAuth Supabase
+│   │   ├── cron/                     # Jobs agendados (Vercel Cron + CRON_SECRET)
+│   │   ├── internal/                 # Endpoints internos (server-to-server)
+│   │   ├── jogadores/                # Busca de jogadores via Riot API
+│   │   ├── player/                   # Perfil de jogador
+│   │   ├── profile/                  # Perfil do usuário autenticado
+│   │   └── riot/                     # Proxy Riot API
+│   ├── dashboard/                    # Dashboard do usuário logado
+│   ├── jogadores/                    # Listagem e perfil público de jogadores
+│   ├── organizador/                  # Área do organizador (PT-BR — não "organizer")
+│   │   └── torneios/
+│   │       └── [id]/                 # Painel do torneio
+│   │           ├── partidas/         # Gerenciamento de partidas
+│   │           ├── inscricoes/       # Aprovação de inscrições
+│   │           └── fases/            # Gestão de fases/bracket
+│   ├── profile/                      # Perfil do usuário
+│   ├── ranking/                      # Ranking geral
+│   ├── times/                        # Gerenciamento de times
+│   └── torneios/                     # Listagem, detalhes e inscrição em torneios
 ├── components/
-│   ├── admin/                   # Componentes do painel admin
-│   ├── layout/                  # Header, Sidebar, Footer
-│   ├── match/                   # Componentes de partidas
-│   ├── profile/                 # Componentes de perfil de jogador
-│   ├── times/                   # Componentes de times
-│   ├── tournament/              # Componentes de torneios
-│   └── ProfileIcon.tsx          # Ícone de perfil com borda animada por nível
+│   ├── admin/                        # Componentes do painel admin
+│   ├── layout/                       # Header, Sidebar, Footer
+│   ├── match/                        # Componentes de partidas
+│   ├── profile/                      # Componentes de perfil de jogador
+│   ├── times/                        # Componentes de times
+│   ├── tournament/                   # Componentes de torneios
+│   └── ProfileIcon.tsx               # Ícone de perfil com borda animada por nível
 ├── lib/
-│   ├── actions/                 # Server Actions do Next.js
-│   │   ├── fase.ts              # Ações de fases do torneio
-│   │   ├── ingest-match.ts      # Ingestão de partidas da Riot API → Supabase
-│   │   ├── inscricao.ts         # Inscrição de times em torneios
-│   │   ├── partida.ts           # CRUD de partidas
-│   │   ├── roster.ts            # Gerenciamento de roster de times
-│   │   ├── team_invite.ts       # Convites para times
-│   │   ├── tournament.ts        # CRUD de torneios
-│   │   └── usuario.ts           # Ações de usuário (perfil, etc.)
+│   ├── actions/                      # Server Actions do Next.js
+│   │   ├── fase.ts                   # Ações de fases do torneio
+│   │   ├── ingest-match.ts           # Ingestão de partidas da Riot API → Supabase
+│   │   ├── inscricao.ts              # Inscrição de times em torneios
+│   │   ├── partida.ts                # CRUD de partidas
+│   │   ├── roster.ts                 # Gerenciamento de roster de times
+│   │   ├── team_invite.ts            # Convites para times
+│   │   ├── tournament.ts             # CRUD de torneios
+│   │   └── usuario.ts                # Ações de usuário (perfil, etc.)
 │   ├── supabase/
-│   │   ├── client.ts            # Cliente browser (createBrowserClient)
-│   │   ├── server.ts            # Cliente server (createServerClient + cookies)
-│   │   └── admin.ts             # Cliente admin (service_role — uso restrito)
+│   │   ├── client.ts                 # Cliente browser (createBrowserClient)
+│   │   ├── server.ts                 # Cliente server (createServerClient + cookies)
+│   │   └── admin.ts                  # Cliente admin (service_role — uso restrito)
 │   ├── types/
-│   │   └── tournament.ts        # Tipos TypeScript do domínio
+│   │   └── tournament.ts             # Tipos TypeScript do domínio
 │   ├── validations/
-│   │   └── index.ts             # Schemas Zod centralizados
-│   ├── database.types.ts        # Tipos gerados automaticamente pelo Supabase CLI
-│   ├── riot.ts                  # Todas as chamadas à Riot API + interfaces TypeScript
-│   ├── riot-cache.ts            # Cache em memória para respostas da Riot API
-│   ├── riot-rate-limiter.ts     # Rate limiter para a Riot API
-│   ├── riot-tournament.ts       # Integração Riot Tournament API
-│   ├── rate-limit.ts            # Rate limit genérico de endpoints
-│   └── utils.ts                 # Funções utilitárias (cn, formatação, etc.)
-├── middleware.ts                 # Auth guard SSR via Supabase (edge runtime)
-└── .env.example                  # Variáveis de ambiente necessárias
+│   │   └── index.ts                  # Schemas Zod centralizados
+│   ├── database.types.ts             # Tipos gerados pelo Supabase CLI (não editar)
+│   ├── riot.ts                       # Todas as chamadas à Riot API + interfaces
+│   ├── riot-cache.ts                 # Cache em memória para respostas da Riot API
+│   ├── riot-rate-limiter.ts          # Rate limiter para a Riot API
+│   ├── riot-tournament.ts            # Integração Riot Tournament API
+│   ├── rate-limit.ts                 # Rate limit genérico de endpoints
+│   └── utils.ts                      # Funções utilitárias (cn, formatação, etc.)
+├── middleware.ts                     # Auth guard SSR via Supabase (edge runtime)
+└── .env.example                       # Variáveis de ambiente necessárias
 ```
 
 ---
@@ -99,16 +118,15 @@ GerenciadorDeTorneios-BRLOL/
 
 Existem **três clientes distintos** — nunca misturar:
 
-- **`lib/supabase/client.ts`** → `createBrowserClient()` — usar **apenas em Client Components** (`'use client'`). Nunca em Server Components, Actions ou Route Handlers.
-- **`lib/supabase/server.ts`** → `createServerClient()` com `cookies()` do `next/headers` — usar em **Server Components, Route Handlers e Server Actions**. A função `setAll` **não tem try/catch** propositalmente (para não silenciar erros de token).
-- **`lib/supabase/admin.ts`** → `createClient()` com `service_role` key — usar **apenas em Route Handlers server-side protegidos** (ex: `app/api/admin/`) e **nunca em Client Components ou expor para o browser**.
+- **`lib/supabase/client.ts`** → `createBrowserClient()` — usar **apenas em Client Components** (`'use client'`).
+- **`lib/supabase/server.ts`** → `createServerClient()` com `cookies()` do `next/headers` — usar em **Server Components, Route Handlers e Server Actions**. O `setAll` **não tem try/catch** propositalmente.
+- **`lib/supabase/admin.ts`** → `createClient()` com `service_role` key — usar **apenas em Route Handlers protegidos** (`app/api/admin/`). Nunca expor ao browser.
 
 ### 4.2 Autenticação e Middleware
 
-- O `middleware.ts` roda no **Edge Runtime** e protege as rotas `/dashboard`, `/admin` e `/torneios/inscrever`.
-- A checagem de `is_admin` **não é feita no middleware** (evita latência no edge); ela é feita no `layout.tsx` do grupo `/admin` via Server Component.
-- O `redirectTo` é preservado via `searchParams` no redirect para `/login`.
-- Ao modificar rotas protegidas, **atualizar o array `protectedRoutes`** no `middleware.ts`.
+- O `middleware.ts` roda no **Edge Runtime** e protege `/dashboard`, `/admin`, `/profile`, `/times` e `/organizador`.
+- A checagem de `is_admin` é feita no `layout.tsx` do grupo `/admin` via Server Component (não no middleware).
+- Guard dual do organizador: `tournament.organizer_id === user.id` OU `profile.is_admin === true`. Se nenhum: `redirect('/torneios?error=sem_permissao')`.
 
 ### 4.3 Server Actions
 
@@ -122,31 +140,30 @@ Existem **três clientes distintos** — nunca misturar:
 ### 4.4 Riot API
 
 - **Nunca chamar a Riot API diretamente de Client Components**. Sempre via Route Handler (`app/api/riot/`) ou Server Action.
-- Região padrão: `br1` (configurada em `RIOT_REGION`). O mapa `REGION_TO_REGIONAL` em `lib/riot.ts` resolve para `americas`.
-- Cache em memória via `lib/riot-cache.ts` com TTLs definidos por endpoint:
-  - `account`: 600s
-  - `summoner`, `league`, `matchids`: 300s
-  - `match` individual: 3600s
-  - Versão DataDragon (`dd:version`): 3600s
+- Região padrão: `br1`. O mapa `REGION_TO_REGIONAL` em `lib/riot.ts` resolve para `americas`.
+- Cache em memória via `lib/riot-cache.ts` com TTLs por endpoint:
+  - `account`: 600s | `summoner`, `league`, `matchids`: 300s | `match` individual: 3600s | `dd:version`: 3600s
 - Rate limiter em `lib/riot-rate-limiter.ts` — usar para chamadas em batch.
-- Assets de campeões: preferir **CommunityDragon** (`championIconByCDragon(id)`) ao DataDragon por nome, pois é mais confiável.
+- Assets de campeões: preferir **CommunityDragon** (`championIconByCDragon(id)`) ao DataDragon por nome.
 - Data Dragon com locale `pt_BR` (`getAllChampions()` usa `pt_BR`).
 
 ### 4.5 TypeScript
 
 - Tipos do banco gerados pelo Supabase CLI em `lib/database.types.ts` — **não editar manualmente**.
 - Tipos de domínio ficam em `lib/types/`.
-- Interfaces da Riot API ficam em `lib/riot.ts` (junto das funções).
-- Nunca usar `any` — usar `unknown` e narrowing quando necessário.
+- Interfaces da Riot API ficam em `lib/riot.ts`.
+- Nunca usar `any` — usar `unknown` e narrowing.
 
-### 4.6 Componentes
+### 4.6 Componentes e Bibliotecas
 
 - Client Components: `'use client'` no topo, formulários com `react-hook-form` + `zod`.
 - Server Components: busca de dados diretamente com o cliente Supabase server.
 - Ícones: **somente `lucide-react`**.
 - Gráficos: **somente `recharts`**.
-- Datas: **somente `date-fns`** (versão 3.x — API de imports diretos, não default).
-- Estilo: **Tailwind CSS** — sem CSS-in-JS, sem styled-components.
+- Datas: **somente `date-fns`** (v3.x — API de imports diretos).
+- Animações: **somente `framer-motion`** (já na dependência).
+- Estilo: **Tailwind CSS** — sem CSS-in-JS.
+- Utilitários CSS: `cn()` via `tailwind-merge` + `clsx` (helper em `lib/utils.ts`).
 
 ---
 
@@ -161,33 +178,38 @@ SUPABASE_SERVICE_ROLE_KEY=          # Chave service_role (NUNCA expor ao browser
 # Riot Games API
 RIOT_API_KEY=                       # Chave da Riot (servidor apenas)
 RIOT_REGION=br1                     # Plataforma padrão
-RIOT_REGIONAL_HOST=americas         # Regional host (derivado do RIOT_REGION)
+RIOT_REGIONAL_HOST=americas         # Regional host
 
-# Vercel (automático no deploy)
-VERCEL_URL=                         # URL automática do deploy
+# App / Infra
+NEXT_PUBLIC_APP_URL=                # URL pública da aplicação
+CRON_SECRET=                        # Secret para autenticação dos cron jobs
 ```
 
-**Regra crítica:** variáveis sem prefixo `NEXT_PUBLIC_` são **server-only**. Nunca referenciar `SUPABASE_SERVICE_ROLE_KEY` ou `RIOT_API_KEY` em código client-side.
+**Regra crítica:** variáveis sem prefixo `NEXT_PUBLIC_` são **server-only**.
 
 ---
 
-## 6. Convenções de Rotas e API
+## 6. Mapa Completo de Rotas
 
 | Rota | Tipo | Proteção |
 |---|---|---|
-| `/` | Public Page | Nenhuma |
-| `/torneios/[id]` | Public Page | Nenhuma |
-| `/jogadores/[slug]` | Public Page | Nenhuma |
-| `/ranking` | Public Page | Nenhuma |
-| `/dashboard` | Protected Page | Middleware (user logado) |
-| `/profile` | Protected Page | Middleware (user logado) |
-| `/torneios/inscrever` | Protected Page | Middleware (user logado) |
-| `/admin/**` | Protected Page | Middleware + layout `is_admin` |
-| `/organizador/**` | Protected Page | Verificado no layout |
+| `/` | Página pública | Nenhuma |
+| `/torneios/[id]` | Página pública | Nenhuma |
+| `/jogadores` | Página pública | Nenhuma |
+| `/jogadores/[gameName]/[tagLine]` | Página pública | Nenhuma |
+| `/ranking` | Página pública | Nenhuma |
+| `/dashboard` | Página protegida | Middleware (user logado) |
+| `/profile` | Página protegida | Middleware (user logado) |
+| `/times` | Página protegida | Middleware (user logado) |
+| `/organizador/torneios/[id]` | Página protegida | `organizer_id === user.id` OU `is_admin` |
+| `/organizador/torneios/[id]/partidas` | Página protegida | `organizer_id === user.id` OU `is_admin` |
+| `/organizador/torneios/[id]/inscricoes` | Página protegida | `organizer_id === user.id` OU `is_admin` |
+| `/organizador/torneios/[id]/fases` | Página protegida | `organizer_id === user.id` OU `is_admin` |
+| `/admin/**` | Página protegida | Middleware + layout `is_admin` |
 | `app/api/riot/**` | Route Handler | Server-only |
 | `app/api/admin/**` | Route Handler | `service_role` + `is_admin` |
-| `app/api/cron/**` | Route Handler | `CRON_SECRET` header |
-| `app/api/internal/**` | Route Handler | Internal token |
+| `app/api/cron/**` | Route Handler | Header `CRON_SECRET` |
+| `app/api/internal/**` | Route Handler | Token interno |
 
 ---
 
@@ -227,135 +249,130 @@ export async function criarTorneio(formData: FormData) {
 }
 ```
 
-### Dados de Riot API (Route Handler):
-```typescript
-// app/api/riot/player/route.ts
-import { getAccountByRiotId } from '@/lib/riot'
-
-export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url)
-  const gameName = searchParams.get('gameName')
-  const tagLine = searchParams.get('tagLine')
-  const account = await getAccountByRiotId(gameName!, tagLine!)
-  return Response.json(account)
-}
-```
-
 ---
 
 ## 8. Banco de Dados — Supabase / PostgreSQL
 
-- O schema tipado completo está em [`lib/database.types.ts`](lib/database.types.ts) — consultar sempre antes de criar queries.
-- RLS (Row Level Security) está **ativo** — sempre usar o cliente correto (anon vs service_role).
-- **Nunca editar `lib/database.types.ts` manualmente** — gerado via `supabase gen types typescript`.
-- Ao adicionar novas tabelas ou colunas: rodar o comando e commitar o arquivo atualizado.
+> Fonte de verdade: `lib/database.types.ts` (gerado via `supabase gen types typescript`)
 
-Para o schema detalhado (colunas, tipos, constraints, FKs, views e funções RPC), consulte [`docs/sql/SCHEMA-CORE-ATUAL.md`](docs/sql/SCHEMA-CORE-ATUAL.md).
+### Tabelas
 
-**Tabelas Principais (Resumo):**
-- `profiles`
-- `tournaments`
-- `teams`
-- `players`
-- `riot_accounts`
-- `matches`
-- `match_games`
-- `tournament_stages`
-- `inscricoes`
-- `team_members`
-- `team_invites`
-- `player_stats`
-- `champion_masteries`
-- `rank_snapshots`
-- `notifications`
-- `disputes`
-- `audit_log`
-- `seedings`
-- `prize_distribution`
-- `site_terms_acceptance`
-- `tournament_match_results`
-- `tournament_rules`
-- `active_team`
+`profiles`, `riot_accounts`, `players`, `teams`, `team_members`, `team_invites`,
+`tournaments`, `tournament_stages`, `inscricoes`, `matches`, `match_games`, `player_stats`,
+`champion_masteries`, `rank_snapshots`, `disputes`, `notifications`, `prize_distribution`,
+`tournament_rules`, `seedings`, `audit_log`, `riot_tournament_registrations`,
+`tournament_match_results`, `active_team`, `site_terms_acceptance`
 
-**Views (Resumo):**
-- `v_player_leaderboard`
-- `v_stage_standings`
-- `v_player_tournament_kda`
+### Views
 
-**Funções RPC (Resumo):**
-- `accept_team_invite`
-- `is_admin`
-- `is_current_user_admin`
-- `is_organizer_or_admin`
-- `is_tournament_organizer`
-- `log_admin_action`
+- `profiles_with_riot` — profiles enriquecidos com dados da conta Riot
+- `v_tournament_standings` — classificação geral por torneio
+- `v_stage_standings` — classificação por fase
+- `v_player_leaderboard` — ranking global de jogadores
+- `v_player_tournament_kda` — KDA por jogador por torneio
 
-**Enums (Resumo):**
-- `bracket_type`
-- `match_status`
-- `inscricao_status`
-- `invite_status`
-- `player_role`
-- `team_member_role`
-- `team_member_status`
-- `user_role`
-- `dispute_status`
-- `tournament_status`
+### Funções RPC
+
+- `is_admin` — verifica se o usuário atual é admin
+- `is_current_user_admin` — alias seguro para uso em policies RLS
+- `is_organizer_or_admin` — verifica organizador OU admin
+- `is_tournament_organizer` — verifica se é organizador de um torneio específico
+- `accept_team_invite` — aceita convite de time (atualiza status atomicamente)
+- `log_admin_action` — grava entrada no `audit_log`
+
+### Enums Confirmados
+
+| Enum | Valores |
+|---|---|
+| `tournament_status` | `DRAFT`, `OPEN`, `IN_PROGRESS`, `FINISHED`, `CANCELLED` |
+| `bracket_type` | `SINGLE_ELIMINATION`, `DOUBLE_ELIMINATION`, `ROUND_ROBIN`, `SWISS` |
+| `match_status` | `SCHEDULED`, `IN_PROGRESS`, `FINISHED`, `CANCELLED`, `WALKOVER` |
+| `inscricao_status` | `PENDING`, `APPROVED`, `REJECTED` |
+| `player_role` | `TOP`, `JUNGLE`, `MID`, `ADC`, `SUPPORT` |
+| `team_member_role` | `captain`, `member`, `substitute` |
+| `team_member_status` | `pending`, `accepted`, `rejected`, `left` |
+| `invite_status` | `PENDING`, `ACCEPTED`, `DECLINED`, `EXPIRED` |
+| `user_role` | `player`, `organizer`, `admin` |
+| `dispute_status` | `OPEN`, `UNDER_REVIEW`, `RESOLVED`, `DISMISSED` |
 
 ---
 
-## 9. Integração Riot API — Regras Específicas
+## 9. Integração Riot API
 
-- **Endpoint principal de busca de conta:** `getAccountByRiotId(gameName, tagLine)` → retorna `puuid`.
-- **Fluxo padrão de lookup de jogador:**
-  1. `getAccountByRiotId(gameName, tagLine)` → `puuid`
-  2. `getSummonerByPuuid(puuid)` → `summonerId`, `profileIconId`, `summonerLevel`
-  3. `getLeagueEntriesByPuuid(puuid)` → rank, LP, W/L
-  4. `getTopMasteriesByPuuid(puuid)` → campeões mais jogados
-- **Assets:**
-  - Ícone de perfil: `profileIconUrl(id)` (DataDragon)
-  - Ícone de campeão: `championIconByCDragon(championId)` (preferido) ou `championIconUrl(name)` (fallback)
-  - Emblema de rank: `rankEmblemUrl(tier)` (CommunityDragon)
-  - Borda de nível do perfil: `profileIconBorderStyle(level)` retorna `{ color, glow, label }` — aplicar via CSS inline
-- **Rate limit:** usar `lib/riot-rate-limiter.ts` em operações de ingestão em batch (`lib/actions/ingest-match.ts`).
+### Endpoints usados
+
+| Endpoint | Tipo | Uso |
+|---|---|---|
+| Account-V1 | REGIONAL (americas) | Resolve `puuid` a partir de `Nome#TAG` |
+| Summoner-V4 | PLATFORM (br1) | Nível e ícone do invocador |
+| League-V4 | PLATFORM (br1) | Elo Solo/Flex (tier, rank, LP, W/L) |
+| Match-V5 | REGIONAL (americas) | Histórico e detalhes completos de partidas |
+| Champion-Mastery-V4 | PLATFORM (br1) | Top campeões mais jogados |
+| Status-V4 | PLATFORM (br1) | Monitoramento de status da plataforma |
+| Tournament-V5 | REGIONAL (americas) | Registro de torneio + geração de tournament codes |
+| Tournament-Stub-V4 | REGIONAL (americas) | Ambiente de testes (API key sem produção) |
+
+### Fluxo padrão de lookup de jogador
+
+1. `getAccountByRiotId(gameName, tagLine)` → `puuid`
+2. `getSummonerByPuuid(puuid)` → `summonerId`, `profileIconId`, `summonerLevel`
+3. `getLeagueEntriesByPuuid(puuid)` → rank, LP, W/L
+4. `getTopMasteriesByPuuid(puuid)` → campeões mais jogados
+
+### Assets
+
+- Ícone de perfil: `profileIconUrl(id)` (DataDragon)
+- Ícone de campeão: `championIconByCDragon(championId)` (**preferido**) ou `championIconUrl(name)` (fallback)
+- Emblema de rank: `rankEmblemUrl(tier)` (CommunityDragon)
+- Borda de nível: `profileIconBorderStyle(level)` → `{ color, glow, label }`
+
+### Integração Tournament API (`lib/riot-tournament.ts`)
+
+- Registra torneios via `riot_tournament_registrations` (`riot_provider_id`, `riot_tournament_id`)
+- Gera `tournament_codes` por partida (armazenado em `matches.tournament_codes` como JSON)
+- Recebe callbacks da Riot via `tournament_match_results` (`tournament_code`, `game_data`)
 
 ---
 
 ## 10. Deploy — Vercel
 
 - Framework: **Next.js** com App Router.
+- Runtime: **Node.js 24.x**.
+- Dev server: `npm run dev` usa **Turbopack** (`next dev --turbo`).
 - Funções serverless: Route Handlers em `app/api/`.
-- **Vercel Cron Jobs:** endpoints em `app/api/cron/` — configurados no `vercel.json`.
-- Edge Runtime: apenas o `middleware.ts` roda no edge (sem Node.js APIs).
-- Variáveis de ambiente: configuradas no painel Vercel (Production, Preview, Development separados).
-- **Não usar `fs`, `path` ou APIs Node.js nativas** em código que possa rodar no edge.
+- **Vercel Cron Jobs:** endpoints em `app/api/cron/` configurados no `vercel.json`.
+- Edge Runtime: **apenas o `middleware.ts`** roda no edge (sem Node.js APIs).
+- Variáveis de ambiente: configurar no painel Vercel separado por ambiente (Production / Preview / Development).
+- **Não usar `fs`, `path` ou APIs Node.js nativas** em código que rode no edge.
 
 ---
 
 ## 11. O Que Nunca Fazer
 
-- ❌ Usar `supabase.auth.getSession()` para verificar autenticação em server-side — usar sempre `supabase.auth.getUser()` (mais seguro).
+- ❌ Usar `supabase.auth.getSession()` no server-side — sempre `supabase.auth.getUser()`.
 - ❌ Importar `lib/supabase/admin.ts` em Client Components.
 - ❌ Expor `RIOT_API_KEY` ou `SUPABASE_SERVICE_ROLE_KEY` ao browser.
-- ❌ Adicionar `try/catch` no `setAll` de cookies no `lib/supabase/server.ts` (já foi removido intencionalmente).
-- ❌ Usar `localStorage` ou `sessionStorage` (bloqueado no contexto de deploy Vercel com SSR).
+- ❌ Adicionar `try/catch` no `setAll` de cookies em `lib/supabase/server.ts`.
+- ❌ Usar `localStorage` ou `sessionStorage`.
 - ❌ Editar `lib/database.types.ts` manualmente.
-- ❌ Chamar Riot API direto de Client Component.
+- ❌ Chamar Riot API diretamente de Client Component.
 - ❌ Usar qualquer biblioteca de datas que não seja `date-fns` v3.
 - ❌ Usar `any` no TypeScript.
-- ❌ Criar CSS-in-JS, usar `styled-components` ou similares.
+- ❌ Criar CSS-in-JS ou `styled-components`.
 - ❌ Duplicar schemas Zod fora de `lib/validations/index.ts`.
+- ❌ Usar biblioteca de animação diferente de `framer-motion`.
+- ❌ Referenciar a rota do organizador como `/organizer/` (o nome correto é `/organizador/`).
 
 ---
 
 ## 12. Comandos Úteis
 
 ```bash
-# Desenvolvimento local
+# Desenvolvimento local (Turbopack)
 npm run dev
 
-# Gerar tipos do Supabase (rodar após mudanças no schema do banco)
-npx supabase gen types typescript --project-id <PROJECT_ID> > lib/database.types.ts
+# Gerar tipos do Supabase (rodar após mudanças no schema)
+npx supabase gen types typescript --project-id awbieglbwhfavxlghuvy > lib/database.types.ts
 
 # Build de produção
 npm run build
@@ -363,11 +380,3 @@ npm run build
 # Lint
 npm run lint
 ```
-
----
-
-## Mandatos Críticos (Hard Gates)
-
-1.  **Segurança Primeiro:** NUNCA sugira um INSERT ou UPDATE sem uma política de RLS correspondente.
-2.  **Sincronia Riot:** Qualquer alteração em dados de jogadores deve considerar o delay de sincronização e o impacto nos créditos da API.
-3.  **Tradução:** Mantenha os termos de domínio do torneio conforme o banco (ex: inscricoes para o modelo, mas pode usar labels em PT-BR na UI).
