@@ -1,7 +1,6 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'jsr:@supabase/supabase-js@2';
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', {
       headers: {
@@ -86,7 +85,7 @@ serve(async (req) => {
         round: 1,
         match_number: i + 1,
         best_of: 1,
-        status: 'pending',
+        status: 'SCHEDULED',
       });
     }
 
@@ -99,30 +98,35 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: errIns.message }), { status: 500 });
     }
 
-    // Atualiza status do torneio para 'ongoing'
+    // FIX: era 'ongoing' — enum tournament_status não possui esse valor
+    // Valores válidos: DRAFT | OPEN | IN_PROGRESS | FINISHED | CANCELLED
     await supabase
       .from('tournaments')
-      .update({ status: 'ongoing' })
+      .update({ status: 'IN_PROGRESS' })
       .eq('id', tournament_id);
 
-    // Notifica capitões dos times
-    const notifs = times.map((t: any) => ({
-      tournament_id,
-      team_id: t.team_id,
-      title: '🏆 Bracket gerado!',
-      message: 'O chaveamento do torneio foi gerado. Confira seus confrontos.',
-      type: 'torneio',
-      read: false,
-    }));
-    // Tenta inserir notificações (ignora erro se tabela não tiver team_id)
-    await supabase.from('notifications').insert(
-      notifs.map((n: any) => ({
-        title: n.title,
-        message: n.message,
-        type: n.type,
+    // Busca user_id dos capitães de cada time participante
+    // FIX: notificações exigem user_id NOT NULL — buscamos via team_members
+    const teamIds = times.map((t: any) => t.team_id);
+    const { data: capitaes } = await supabase
+      .from('team_members')
+      .select('user_id, team_id')
+      .in('team_id', teamIds)
+      .eq('role', 'captain')
+      .eq('status', 'accepted');
+
+    if (capitaes && capitaes.length > 0) {
+      const notifs = capitaes.map((c: any) => ({
+        user_id: c.user_id,
+        type: 'torneio',
+        title: '🏆 Bracket gerado!',
+        message: 'O chaveamento do torneio foi gerado. Confira seus confrontos.',
         read: false,
-      }))
-    ).select().maybeSingle(); // fire-and-forget
+        metadata: { tournament_id },
+      }));
+      // fire-and-forget — erro não bloqueia resposta principal
+      supabase.from('notifications').insert(notifs).then(() => {});
+    }
 
     return new Response(
       JSON.stringify({ success: true, matches_created: inserted?.length ?? 0 }),
