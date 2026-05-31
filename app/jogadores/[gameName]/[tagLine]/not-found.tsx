@@ -1,24 +1,48 @@
 import Link from "next/link";
+import { SearchX } from "lucide-react";
 
 export default function NotFoundJogador() {
   return (
-    <div className="min-h-screen bg-[#050E1A] flex items-center justify-center px-4">
+    <div
+      className="min-h-screen flex items-center justify-center px-4"
+      style={{ background: "var(--bg)" }}
+    >
       <div style={{ textAlign: "center", maxWidth: 400 }}>
-        <p style={{ fontSize: 56, marginBottom: 16 }}>🔍</p>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: "#fff", marginBottom: 8 }}>
-          Jogador não encontrado
-        </h1>
-        <p style={{ fontSize: 14, color: "#6B7280", marginBottom: 24 }}>
-          Verifique o nick e a tag e tente novamente.
-        </p>
-        <Link
-          href="/jogadores"
+        <div
+          className="mx-auto mb-6 flex items-center justify-center"
           style={{
-            background: "#C8A84B", color: "#050E1A",
-            fontWeight: 700, borderRadius: 8, padding: "10px 24px",
-            textDecoration: "none", fontSize: 14,
+            width: 72,
+            height: 72,
+            borderRadius: "var(--radius-xl)",
+            background: "var(--surface-2)",
+            border: "1px solid var(--border)",
+            color: "var(--text-muted)",
+            margin: "0 auto var(--sp-6)",
           }}
         >
+          <SearchX size={32} />
+        </div>
+        <h1
+          style={{
+            fontFamily: "var(--font-display)",
+            fontSize: "var(--text-lg)",
+            fontWeight: 800,
+            color: "var(--text)",
+            marginBottom: "var(--sp-2)",
+          }}
+        >
+          Jogador não encontrado
+        </h1>
+        <p
+          style={{
+            fontSize: "var(--text-sm)",
+            color: "var(--text-muted)",
+            marginBottom: "var(--sp-6)",
+          }}
+        >
+          Verifique o nick e a tag e tente novamente.
+        </p>
+        <Link href="/jogadores" className="btn-primary">
           ← Voltar para Jogadores
         </Link>
       </div>
