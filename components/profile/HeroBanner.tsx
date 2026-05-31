@@ -7,7 +7,7 @@ interface BorderStyle {
   glow: string;
 }
 
-interface HeroBannerProps {
+export interface HeroBannerProps {
   gameName: string;
   tagLine: string;
   level: number;
@@ -22,13 +22,18 @@ interface HeroBannerProps {
   recentWR: number;
   avgKDA: string;
   profileName?: string | null;
+  /** Nome do perfil ArenaGG vinculado (exibido como badge azul) — equivale a isLinked */
+  linkedProfileName?: string | null;
 }
 
 export function HeroBanner({
   gameName, tagLine, level, iconUrl, borderImg, borderStyle,
   mainSplash, mainChampName, totalGames, totalWins, totalLosses,
-  recentWR, avgKDA, profileName,
+  recentWR, avgKDA, profileName, linkedProfileName,
 }: HeroBannerProps) {
+  // profileName mantido por retrocompatibilidade; linkedProfileName tem precedência
+  const displayLinked = linkedProfileName ?? profileName ?? null;
+
   return (
     <div className="relative w-full overflow-hidden" style={{ minHeight: 260 }}>
       {/* Splash art do campeão principal como fundo */}
@@ -176,7 +181,7 @@ export function HeroBanner({
                 <span className="stat-pill">KDA médio {avgKDA}</span>
               </>
             )}
-            {profileName && (
+            {displayLinked && (
               <span
                 className="stat-pill"
                 style={{
@@ -186,7 +191,7 @@ export function HeroBanner({
                 }}
               >
                 <User size={12} aria-hidden="true" />
-                {profileName}
+                {displayLinked}
               </span>
             )}
           </div>

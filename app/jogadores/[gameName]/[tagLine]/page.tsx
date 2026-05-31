@@ -4,7 +4,6 @@ import {
   getTopMasteriesByPuuid, getMatchIdsByPuuid, getMatchById,
   getAllChampions, profileIconUrl, profileIconBorderStyle,
   profileBorderUrl, championSplashUrl,
-  // getDDVersion removido — PR14: MatchRow usa versão pinada internamente
 } from "@/lib/riot";
 import { createClient } from "@/lib/supabase/server";
 import type { MatchParticipant } from "@/lib/riot";
@@ -67,7 +66,6 @@ export default async function PlayerProfilePage({
     .filter((r): r is PromiseFulfilledResult<Awaited<ReturnType<typeof getMatchById>>> => r.status === "fulfilled")
     .map((r) => r.value);
 
-  // getDDVersion removido — PR14: MatchRow encapsula versão de CDN internamente
   const iconUrl     = sum ? await profileIconUrl(sum.profileIconId) : null;
   const level       = sum?.summonerLevel ?? 0;
   const borderStyle = profileIconBorderStyle(level);
@@ -79,15 +77,16 @@ export default async function PlayerProfilePage({
   const mainChampName = tops[0] ? (champById[tops[0].championId] ?? tops[0].championName) : null;
   const mainSplash    = mainChampName ? championSplashUrl(mainChampName, 0) : null;
 
-  // isLinked: verifica via puuid (fonte de verdade) se conta está vinculada no ArenaGG
+  // Busca conta vinculada no ArenaGG via puuid (fonte de verdade)
   const supabase = await createClient();
   const { data: riotRows } = await supabase
     .from("riot_accounts")
     .select(`puuid, players ( id ), profiles ( full_name )`)
     .eq("puuid", puuid)
     .limit(1);
-  const riotRow  = riotRows?.[0] ?? null;
-  const isLinked = !!(riotRow?.players);
+  const riotRow = riotRows?.[0] ?? null;
+  // linkedProfileName: nome do perfil ArenaGG vinculado, ou null se não vinculado
+  const linkedProfileName: string | null = (riotRow?.profiles as any)?.full_name ?? null;
 
   const myMatches = matches
     .map((m) => ({ match: m, me: m.info.participants.find((p: MatchParticipant) => p.puuid === puuid) }))
@@ -118,8 +117,7 @@ export default async function PlayerProfilePage({
         totalLosses={totalLosses}
         recentWR={recentWR}
         avgKDA={avgKDA}
-        profileName={(riotRow?.profiles as any)?.full_name ?? null}
-        isLinked={isLinked}
+        linkedProfileName={linkedProfileName}
       />
 
       {/* CORPO */}
@@ -183,7 +181,6 @@ export default async function PlayerProfilePage({
                   gameDuration={match.info.gameDuration}
                   gameStartTimestamp={match.info.gameStartTimestamp}
                   pentaKills={me!.pentaKills}
-                  // ddVersion removido — PR14
                   champById={champById}
                 />
               ))}
