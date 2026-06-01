@@ -1,7 +1,7 @@
 # Server Actions — ArenaGG (GerenciadorDeTorneios-BRLOL)
 
 > **Fonte de verdade:** `lib/actions/*.ts`  
-> Última revisão: 2026-06-01 (gerado do código real)
+> Última revisão: 2026-06-01 (corrigido após revisão do código)
 
 Todos os arquivos em `lib/actions/` são declarados com `'use server'` no topo e exportam funções assíncronas invocáveis diretamente de Client Components via `useTransition` ou de Server Components. **Não existe um tipo `ActionResult<T>` global compartilhado** — cada action usa seu próprio shape de retorno inline.
 
@@ -62,7 +62,7 @@ await updateTournament(id: string, formData: FormData)
 // → revalidatePath('/torneios')
 // Retorno: { success: true } | { error: string }
 //
-// ⚠️ É via esta action que o organizador transita tournament_status manualmente:
+// ⚠️ É via updateTournament que o organizador transita manualmente:
 //    DRAFT → OPEN, OPEN → IN_PROGRESS, IN_PROGRESS → FINISHED, qualquer → CANCELLED
 ```
 
@@ -140,15 +140,12 @@ await gerarChaveamento(tournamentId: string, faseId?: string)
 // Valida: count >= 2
 // → Embaralha times (Math.random), calcula nextPow2
 // → INSERT matches (round=1, status='SCHEDULED', best_of dinâmico da fase)
-//
-// ⚠️ IMPORTANTE: gerarChaveamento NÃO altera tournament_status.
-//    A transição OPEN → IN_PROGRESS é MANUAL via updateTournament.
-//    Fluxo correto após gerarChaveamento:
-//      await updateTournament(tournamentId, formData com status='IN_PROGRESS')
-//
-// Nota: geração é feita inline nesta action (não via Edge Function bracket-generator)
+// Nota: geração é feita INLINE — NÃO invoca Edge Function
 // → revalidatePath: /partidas, /bracket, /torneios
 // Retorno: { success: true, data: Match[] } | { error: string }
+//
+// ⚠️ NÃO transita tournaments.status para IN_PROGRESS automaticamente.
+//    O organizador deve chamar updateTournament({ status: 'IN_PROGRESS' }) manualmente.
 ```
 
 ### `getPartidasByTorneio(tournamentId)`
@@ -167,7 +164,7 @@ await getPartidasByTorneio(tournamentId: string)
 ### `criarInscricao(teamId, tournamentId)` / alias `inscreverTime(tournamentId, teamId)`
 ```ts
 await criarInscricao(teamId: string, tournamentId: string)
-// alias: inscreverTime(tournamentId, teamId)  ← atenção: ordem de parâmetros invertida no alias
+// alias: inscreverTime(tournamentId, teamId)  ← atenção: ordem dos parâmetros invertida no alias
 // Guard: requireAuth()
 // → INSERT inscricoes { team_id, tournament_id, status='PENDING', requested_by=profile.id }
 // → revalidatePath('/dashboard')
@@ -179,9 +176,8 @@ await criarInscricao(teamId: string, tournamentId: string)
 ```ts
 await aprovarInscricao(teamId: string, tournamentId: string)
 // Guard: requireTournamentOrganizerOrAdmin(tournamentId)
-// ← Chave composta (teamId + tournamentId), NÃO um inscricaoId único
 // → UPDATE inscricoes SET { status='APPROVED', reviewed_by, reviewed_at }
-//   WHERE team_id = teamId AND tournament_id = tournamentId
+//   WHERE team_id AND tournament_id  ← chave composta, NÃO inscricaoId isolado
 // → revalidatePath: /inscricoes (organizador + admin)
 // Retorno: { success: true } | { error: string }
 ```
@@ -190,8 +186,8 @@ await aprovarInscricao(teamId: string, tournamentId: string)
 ```ts
 await rejeitarInscricao(teamId: string, tournamentId: string, notes: string)
 // Guard: requireTournamentOrganizerOrAdmin(tournamentId)
-// ← Chave composta (teamId + tournamentId), NÃO um inscricaoId único
 // → UPDATE inscricoes SET { status='REJECTED', reviewed_by, reviewed_at, notes }
+//   WHERE team_id AND tournament_id  ← chave composta, NÃO inscricaoId isolado
 // Retorno: { success: true } | { error: string }
 ```
 
@@ -214,8 +210,7 @@ await fazerCheckinOrganizador(inscricaoId: string)
 //   Camada 1 (client): checkin-client.tsx verifica spectator-v5 antes de chamar (UX)
 //   Camada 2 (server): re-verifica spectator-v5 com PUUIDs reais (fonte de verdade)
 //     → Promise.allSettled: GET /lol/spectator/v5/active-games/by-summoner/{puuid}
-//     → Se qualquer membro inGame: retorna erro
-//     → Se Riot API offline: não penaliza (permite check-in)
+//     → Se qualquer membro inGame: retorna erro (não penaliza se Riot API offline — fail-open)
 // → UPDATE inscricoes SET { checked_in=true, checked_in_at, checked_in_by }
 // Retorno: { success: true } | { error: string }
 ```
@@ -312,7 +307,7 @@ await vincularRiotAccount({
 //        → Busca registro existente
 //        → Se profile_id ≠ user.id: rejeita ('Conta Riot já vinculada a outro perfil')
 //        → Se profile_id = user.id:  UPDATE pelo id direto
-//   3. INSERT rank_snapshots por queue (RANKED_SOLO_5x5, RANKED_FLEX_SR)
+//   3. INSERT rank_snapshots por queue (RANKED_SOLO_5x5 e RANKED_FLEX_SR se presentes)
 //   4. UPSERT champion_masteries (bulk)
 //   5. UPSERT players { puuid, riot_account_id } (UNIQUE constraint)
 // Retorno: { success: true } | { error: string }
@@ -336,10 +331,8 @@ Actions exportadas:
 
 Actions exportadas:
 - `convidarMembro(teamId, profileId)` — cria `team_invites { status='PENDING', expires_at }`, Guard: owner_id
-- `responderConvite(inviteId, aceitar: boolean)` — converte `true → 'ACCEPTED'`, `false → 'DECLINED'`; UPDATE team_invites.status + INSERT team_members se aceito
-- `cancelarConvite(inviteId)` — cancela convite pendente (apenas quem convidou ou owner)
-
-> O enum real de `team_invites.status` é `PENDING | ACCEPTED | DECLINED | EXPIRED`. A action `responderConvite` recebe `boolean` e converte internamente para o valor de enum correto.
+- `responderConvite(inviteId, aceitar: boolean)` — converte `aceitar` para `'ACCEPTED' | 'DECLINED'` internamente antes de UPDATE `team_invites.status`; INSERT `team_members` se aceito
+- `cancelarConvite(inviteId)` — cancela convite pendente (apenas quem convidou)
 
 ---
 
@@ -405,16 +398,17 @@ Ver `docs/api/fluxos.md` — Fluxo #2 para diagrama completo.
 ## Transições de status (`tournament_status`)
 
 ```
-DRAFT ──[updateTournament/status=OPEN]────────────────────► OPEN
-OPEN  ──[gerarChaveamento]────────────────────────────────► (NÃO altera status)
-OPEN  ──[updateTournament/status=IN_PROGRESS]─────────────► IN_PROGRESS  ← manual, após gerarChaveamento
-IN_PROGRESS ──[updateTournament/status=FINISHED]──────────► FINISHED
-DRAFT | OPEN ──[updateTournament/status=CANCELLED]────────► CANCELLED
-DRAFT | CANCELLED ──[deleteOwnTournament]─────────────────► DELETE
-qualquer ──[deleteTournament(admin)]──────────────────────► DELETE
+DRAFT ──[updateTournament/status=OPEN]────────────► OPEN
+OPEN  ──[updateTournament/status=IN_PROGRESS]────► IN_PROGRESS  ← manual, após gerarChaveamento
+IN_PROGRESS ──[updateTournament/status=FINISHED]──► FINISHED
+DRAFT | OPEN ──[updateTournament/status=CANCELLED]──► CANCELLED
+DRAFT | CANCELLED ──[deleteOwnTournament]──────────► DELETE
+qualquer ──[deleteTournament(admin)]───────────────► DELETE
 ```
 
-> ⚠️ **Importante:** `gerarChaveamento` **não transita** `tournament_status` automaticamente. Após gerar as partidas, o organizador deve manualmente chamar `updateTournament` com `status = 'IN_PROGRESS'` para abrir o torneio.
+> ⚠️ `gerarChaveamento` NÃO transita o status automaticamente. O fluxo correto é:
+> 1. `gerarChaveamento(tournamentId)` → insere as partidas
+> 2. `updateTournament(id, formData com status='IN_PROGRESS')` → transita o status manualmente
 
 ## Transições de status (`match_status`)
 

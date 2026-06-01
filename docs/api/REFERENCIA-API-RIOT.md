@@ -1,7 +1,7 @@
 # Referência da API Riot Games — ArenaGG
 
 > **Fonte de verdade:** `lib/riot.ts` e `lib/riot-rate-limiter.ts`.
-> Última revisão: 2026-06-01
+> Última revisão: 2026-06-01 (corrigido após revisão do código)
 
 ---
 
@@ -9,19 +9,19 @@
 
 | Contexto | Base URL | Usado em |
 |---|---|---|
-| Conta / Match / Tournament (regional) | `https://americas.api.riotgames.com` | account-v1, match-v5, tournament-v5/stub |
+| Conta / Match (regional) | `https://americas.api.riotgames.com` | account-v1, match-v5, tournament-v5/stub |
 | Plataforma BR1 | `https://br1.api.riotgames.com` | summoner-v4, league-v4, champion-mastery-v4, spectator-v5 |
 
 **Autenticação:** Header `X-Riot-Token: {RIOT_API_KEY}` em todas as chamadas.
 
 **Variáveis de ambiente:**
 ```
-RIOT_API_KEY=              # Chave de produção (tournament-v5) ou dev (stub)
-RIOT_TOURNAMENT_API_KEY=   # Chave exclusiva da Tournament API (aprovada pela Riot)
-RIOT_PROVIDER_ID=          # ID do provider registrado (riot_tournament_registrations.riot_provider_id)
-RIOT_TOURNAMENT_ID=        # ID do torneio ativo na Riot (riot_tournament_registrations.riot_tournament_id)
-RIOT_CALLBACK_URL=         # URL pública do /api/tournament/callback
-RIOT_HMAC_SECRET=          # Secret para validação HMAC do callback
+RIOT_API_KEY=            # Chave de produção (tournament-v5) ou dev (stub)
+RIOT_TOURNAMENT_API_KEY= # Chave exclusiva da Tournament API
+RIOT_PROVIDER_ID=        # ID do provider registrado na Riot
+RIOT_TOURNAMENT_ID=      # ID do torneio ativo na Riot
+RIOT_CALLBACK_URL=       # URL pública do /api/tournament/callback
+RIOT_HMAC_SECRET=        # Secret para validação HMAC do callback
 ```
 
 ---
@@ -56,7 +56,7 @@ Base: `https://br1.api.riotgames.com`
 |---|---|---|
 | GET | `/lol/summoner/v4/summoners/by-puuid/{encryptedPUUID}` | `getSummonerByPuuid(puuid)` |
 
-> O parâmetro `{encryptedPUUID}` neste endpoint refere-se ao `puuid` do jogador. O termo "encrypted" é da nomenclatura interna Riot — o valor passado é o `puuid` obtido via account-v1.
+> ℹ️ O parâmetro `{encryptedPUUID}` neste endpoint é o **puuid criptografado** retornado pela Riot internamente. Na prática, você passa o `puuid` armazenado em `riot_accounts.puuid` diretamente.
 
 **Resposta:**
 ```ts
@@ -64,14 +64,14 @@ Base: `https://br1.api.riotgames.com`
   id: string;           // summonerId (encrypted) — usado em league-v4
   accountId: string;
   puuid: string;
-  name: string;         // deprecated → usar gameName+tagLine de account-v1
+  name: string;         // deprecated → use gameName+tagLine de account-v1
   profileIconId: number;
   revisionDate: number;
   summonerLevel: number;
 }
 ```
 
-**Armazenado em:** `riot_accounts.summoner_id` (campo `id` da resposta)
+**Armazenado em:** `riot_accounts.summoner_id`
 
 ---
 
@@ -83,14 +83,14 @@ Base: `https://br1.api.riotgames.com`
 |---|---|---|
 | GET | `/lol/league/v4/entries/by-summoner/{encryptedSummonerId}` | `getLeagueEntriesBySummoner(summonerId)` |
 
-> `{encryptedSummonerId}` é o campo `id` retornado por summoner-v4 (diferente do puuid).
+> ℹ️ `{encryptedSummonerId}` = campo `id` retornado por summoner-v4 (armazenado em `riot_accounts.summoner_id`).
 
-**Resposta (array — pode conter múltiplas filas):**
+**Resposta (array):**
 ```ts
 [{
   leagueId: string;
   summonerId: string;
-  queueType: string;    // "RANKED_SOLO_5x5" | "RANKED_FLEX_SR"
+  queueType: string;    // 'RANKED_SOLO_5x5' | 'RANKED_FLEX_SR'
   tier: string;         // IRON | BRONZE | SILVER | GOLD | PLATINUM | EMERALD | DIAMOND | MASTER | GRANDMASTER | CHALLENGER
   rank: string;         // I | II | III | IV
   leaguePoints: number;
@@ -105,7 +105,7 @@ Base: `https://br1.api.riotgames.com`
 
 **Armazenado em:** `players.current_rank`, `players.current_tier`, `players.current_lp`, `rank_snapshots`
 
-> O sync itera por todas as entradas do array. Tanto `RANKED_SOLO_5x5` quanto `RANKED_FLEX_SR` são salvos em `rank_snapshots` (um registro por fila por sync).
+> ⚠️ O sync salva **ambas as filas** (`RANKED_SOLO_5x5` e `RANKED_FLEX_SR`) em `rank_snapshots` quando presentes.
 
 **Mapeamentos de tier:**
 ```
@@ -115,8 +115,8 @@ IRON < BRONZE < SILVER < GOLD < PLATINUM < EMERALD < DIAMOND < MASTER < GRANDMAS
 **Mapeamentos de fila (queueType):**
 | queueType | Significado |
 |---|---|
-| `RANKED_SOLO_5x5` | Solo/Duo — usado para `players.current_rank` |
-| `RANKED_FLEX_SR` | Flex 5v5 — salvo em `rank_snapshots`, não em `players` |
+| `RANKED_SOLO_5x5` | Solo/Duo |
+| `RANKED_FLEX_SR` | Flex 5v5 |
 
 ---
 
@@ -165,7 +165,7 @@ Base: `https://br1.api.riotgames.com`
 |---|---|---|
 | GET | `/lol/spectator/v5/active-games/by-summoner/{puuid}` | `getActiveGame(puuid)` |
 
-> O parâmetro de path é o `puuid` do jogador (obtido de `riot_accounts.puuid`). Apesar do nome `by-summoner` na URL, a Riot aceita o puuid diretamente neste endpoint na v5.
+> ℹ️ Apesar do nome `by-summoner` na URL, o parâmetro passado é o **`puuid`** (armazenado em `riot_accounts.puuid`), não o `encryptedSummonerId` do summoner-v4.
 
 **Resposta (jogo ativo):**
 ```ts
@@ -187,11 +187,9 @@ Base: `https://br1.api.riotgames.com`
 }
 ```
 
-**Usado em:** `lib/actions/inscricao.ts → fazerCheckinOrganizador()` para confirmar que o time está em jogo na plataforma antes de registrar o check-in.
+**Usado em:** `lib/actions/inscricao.ts → fazerCheckinOrganizador()` — verifica se algum membro do time está em partida ativa antes de marcar check-in.
 
-**Tratamento de erro 404:** Se o jogador não está em partida, a Riot retorna `404`. O código trata como `{ success: false, error: 'Partida ainda não iniciada' }` sem lançar exceção.
-
-**Tratamento de Riot API offline:** `fazerCheckinOrganizador` usa `Promise.allSettled` — se a API estiver indisponível, o check-in é permitido (não penaliza por falha da Riot).
+**Tratamento de erro 404:** Se o jogador não está em partida, a Riot retorna `404`. O código trata como `{ success: false, error: 'Partida ainda não iniciada' }` sem lançar exceção. Se a Riot API estiver offline, o check-in prossegue (fail-open).
 
 ---
 
@@ -214,7 +212,7 @@ Base: `https://br1.api.riotgames.com`
 |---|---|---|
 | Base URL | `https://americas.api.riotgames.com` | `https://americas.api.riotgames.com` |
 | Path | `/lol/tournament/v5/...` | `/lol/tournament-stub/v5/...` |
-| Chave necessária | Chave de torneio aprovada (`RIOT_TOURNAMENT_API_KEY`) | Chave de desenvolvimento padrão (`RIOT_API_KEY`) |
+| Chave necessária | Chave de torneio aprovada | Chave de desenvolvimento padrão |
 | Gera códigos reais | ✅ Sim | ❌ Não (retorna códigos fictícios) |
 | Callback real da Riot | ✅ Sim | ❌ Não disparado automaticamente |
 | Env var | `RIOT_TOURNAMENT_API_KEY` | `RIOT_API_KEY` |
@@ -223,30 +221,21 @@ Base: `https://br1.api.riotgames.com`
 ```
 POST /lol/tournament/v5/providers
   → Registra provider com callbackUrl e region
-  → Salva em riot_tournament_registrations:
-       riot_provider_id  ← ID retornado pela Riot
+  → Salva riot_provider_id em riot_tournament_registrations  ← campo obrigatório
 
 POST /lol/tournament/v5/tournaments
-  → Cria torneio no sistema Riot (requer riot_provider_id)
-  → Salva em riot_tournament_registrations:
-       riot_tournament_id  ← ID retornado pela Riot
+  → Cria torneio no sistema Riot
+  → Salva riot_tournament_id em riot_tournament_registrations
 
 POST /lol/tournament/v5/codes
   → Gera tournament codes para uma partida
-  → Parâmetros query: tournamentId, count (bo1=1, bo3=3, bo5=5)
+  → Salva em matches.tournament_codes (JSONB array)
+  → Parâmetros: tournamentId, count (bo1=1, bo3=3, bo5=5)
   → Body: { mapType, pickType, spectatorType, teamSize, allowedSummonerIds }
-  → Salva em matches.tournament_codes (JSONB array de strings)
 
 GET /lol/tournament/v5/codes/{tournamentCode}
   → Verifica detalhes de um código (raramente usado)
 ```
-
-**Tabela `riot_tournament_registrations`:**
-| Campo | Origem |
-|---|---|
-| `riot_provider_id` | Retorno do POST /providers |
-| `riot_tournament_id` | Retorno do POST /tournaments |
-| `tournament_id` | FK para `tournaments.id` do projeto |
 
 **Payload do callback Riot (POST /api/tournament/callback):**
 ```json
@@ -329,6 +318,6 @@ Versões disponíveis: `latest` (patch atual) ou versão específica como `16.10
 | `400` | Bad request — parâmetros inválidos | Log + retornar erro ao caller |
 | `401` | API key inválida ou expirada | Log crítico + alertar |
 | `403` | Acesso negado (endpoint não liberado para a chave) | Log + retornar erro |
-| `404` | Recurso não encontrado (jogador offline, partida não existe) | Tratar como `null` / `{ success: false }` |
+| `404` | Recurso não encontrado (jogador offline, partida não existe) | Tratar como `null` |
 | `429` | Rate limit atingido | Respeitar `Retry-After`, backoff exponencial |
 | `500/503` | Riot API instável | Retry com backoff, max 3 tentativas |
