@@ -1,172 +1,244 @@
-# Fluxos do Sistema
+# Fluxos do Sistema — ArenaGG (GerenciadorDeTorneios-BRLOL)
 
-> **Regra:** Esta documentação reflete o código-fonte em `main`. Em caso de divergência com qualquer arquivo `.md`, o código prevalece.
+> **Fonte de verdade:** código-fonte. Este documento foi gerado lendo os arquivos reais do repositório.
+> Última revisão: 2026-06-01
 
 ---
 
-## 1. Fluxo de Autenticação
+## Fluxo 1 — Autenticação (Discord OAuth)
 
 ```
-[Usuário acessa página protegida]
-  └▶ middleware.ts
-        ├▶ createServerClient() — verifica sessão via cookie
-        ├─ Sessão válida → deixa passar
-        └─ Sessão inválida → redirect('/login')
-
-[Login com Discord OAuth]
-  └▶ GET /api/auth/login
-        └▶ supabase.auth.signInWithOAuth({ provider: 'discord' })
-              └▶ Riot OAuth opcional (vinculação de conta)
-                    └▶ GET /api/auth/callback
-                          ├▶ supabase.auth.exchangeCodeForSession(code)
-                          ├▶ Upsert em profiles (id, email, username)
-                          └▶ redirect('/dashboard')
+Browser → /auth/login
+  → Supabase Auth (Discord OAuth)
+  → callback: /auth/callback/route.ts
+    → exchangeCodeForSession()
+    → upsert profiles (id, discord_id, username, avatar_url)
+    → redirect /dashboard
 ```
 
-**Arquivos envolvidos:**
-- `middleware.ts` — guard global de rotas
-- `app/api/auth/` — handlers OAuth
+**Arquivos participantes:**
+- `app/auth/login/page.tsx`
+- `app/auth/callback/route.ts`
+- `middleware.ts` — guard de sessão em todas as rotas protegidas
 - `lib/supabase/server.ts` — `createServerClient()`
-- `lib/supabase/client.ts` — `createBrowserClient()`
-- Tabela: `profiles` (id, email, username, is_admin, created_at)
+
+**Tabelas:** `profiles`
+
+**Guard de rota (middleware.ts):**
+- Rotas `/organizer/**` → requer sessão + `organizer_id === user.id` OU `is_admin = true`
+- Rotas `/admin/**` → requer `is_admin = true`
+- Redirect em falha: `/torneios?error=sem_permissao`
 
 ---
 
-## 2. Fluxo de Resultado de Partida (Tournament Callback)
+## Fluxo 2 — Resultado de Partida via Callback Riot
 
 ```
-[Jogo termina na Riot]
-  └▶ POST /api/riot/tournament/callback
-        ├▶ Valida HMAC (header X-Riot-Token vs RIOT_CALLBACK_SECRET)
-        ├▶ Parse do body: { tournamentCode, gameId, winningTeam, ... }
-        ├▶ INSERT tournament_match_results
-        │     { tournament_code, game_data, processed: false, created_at }
-        └▶ HTTP 200 (resposta imediata à Riot)
-
-[Edge Function: process-match-results — agendada / cron]
-  └▶ SELECT tournament_match_results WHERE processed = false LIMIT 50
-        └▶ Para cada resultado (com lock pessimista):
-              └▶ POST /api/internal/process-match
-                    Headers: { x-internal-secret: INTERNAL_SECRET,
-                               x-tournament-code: <code> }
-                    Timeout: 25s
-                    └▶ UPDATE matches SET winner_id, status = 'FINISHED'
-                    └▶ INSERT match_games (um por jogo)
-                    └▶ INSERT player_stats (KDA, CS, dano por jogador)
-                    └▶ UPDATE tournament_match_results SET processed = true
+Riot API → POST /api/riot/tournament/callback
+  → valida X-Riot-Token (HMAC)
+  → insere tournament_match_results (tournament_code, game_data JSONB)
+  → chama internamente: /api/internal/process-match
+    → lê match_games pelo tournament_code
+    → atualiza match_games (winner, kills, deaths, assists, picks_bans JSONB)
+    → chama avancarVencedor(supabase, match, winner_team_id) de lib/bracket-utils
+    → atualiza matches.status → FINISHED
+    → se todas as partidas da fase concluídas → atualiza tournament_stages.status
 ```
 
-**Arquivos envolvidos:**
+**Arquivos participantes:**
 - `app/api/riot/tournament/callback/route.ts`
 - `app/api/internal/process-match/route.ts`
-- `supabase/functions/process-match-results/`
-- Tabelas: `tournament_match_results`, `matches`, `match_games`, `player_stats`
-- Enums: `match_status` → `FINISHED | IN_PROGRESS | SCHEDULED | CANCELLED | WALKOVER`
+- `lib/bracket-utils.ts` — `avancarVencedor()`
+- `supabase/functions/process-match-results/` (Edge Function auxiliar)
+
+**Tabelas:** `tournament_match_results`, `match_games`, `matches`, `tournament_stages`
+
+**Enums usados:**
+- `match_status`: `IN_PROGRESS → FINISHED`
+- `picks_bans`: JSONB dentro de `match_games.picks_bans` (não tabela separada)
 
 ---
 
-## 3. Fluxo de Sincronização de Rank (riot-api-sync)
+## Fluxo 3 — Sincronização de Rank (Edge Function Cron)
 
 ```
-[Edge Function: riot-api-sync — cron ou chamada manual]
-  └▶ SELECT players
-        WHERE (last_synced IS NULL OR last_synced < now() - interval '6 hours')
-        ORDER BY last_synced ASC NULLS FIRST
-        LIMIT 20
-
-  └▶ Para cada jogador:
-        ├▶ account-v1  GET /riot/account/v1/accounts/by-riot-id/{name}/{tag}
-        │     → puuid (armazena em riot_accounts se ainda não existe)
-        ├▶ summoner-v4 GET /lol/summoner/v4/summoners/by-puuid/{puuid}
-        │     → summonerId, profileIconId, summonerLevel
-        ├▶ league-v4   GET /lol/league/v4/entries/by-puuid/{puuid}
-        │     → tier, rank, leaguePoints, wins, losses
-        └▶ UPDATE players
-              SET tier, rank, lp, icon_id, level, last_synced = now()
-        └▶ INSERT rank_snapshots (puuid, tier, rank, lp, snapshot_at)
+Cron (Supabase Edge Functions) → riot-api-sync
+  → busca profiles com riot_accounts vinculadas
+  → GET americas.api.riotgames.com/riot/account/v1/accounts/by-puuid/{puuid}
+  → GET br1.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/{puuid}
+  → GET br1.api.riotgames.com/lol/league/v4/entries/by-summoner/{summonerId}
+  → upsert players (rank, lp, tier, division)
+  → insere rank_snapshots (snapshot diário)
 ```
 
-**Arquivos envolvidos:**
-- `supabase/functions/riot-api-sync/`
-- `lib/riot.ts` — helpers de request à Riot API
-- `lib/riot-rate-limiter.ts` — controle de rate limit multi-camada
-- Tabelas: `players`, `riot_accounts`, `rank_snapshots`
-- Region usada: `br1` (summoner-v4 / league-v4), `americas` (account-v1)
+**Arquivos participantes:**
+- `supabase/functions/riot-api-sync/index.ts`
+- `lib/riot.ts` — wrappers de fetch + `getPlatformUrl()` + `getRegionalUrl()`
+- `lib/riot-rate-limiter.ts` — controle de rate limit por método
+
+**Tabelas:** `riot_accounts`, `players`, `rank_snapshots`
+
+**Nota:** O cron de monitor de status Riot (`lol-status-v4`) é separado — apenas monitora incidentes da BR1, não atualiza rank.
 
 ---
 
-## 4. Fluxo de Inscrição de Time em Torneio
+## Fluxo 4 — Inscrição de Time em Torneio
 
 ```
-[Capitão do time]
-  └▶ POST /api/teams/{id}/inscricao (ou Server Action)
-        ├▶ Verifica: torneio status === 'OPEN'
-        ├▶ Verifica: time tem 5 membros com role definida
-        ├▶ Verifica: nenhum membro já está inscrito em outro time no torneio
-        ├▶ INSERT inscricoes { team_id, tournament_id, status: 'PENDING' }
-        └▶ Notificação ao organizador
+Capitão → POST /api/teams/inscricao (ou Server Action criarInscricao)
+  → valida: torneio OPEN, time com roster mínimo, não inscrito ainda
+  → insere inscricoes (team_id, tournament_id, status: PENDING)
+  → insere notifications para o organizador
 
-[Organizador aprova/rejeita]
-  └▶ PATCH /api/organizer/inscricoes/{id}
-        ├▶ Guard: organizer_id === user.id OR is_admin
-        ├▶ UPDATE inscricoes SET status = 'APPROVED' | 'REJECTED'
-        └▶ INSERT notifications (para o capitão do time)
+Organizador → aprovarInscricao(inscricaoId)
+  → valida is_organizer_or_admin (RPC)
+  → atualiza inscricoes.status → APPROVED
+  → insere notification para o capitão
 ```
 
-**Arquivos envolvidos:**
-- `app/api/teams/` — rotas de time
-- `app/organizer/` — painel de organizador
-- Tabelas: `inscricoes`, `teams`, `tournaments`, `notifications`
-- Enums: `inscricao_status` → `PENDING | APPROVED | REJECTED`
-- `tournament_status` → `OPEN` (único estado que aceita inscrições)
+**Arquivos participantes:**
+- `lib/actions/inscricao.ts` — `criarInscricao(teamId, tournamentId)` + alias `inscreverTime(tournamentId, teamId)` ⚠️ ordem de parâmetros invertida entre as duas funções
+- `app/organizer/torneios/[id]/inscricoes/` — UI de aprovação
+
+**Tabelas:** `inscricoes`, `notifications`, `teams`, `team_members`
+
+**Enums:** `inscricao_status`: `PENDING → APPROVED | REJECTED`
+
+**Validações em `criarInscricao`:**
+- Torneio deve estar `OPEN`
+- Time não pode estar já inscrito (unique `team_id + tournament_id`)
+- Roster mínimo (definido em `tournament_rules.min_team_size`)
 
 ---
 
-## 5. Fluxo de Geração de Chaveamento
+## Fluxo 5 — Geração de Chaveamento (Bracket)
 
 ```
-[Organizador clica em "Gerar Chaveamento"]
-  └▶ Server Action / POST /api/organizer/torneios/{id}/bracket
-        ├▶ Guard: organizer_id === user.id OR is_admin
-        ├▶ Valida: torneio status === 'OPEN' com inscrições APPROVED
-        └▶ Invoca Edge Fn: bracket-generator
-              ├▶ SELECT inscricoes WHERE tournament_id = {id} AND status = 'APPROVED'
-              ├▶ Aplica seeds (tabela seedings) ou embaralha aleatoriamente
-              ├▶ INSERT tournament_stages (round, bracket_type)
-              ├▶ INSERT matches (team_a_id, team_b_id, round, status: 'SCHEDULED')
-              └▶ UPDATE tournaments SET status = 'IN_PROGRESS'
+Organizador → gerarChaveamento(tournamentId, faseId?)
+  ← Server Action em lib/actions/partida.ts (não Edge Function)
+  → valida is_organizer_or_admin
+  → lê inscricoes APPROVED para o torneio
+  → aplica seedings (tabela seedings) ou aleatoriza
+  → nextPow2(n) → completa bracket com byes automáticos
+  → lê tournament_stages.best_of se faseId passado
+  → insere tournament_stages (bracket_type, best_of, status: PENDING)
+  → insere matches (home_team_id, away_team_id, stage_id, status: SCHEDULED)
+  → gera tournament_codes via Riot Tournament API
+  → salva codes em matches.tournament_codes (JSONB)
+  → atualiza tournament.status → IN_PROGRESS
 ```
 
-**Arquivos envolvidos:**
-- `supabase/functions/bracket-generator/`
-- Tabelas: `inscricoes`, `tournament_stages`, `matches`, `seedings`, `tournaments`
-- Enums: `bracket_type` → `SINGLE_ELIMINATION | DOUBLE_ELIMINATION | ROUND_ROBIN | SWISS`
-- `tournament_status` → transição `OPEN → IN_PROGRESS`
+**Arquivos participantes:**
+- `lib/actions/partida.ts` — `gerarChaveamento()`
+- `lib/bracket-utils.ts` — lógica de bracket, `nextPow2()`
+- `lib/riot.ts` — `createTournamentCodes()`
+
+**Tabelas:** `tournament_stages`, `matches`, `seedings`, `inscricoes`, `riot_tournament_registrations`
+
+**Enums:**
+- `bracket_type`: `SINGLE_ELIMINATION | DOUBLE_ELIMINATION | ROUND_ROBIN | SWISS`
+- `match_status`: inicia em `SCHEDULED`
+- `tournament_status`: `OPEN → IN_PROGRESS`
 
 ---
 
-## 6. Fluxo de Convite de Membro de Time
+## Fluxo 6 — Convite de Membro para Time
 
 ```
-[Capitão envia convite]
-  └▶ POST /api/teams/{id}/invite
-        ├▶ Verifica: solicitante é captain (team_members.role = 'captain')
-        ├▶ INSERT team_invites
-        │     { team_id, invited_user_id, status: 'PENDING', expires_at: +7d }
-        └▶ Edge Fn: send-email (ou notificação in-app)
+Capitão → enviarConvite(teamId, invitedProfileId)
+  ← lib/actions/roster.ts
+  → valida: time existe, capitão é captain, membros ativos < 5
+  → insere team_invites (team_id, invited_profile_id, status: PENDING, expires_at: +48h)
+  → insere notification para o convidado
 
-[Convidado aceita/recusa]
-  └▶ RPC: accept_team_invite(invite_id)
-        ├▶ Verifica: invite_status = 'PENDING' e não expirado
-        ├▶ UPDATE team_invites SET status = 'ACCEPTED'
-        ├▶ INSERT team_members { team_id, user_id, role: 'member', status: 'accepted' }
-        └▶ INSERT notifications (para o capitão)
+Convidado → aceitarConvite(inviteId)
+  → valida: invite PENDING, não expirado (expires_at > now())
+  → RPC accept_team_invite(invite_id)
+    → upsert team_members (team_id, profile_id, status: active, role: member)
+      onConflict: "team_id,profile_id"
+    → atualiza team_invites.status → ACCEPTED
+
+Convidado → recusarConvite(inviteId)
+  → atualiza team_invites.status → REJECTED
 ```
 
-**Arquivos envolvidos:**
-- `app/api/teams/` — rota de invite
-- `supabase/functions/send-email/`
-- RPC: `accept_team_invite(invite_id)` — função PostgreSQL
-- Tabelas: `team_invites`, `team_members`, `notifications`
-- Enums: `invite_status` → `PENDING | ACCEPTED | DECLINED | EXPIRED`
-- `team_member_role` → `captain | member | substitute`
+**Arquivos participantes:**
+- `lib/actions/roster.ts` — `enviarConvite()`, `aceitarConvite()`, `recusarConvite()`
+- `supabase/functions/send-email/` — notificação por e-mail (opcional)
+
+**Tabelas:** `team_invites`, `team_members`, `notifications`
+
+**Enums:**
+- `invite_status`: `PENDING → ACCEPTED | REJECTED | EXPIRED`
+- `team_member_status`: `pending | active | rejected | left`
+- `team_member_role`: `captain | member | substitute`
+
+**Limites:**
+- Máximo **5 membros ativos** por time (`.eq("status", "active")`)
+- Convite expira em **48h** (`Date.now() + 48 * 60 * 60 * 1000`)
+- `invited_profile_id` é a FK real (não `summoner_name`/`tag_line`)
+
+---
+
+## Fluxo 7 — Abertura de Disputa
+
+```
+Participante → abrirDisputa(matchId, reason, evidenceUrl?)
+  ← lib/actions/disputa.ts (ou similar)
+  → valida: usuário é membro de um dos times na partida
+  → insere disputes:
+      match_id, reported_by (profile_id), status: OPEN,
+      reason, evidence_url, resolution_notes: null, resolved_by: null
+  → insere notification para organizador/admin
+
+Admin/Organizador → resolverDisputa(disputeId, notes, status)
+  → valida is_admin ou is_organizer_or_admin
+  → atualiza disputes.status → RESOLVED | DISMISSED
+  → preenche resolved_by, resolution_notes
+  → RPC log_admin_action (audit_log)
+```
+
+**Tabelas:** `disputes`
+
+**Campos reais da tabela `disputes`:**
+- `match_id`, `reported_by`, `resolved_by`, `status`, `reason`, `evidence_url`, `resolution_notes`
+- ⚠️ **Não existe campo `opened_by` ou `tournament_id` direto** na tabela
+
+**Enums:** `dispute_status`: `OPEN | UNDER_REVIEW | RESOLVED | DISMISSED`
+
+---
+
+## Fluxo 8 — Check-in de Organizador (Verificação de Partida ao Vivo)
+
+```
+Organizador → fazerCheckinOrganizador(matchId)
+  ← lib/actions/inscricao.ts
+  → valida is_organizer_or_admin
+  → busca puuid dos jogadores escalados na partida
+  → GET {getPlatformUrl()}/lol/spectator/v5/active-games/by-summoner/{puuid}
+      Headers: { 'X-Riot-Token': RIOT_API_KEY }
+      (best-effort: se Riot offline → libera check-in mesmo sem confirmação)
+  → atualiza matches.status → IN_PROGRESS
+  → registra checkin timestamp
+```
+
+**Arquivos participantes:**
+- `lib/actions/inscricao.ts` — `fazerCheckinOrganizador()`, `desfazerCheckin()`
+- `lib/riot.ts` — `getPlatformUrl()` → `https://br1.api.riotgames.com`
+
+**Tabelas:** `matches`
+
+**Endpoint Riot:** `spectator-v5` na plataforma BR1
+
+---
+
+## Notas Gerais
+
+| Aspecto | Detalhe |
+|---|---|
+| **Localização real das Server Actions** | `lib/actions/*.ts` (8 arquivos: `usuario.ts`, `roster.ts`, `inscricao.ts`, `partida.ts`, `fase.ts`, `ingest-match.ts`, `comunicado.ts`, `disputa.ts`) |
+| **Rota do painel do organizador** | `/organizer/torneios/[id]/` (inglês, não `/organizador/`) |
+| **`tournament_announcements`** | Tabela ainda **não migrada** — código tem fallback `42P01` em `comunicado.ts` |
+| **`picks_bans`** | JSONB dentro de `match_games.picks_bans`, não tabela separada |
+| **`deleteOwnTournament`** | Só funciona em `DRAFT` ou `CANCELLED` + lança `NEXT_REDIRECT` |
+| **`createAdminClient()`** | Usado em `finalizeMatchIngestion` para bypass de RLS |
