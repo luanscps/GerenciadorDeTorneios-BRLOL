@@ -1,237 +1,286 @@
-# Referência da API Riot Games
+# Referência da Riot Games API — ArenaGG
 
-> **Fonte de verdade:** `lib/riot.ts`, `lib/riot-tournament.ts`, `lib/riot-rate-limiter.ts`, `lib/riot-cache.ts`.
-> Documentação oficial: [developer.riotgames.com](https://developer.riotgames.com)
+> **Escopo:** endpoints reais consumidos pelo projeto + referência completa útil.
+> Fonte dos assets: CommunityDragon (não Data Dragon).
+> Última revisão: 2026-06-01
 
 ---
 
 ## Base URLs
 
-| Tipo | Base URL | Usado para |
+| Tipo | URL Base | Usado para |
 |---|---|---|
-| Regional BR1 | `https://br1.api.riotgames.com` | summoner-v4, league-v4, champion-mastery-v4 |
-| Continental Americas | `https://americas.api.riotgames.com` | account-v1, match-v5, tournament-v5 |
+| **Platform BR1** | `https://br1.api.riotgames.com` | summoner-v4, league-v4, spectator-v5, champion-mastery-v4, lol-status-v4 |
+| **Regional Americas** | `https://americas.api.riotgames.com` | account-v1, match-v5, tournament-v5 |
 
----
-
-## Autenticação
-
-Todas as chamadas exigem a chave de API no header:
-
-```
-X-Riot-Token: {RIOT_API_KEY}
+**Helper em `lib/riot.ts`:**
+```ts
+getPlatformUrl()  // → "https://br1.api.riotgames.com"
+getRegionalUrl()  // → "https://americas.api.riotgames.com"
 ```
 
-Variáveis de ambiente (`.env.local`):
-
+**Header obrigatório em todas as chamadas:**
 ```
-RIOT_API_KEY=RGAPI-xxxx-xxxx-xxxx-xxxx
-RIOT_TOURNAMENT_API_KEY=RGAPI-yyyy-yyyy-yyyy (chave Tournament — produção)
-RIOT_CALLBACK_SECRET=<HMAC secret para validação do callback>
+X-Riot-Token: <RIOT_API_KEY>
 ```
 
 ---
 
-## Endpoints Utilizados
+## Rate Limits
 
-### account-v1
-
-**Plataforma:** `americas.api.riotgames.com`
-
-| Método | Endpoint | Descrição |
+| Tipo de Chave | Limite Pessoal | Limite de Método |
 |---|---|---|
-| GET | `/riot/account/v1/accounts/by-riot-id/{gameName}/{tagLine}` | Retorna `puuid`, `gameName`, `tagLine` |
-| GET | `/riot/account/v1/accounts/by-puuid/{puuid}` | Retorna dados da conta pelo puuid |
+| **Development Key** | 20 req/1s, 100 req/2min | varia por endpoint |
+| **Production Key** | 500 req/10s, 30.000 req/10min | varia por endpoint |
 
-```typescript
-// lib/riot.ts
-const account = await riotRequest<RiotAccount>(
-  `https://americas.api.riotgames.com/riot/account/v1/accounts/by-riot-id/${name}/${tag}`
-)
-```
+**Controle no projeto:** `lib/riot-rate-limiter.ts` — fila por método, backoff exponencial.
 
 ---
 
-### summoner-v4
+## account-v1
 
-**Plataforma:** `br1.api.riotgames.com`
+**Base:** `https://americas.api.riotgames.com/riot/account/v1`
 
-| Método | Endpoint | Descrição |
+| Endpoint | Método | Usado em |
 |---|---|---|
-| GET | `/lol/summoner/v4/summoners/by-puuid/{puuid}` | `summonerId`, `profileIconId`, `summonerLevel` |
-| GET | `/lol/summoner/v4/summoners/{summonerId}` | Busca pelo summonerId |
+| `/accounts/by-riot-id/{gameName}/{tagLine}` | GET | `linkRiotAccount()` — vincula conta ao perfil |
+| `/accounts/by-puuid/{puuid}` | GET | `riot-api-sync` Edge Fn — valida puuid ativo |
+
+**Campos armazenados em `riot_accounts`:** `puuid`, `game_name`, `tag_line`
 
 ---
 
-### league-v4
+## summoner-v4
 
-**Plataforma:** `br1.api.riotgames.com`
+**Base:** `https://br1.api.riotgames.com/lol/summoner/v4`
 
-| Método | Endpoint | Descrição |
+| Endpoint | Método | Usado em |
 |---|---|---|
-| GET | `/lol/league/v4/entries/by-puuid/{puuid}` | Entradas de filas ranqueadas (SoloQ, FlexQ) |
-| GET | `/lol/league/v4/entries/{queue}/{tier}/{division}` | Listagem geral por tier/divisão |
+| `/summoners/by-puuid/{puuid}` | GET | `riot-api-sync` — obtém `summonerId` para league-v4 |
 
-Resposta por entrada:
+**Campos usados:** `id` (summonerId), `profileIconId`, `summonerLevel`
+
+---
+
+## league-v4
+
+**Base:** `https://br1.api.riotgames.com/lol/league/v4`
+
+| Endpoint | Método | Usado em |
+|---|---|---|
+| `/entries/by-summoner/{summonerId}` | GET | `riot-api-sync` — obtém rank/LP |
+
+**Resposta relevante:**
 ```json
-{
+[{
   "queueType": "RANKED_SOLO_5x5",
-  "tier": "DIAMOND",
+  "tier": "GOLD",
   "rank": "II",
-  "leaguePoints": 75,
-  "wins": 120,
+  "leaguePoints": 47,
+  "wins": 123,
   "losses": 98
-}
+}]
+```
+
+**Tabelas:** `players` (tier, rank, lp atuais), `rank_snapshots` (histórico diário)
+
+### Tiers e Ranks
+
+| Tier | Ranks disponíveis |
+|---|---|
+| IRON, BRONZE, SILVER, GOLD, PLATINUM, EMERALD, DIAMOND | I, II, III, IV |
+| MASTER, GRANDMASTER, CHALLENGER | (sem rank, apenas LP) |
+
+### Tipos de Fila (queueType)
+
+| queueType | Descrição |
+|---|---|
+| `RANKED_SOLO_5x5` | Solo/Duo Ranqueado |
+| `RANKED_FLEX_SR` | Flex Ranqueado |
+| `RANKED_TFT` | TFT Ranqueado |
+
+---
+
+## spectator-v5
+
+**Base:** `https://br1.api.riotgames.com/lol/spectator/v5`
+
+| Endpoint | Método | Usado em |
+|---|---|---|
+| `/active-games/by-summoner/{puuid}` | GET | `fazerCheckinOrganizador()` em `lib/actions/inscricao.ts` |
+
+**Comportamento:** chamada best-effort no check-in do organizador. Se a Riot retornar erro (offline, jogador não em jogo), o check-in é **liberado mesmo assim** — não bloqueia o fluxo.
+
+**Headers:**
+```ts
+{ 'X-Riot-Token': process.env.RIOT_API_KEY }
 ```
 
 ---
 
-### match-v5
+## champion-mastery-v4
 
-**Plataforma:** `americas.api.riotgames.com`
+**Base:** `https://br1.api.riotgames.com/lol/champion-mastery/v4`
 
-| Método | Endpoint | Descrição |
+| Endpoint | Método | Usado em |
 |---|---|---|
-| GET | `/lol/match/v5/matches/{matchId}` | Detalhes completos da partida |
-| GET | `/lol/match/v5/matches/by-puuid/{puuid}/ids` | IDs de partidas por jogador |
-| GET | `/lol/match/v5/matches/{matchId}/timeline` | Timeline de eventos da partida |
+| `/champion-masteries/by-puuid/{puuid}/top?count=10` | GET | Sync de maestria no perfil |
 
-Usado em: `app/api/riot/match/route.ts`, `app/api/riot/matches/route.ts`
+**Tabela:** `champion_masteries` (champion_id, mastery_level, mastery_points, last_play_time)
 
 ---
 
-### champion-mastery-v4
+## lol-status-v4
 
-**Plataforma:** `br1.api.riotgames.com`
+**Base:** `https://br1.api.riotgames.com/lol/status/v4`
 
-| Método | Endpoint | Descrição |
+| Endpoint | Método | Usado em |
 |---|---|---|
-| GET | `/lol/champion-mastery/v4/champion-masteries/by-puuid/{puuid}` | Lista de maestrias do invocador |
-| GET | `/lol/champion-mastery/v4/champion-masteries/by-puuid/{puuid}/top` | Top 3 maestrias |
+| `/platform-data` | GET | Cron monitor de incidentes BR1 |
 
-Tabela destino: `champion_masteries` (puuid, champion_id, mastery_level, mastery_points)
+**Nota:** este cron é **somente monitoramento** — não atualiza ranks nem dados de jogadores.
 
 ---
 
-### tournament-v5 (produção)
+## match-v5
 
-**Plataforma:** `americas.api.riotgames.com`  
-**Chave:** `RIOT_TOURNAMENT_API_KEY` (aprovação especial Riot)
+**Base:** `https://americas.api.riotgames.com/lol/match/v5`
 
-| Método | Endpoint | Descrição |
+| Endpoint | Método | Usado em |
 |---|---|---|
-| POST | `/lol/tournament/v5/providers` | Registra provider (URL de callback) |
-| POST | `/lol/tournament/v5/tournaments` | Cria torneio na Riot |
-| POST | `/lol/tournament/v5/codes` | Gera tournament codes por partida |
-| GET | `/lol/tournament/v5/codes/{code}` | Detalhes de um código |
-| PUT | `/lol/tournament/v5/codes/{code}` | Atualiza parâmetros do código |
-| GET | `/lol/tournament/v5/lobby-events/by-code/{code}` | Eventos de lobby |
+| `/matches/by-puuid/{puuid}/ids?queue=420&start=0&count=20` | GET | Histórico de partidas ranqueadas |
+| `/matches/{matchId}` | GET | Detalhes de uma partida para `player_stats` |
 
-Armazenamento: `riot_tournament_registrations` (riot_provider_id, riot_tournament_id)  
-Códigos: `matches.tournament_codes` (JSON)
+**Tipos de fila (queue):**
 
-### tournament-stub-v5 (desenvolvimento)
-
-**Plataforma:** `americas.api.riotgames.com`  
-**Chave:** chave de desenvolvimento padrão (`RIOT_API_KEY`)
-
-Endpoints idênticos ao `tournament-v5`, porém no path `/lol/tournament-stub/v5/`.  
-Não gera partidas reais. Usado em ambiente local/dev/staging.
-
-Detalhes completos de stub/produção: [`docs/api/tournament-stub.md`](./tournament-stub.md)
-
----
-
-## Rate Limiting
-
-Detalhes completos: [`docs/api/rate-limiting.md`](./rate-limiting.md)
-
-Regras Riot (produção — Production Key):
-
-| Janela | Limite |
-|---|---|---|
-| 1 segundo | 20 requisições |
-| 2 minutos | 100 requisições |
-
-Implementação no projeto: `lib/riot-rate-limiter.ts`
-- Rate limiting multi-camada (em memória)
-- Fila com retry automático em caso de `429`
-- Back-off exponencial: `Retry-After` header respeitado
-
----
-
-## Cache
-
-Implementação: `lib/riot-cache.ts`
-
-| Dado | TTL padrão |
+| queue | Tipo |
 |---|---|
-| Summoner data (ícone, nível) | 10 minutos |
-| League entries (rank/LP) | 5 minutos |
-| Match data | 24 horas (imutável após a partida) |
-| Account (puuid) | 1 hora |
-
-O cache é **em memória** (não persistido entre instâncias Vercel). Em produção, cada serverless function tem cache independente.
+| 420 | Solo/Duo Ranqueado |
+| 440 | Flex Ranqueado |
+| 450 | ARAM |
+| 400 | Normal Draft |
 
 ---
 
-## Assets (CDragon / DDragon)
+## tournament-v5 (Production) / tournament-stub-v5 (Dev)
 
-O projeto usa CommunityDragon para assets de campeões e ícones:
+**Base:**
+- Production: `https://americas.api.riotgames.com/lol/tournament/v5`
+- Stub (dev): `https://americas.api.riotgames.com/lol/tournament-stub/v5`
 
-| Asset | URL |
-|---|---|
-| Ícone de perfil | `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/profile-icons/{id}.jpg` |
-| Splash de campeão | `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-splashes/{champId}/{champId}000.jpg` |
-| Square de campeão | `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-icons/{champId}.png` |
-| Item | `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/assets/items/icons2d/{itemId}_t1_itemicon.png` |
+> ⚠️ **tournament-v5 exige Production Key.** Em desenvolvimento, use `tournament-stub-v5` — os códigos gerados não funcionam em partidas reais, mas o fluxo é idêntico.
 
-Versão de patch fixada: `16.10` (ou `latest` para sempre buscar o mais recente).
+| Endpoint | Método | Usado em |
+|---|---|---|
+| `POST /providers` | POST | Registra provider (URL do callback) |
+| `POST /tournaments` | POST | Cria torneio na Riot |
+| `POST /codes` | POST | Gera `tournamentCode` por partida |
+| `GET /codes/{tournamentCode}` | GET | Verifica status do código |
+| `GET /lobby-events/by-code/{tournamentCode}` | GET | Eventos de lobby da partida |
 
-```typescript
-// Exemplo de helper em lib/riot.ts
-export function getProfileIconUrl(iconId: number) {
-  return `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/profile-icons/${iconId}.jpg`
-}
-```
+**Campos armazenados em `riot_tournament_registrations`:**
+- `riot_provider_id` — ID do provider registrado
+- `riot_tournament_id` — ID do torneio na Riot
+- `tournament_id` — FK para `tournaments`
+
+**Códigos de torneio:**
+- Armazenados em `matches.tournament_codes` (JSONB)
+- Formato: `BR1-XXXX-XXXX-XXXX-XXXX-XX`
 
 ---
 
-## Callback da Riot (Webhook)
+## Callback da Riot (Resultado de Partida)
 
-Endpoint: `POST /api/riot/tournament/callback`  
-Arquivo: `app/api/riot/tournament/callback/route.ts`
+**Rota no projeto:** `POST /api/riot/tournament/callback`
 
-**Payload recebido da Riot:**
+**Validação:** header `X-Riot-Token` (HMAC) — rejeitado com 401 se inválido.
+
+**Payload recebido:**
 ```json
 {
-  "startTime": 1717200000000,
-  "shortCode": "BR1-12345-ABCDE-...",
-  "metaData": "{}",
-  "gameId": 7123456789,
-  "gameName": "teambuilder-match-7123456789",
-  "gameType": "TeamBuilderDraftMode5x5",
+  "startTime": 1700000000000,
+  "shortCode": "BR1-XXXX-XXXX-XXXX-XXXX-XX",
+  "metaData": "matchId_123",
+  "gameId": 987654321,
+  "gameName": "teambuilder-match-987654321",
+  "gameType": "MATCHED_GAME",
   "gameMap": 11,
   "gameMode": "CLASSIC",
   "region": "BR1",
-  "participants": [
-    { "summonerId": "...", "team": 100 },
-    ...
-  ],
-  "winningTeam": [
-    { "summonerId": "..." },
-    ...
-  ]
+  "winningTeam": [{ "puuid": "...", "summonerId": "..." }],
+  "losingTeam": [{ "puuid": "...", "summonerId": "..." }]
 }
 ```
 
-**Validação HMAC:**
-```typescript
-const signature = req.headers.get('X-Riot-Token')
-const expected  = createHmac('sha256', RIOT_CALLBACK_SECRET)
-                    .update(body)
-                    .digest('hex')
-if (signature !== expected) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+**Fluxo após recebimento:**
+1. Insere em `tournament_match_results` (campo `game_data` JSONB)
+2. Chama `process-match` para atualizar `match_games` e avançar bracket
+
+---
+
+## Assets — CommunityDragon (CDragon)
+
+> O projeto usa **CommunityDragon**, não Data Dragon (ddragon).
+
+**Base URLs CDragon:**
+```
+https://raw.communitydragon.org/16.10/
+https://raw.communitydragon.org/latest/
 ```
 
-**Fluxo completo:** ver [`docs/api/fluxos.md`](./fluxos.md) — Seção 2.
+### Profile Icons
+```
+https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/profile-icons/{iconId}.jpg
+```
+
+### Champion Square (avatar 120×120)
+```
+https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-icons/{championId}.png
+```
+
+### Champion Splash (loading screen art)
+```
+https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-splashes/{championId}/{championId}000.jpg
+```
+
+### Items
+```
+https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/items/icons2d/{itemId}.png
+// Formato do nome: geralmente lowercase sem espaços, ex: "rageblade.png"
+```
+
+### Spell Icons (Summoner Spells)
+```
+https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/data/spells/icons2d/{spellName}.png
+```
+
+### Rune / Perks
+```
+https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/perk-images/styles/{path}.png
+```
+
+> Para mapear `championId → nome/assets`, consulte:
+> `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-summary.json`
+
+---
+
+## Tratamento de Erros Riot API
+
+| HTTP Status | Significado | Ação recomendada |
+|---|---|---|
+| 400 | Bad Request | Validar parâmetros antes de chamar |
+| 401 | Unauthorized | Checar `RIOT_API_KEY` no `.env` |
+| 403 | Forbidden | Endpoint requer Production Key |
+| 404 | Not Found | Conta/partida não existe |
+| 429 | Rate Limit | Backoff exponencial (`lib/riot-rate-limiter.ts`) |
+| 500/503 | Riot offline | Log + fallback (não bloquear fluxo) |
+
+---
+
+## Variáveis de Ambiente Necessárias
+
+```env
+RIOT_API_KEY=RGAPI-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+RIOT_CALLBACK_URL=https://arenagg.com.br/api/riot/tournament/callback
+RIOT_TOURNAMENT_REGION=BRAZIL
+```
